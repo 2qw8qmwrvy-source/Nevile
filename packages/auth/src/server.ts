@@ -15,32 +15,60 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { phoneNumber } from "better-auth/plugins/phone-number";
-import { AUTH_COOKIE_PREFIX, MOBILE_APP_ORIGIN, NAME_MAX_LENGTH } from "./constants.ts";
+import {
+  AUTH_COOKIE_PREFIX,
+  EMAIL_VERIFICATION_EXPIRES_IN_SECONDS,
+  MOBILE_APP_ORIGIN,
+  NAME_MAX_LENGTH,
+  OTP_EXPIRES_IN_SECONDS,
+  OTP_LENGTH,
+} from "./constants.ts";
 import { existingAccountEmail, otpSms, verificationEmail } from "./emails.ts";
 import {
   isNormalizedCanadianPhone,
   isPlaceholderEmail,
   placeholderEmailForPhone,
 } from "./identity.ts";
-import type { EmailSender, SmsSender } from "./senders.ts";
+import type { EmailMessage, EmailSender, SmsSender } from "./senders.ts";
+import { isUserSuspended } from "./suspension.ts";
 
 const MINUTE = 60;
 const DAY = 24 * 60 * MINUTE;
 
 export const SESSION_EXPIRES_IN_SECONDS = 30 * DAY;
 export const SESSION_UPDATE_AGE_SECONDS = DAY;
-export const EMAIL_VERIFICATION_EXPIRES_IN_SECONDS = 60 * MINUTE;
-export const OTP_LENGTH = 6;
-export const OTP_EXPIRES_IN_SECONDS = 5 * MINUTE;
 export const OTP_ALLOWED_ATTEMPTS = 3;
+
+/** A fixed-window quota: at most `max` events per `window` seconds. */
+export type Quota = { readonly window: number; readonly max: number };
+
 /** Per phone number, on top of the per-IP limit: at most 3 codes per 10 minutes. */
 export const OTP_SENDS_PER_NUMBER = { window: 10 * MINUTE, max: 3 } as const;
+/**
+ * All SMS codes together, whatever the IP or number: a ceiling on what an SMS-pumping
+ * attack can cost. Hitting it logs an alert. Override with `createAuth({ smsBudget })`.
+ */
+export const DEFAULT_SMS_BUDGET: Quota = { window: 10 * MINUTE, max: 300 };
+/**
+ * Per account email, whatever the IP: password sign-in attempts. Stops password guessing
+ * spread across many IPs; a locked-out owner waits at most 10 minutes.
+ */
+export const SIGN_IN_ATTEMPTS_PER_EMAIL = { window: 10 * MINUTE, max: 10 } as const;
+/**
+ * Per recipient address, whatever the IP: verification and "you already have an account"
+ * emails. Further messages in the window are dropped silently (the response does not
+ * change, so this reveals nothing about the account).
+ */
+export const AUTH_EMAILS_PER_RECIPIENT = { window: 10 * MINUTE, max: 3 } as const;
+
+/** Default client IP source: the X-Forwarded-For chain, read with `trustedProxies`. */
+export const DEFAULT_CLIENT_IP_HEADER = "x-forwarded-for";
 
 /**
  * Per IP and path, in seconds. Stricter than Better Auth's defaults for the endpoints
  * attackers target: credential stuffing, sign-up spam, OTP guessing and SMS/email pumping.
- * Keep every window at most `OTP_SENDS_PER_NUMBER.window`: Better Auth prunes rate-limit
- * rows older than the longest window it knows about.
+ * Keep every window here and in the quotas above at most 10 minutes: Better Auth prunes
+ * rate-limit rows older than the longest window it knows about.
  */
 export const AUTH_RATE_LIMIT_RULES = {
   "/sign-in/*": { window: MINUTE, max: 5 },
@@ -65,10 +93,21 @@ export interface CreateAuthOptions {
   /** Web page that receives `?token=` from verification emails and confirms it. */
   emailVerificationPath?: string;
   signInPath?: string;
-  /** Headers holding the client IP, checked in order. Default: x-forwarded-for, x-real-ip. */
-  ipAddressHeaders?: string[];
+  /**
+   * The one header the client IP for rate limiting is read from (SPEC §12); there is no
+   * fallback to other headers, because a client can set any header the edge does not
+   * overwrite. Either:
+   * - "x-forwarded-for" (default), with `trustedProxies` listing every proxy in front of
+   *   the app: the rightmost hop that is not a trusted proxy is the client; or
+   * - a single-value header the deployment's edge always overwrites, such as
+   *   "cf-connecting-ip", "x-vercel-forwarded-for" or "fly-client-ip".
+   * In production, "x-forwarded-for" without `trustedProxies` refuses to start.
+   */
+  clientIpHeader?: string;
   /** Reverse-proxy IPs/CIDRs to skip when reading a multi-hop x-forwarded-for. */
   trustedProxies?: string[];
+  /** Ceiling on SMS codes sent across all numbers. Default: `DEFAULT_SMS_BUDGET`. */
+  smsBudget?: Quota;
   /** Secure cookies and production hardening. Defaults to NODE_ENV === "production". */
   production?: boolean;
 }
@@ -82,19 +121,20 @@ function bodyOf(value: unknown): JsonBody {
 }
 
 /**
- * Atomically counts one OTP send against `phoneNumber` in a fixed window, using the same
+ * Atomically counts one event against `key` in a fixed window, using the same
  * `rate_limit` table as Better Auth (keys are namespaced so they never collide).
  */
-async function consumeOtpQuota(
+async function consumeQuota(
   db: Database,
-  phone: string,
+  key: string,
+  quota: Quota,
 ): Promise<{ allowed: boolean; retryAfter: number }> {
   const now = Date.now();
-  const windowMs = OTP_SENDS_PER_NUMBER.window * 1000;
+  const windowMs = quota.window * 1000;
   const windowStart = now - windowMs;
   const [row] = await db
     .insert(rateLimitTable)
-    .values({ id: randomUUID(), key: `otp-number|${phone}`, count: 1, lastRequest: now })
+    .values({ id: randomUUID(), key, count: 1, lastRequest: now })
     .onConflictDoUpdate({
       target: rateLimitTable.key,
       set: {
@@ -103,17 +143,64 @@ async function consumeOtpQuota(
       },
     })
     .returning({ count: rateLimitTable.count, lastRequest: rateLimitTable.lastRequest });
-  if (!row || row.count <= OTP_SENDS_PER_NUMBER.max) return { allowed: true, retryAfter: 0 };
+  if (!row || row.count <= quota.max) return { allowed: true, retryAfter: 0 };
   return { allowed: false, retryAfter: Math.ceil((row.lastRequest + windowMs - now) / 1000) };
+}
+
+function tooManyRequests(code: string, message: string, retryAfter: number): APIError {
+  return new APIError(
+    "TOO_MANY_REQUESTS",
+    { code, message },
+    {
+      "X-Retry-After": String(retryAfter),
+    },
+  );
+}
+
+/**
+ * Resolves the client-IP settings, refusing in production a source a client can forge:
+ * a bare X-Forwarded-For is whatever the client sent when no trusted proxy rewrites it.
+ */
+function clientIpSettings(options: CreateAuthOptions, production: boolean) {
+  const header = (options.clientIpHeader ?? DEFAULT_CLIENT_IP_HEADER).trim().toLowerCase();
+  const trustedProxies = (options.trustedProxies ?? [])
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (!header) throw new Error("clientIpHeader must name a header.");
+  if (production && header === DEFAULT_CLIENT_IP_HEADER && trustedProxies.length === 0) {
+    throw new Error(
+      "Auth rate limiting needs a trusted client IP in production: set BETTER_AUTH_TRUSTED_PROXIES (the proxies in front of the app) or BETTER_AUTH_CLIENT_IP_HEADER (a header your edge always overwrites, e.g. cf-connecting-ip).",
+    );
+  }
+  return {
+    ipAddressHeaders: [header],
+    ...(trustedProxies.length > 0 ? { trustedProxies } : {}),
+  };
 }
 
 /** Builds the Better Auth server instance for Nevile (SPEC §1, §12 security baseline). */
 export function createAuth(options: CreateAuthOptions) {
-  const { db, emailSender, smsSender } = options;
+  const { db, smsSender } = options;
   const production = options.production ?? process.env.NODE_ENV === "production";
+  const ipAddress = clientIpSettings(options, production);
+  const smsBudget = options.smsBudget ?? DEFAULT_SMS_BUDGET;
   const appOrigin = new URL(options.baseURL).origin;
   const signInUrl = new URL(options.signInPath ?? "/sign-in", appOrigin).toString();
   const verificationPath = options.emailVerificationPath ?? "/verify-email";
+
+  /** Sends an auth email unless the recipient's per-address cap is used up. */
+  const emailSender: EmailSender = {
+    async send(message: EmailMessage) {
+      const recipient = message.to.trim().toLowerCase();
+      const quota = await consumeQuota(db, `email-to|${recipient}`, AUTH_EMAILS_PER_RECIPIENT);
+      if (!quota.allowed) {
+        // No address in the log line: it is personal data.
+        console.warn("[auth] per-recipient email cap reached; message not sent");
+        return;
+      }
+      await options.emailSender.send(message);
+    },
+  };
 
   function verificationLink(token: string): string {
     const url = new URL(verificationPath, appOrigin);
@@ -200,18 +287,18 @@ export function createAuth(options: CreateAuthOptions) {
       disableCSRFCheck: false,
       useSecureCookies: production,
       cookiePrefix: AUTH_COOKIE_PREFIX,
-      ipAddress: {
-        ipAddressHeaders: options.ipAddressHeaders ?? ["x-forwarded-for", "x-real-ip"],
-        ...(options.trustedProxies?.length ? { trustedProxies: options.trustedProxies } : {}),
-      },
+      ipAddress,
     },
 
     // SPEC §1 sign-in is email + password or phone + one-time code; phone + password and
-    // the SMS password-reset flow are not offered.
+    // the SMS password-reset flow are not offered. There is no social / OAuth sign-in, so
+    // the Expo plugin's OAuth proxy (an open redirect on this origin) is switched off too;
+    // the rest of the plugin (the mobile app's origin for CSRF checks) keeps working.
     disabledPaths: [
       "/sign-in/phone-number",
       "/phone-number/request-password-reset",
       "/phone-number/reset-password",
+      "/expo-authorization-proxy",
     ],
 
     telemetry: { enabled: false },
@@ -263,6 +350,24 @@ export function createAuth(options: CreateAuthOptions) {
           }
         }
 
+        if (ctx.path === "/sign-in/email") {
+          const email = bodyOf(ctx.body)?.email;
+          if (typeof email === "string" && email.trim()) {
+            const quota = await consumeQuota(
+              db,
+              `sign-in-email|${email.trim().toLowerCase()}`,
+              SIGN_IN_ATTEMPTS_PER_EMAIL,
+            );
+            if (!quota.allowed) {
+              throw tooManyRequests(
+                "TOO_MANY_ATTEMPTS",
+                "Too many sign-in attempts for this account. Try again later.",
+                quota.retryAfter,
+              );
+            }
+          }
+        }
+
         if (ctx.path === "/update-user") {
           const name = bodyOf(ctx.body)?.name;
           if (name !== undefined && (typeof name !== "string" || name.length > NAME_MAX_LENGTH)) {
@@ -277,15 +382,22 @@ export function createAuth(options: CreateAuthOptions) {
           const phone = bodyOf(ctx.body)?.phoneNumber;
           // Malformed numbers are rejected by the endpoint's own validator.
           if (typeof phone === "string" && isNormalizedCanadianPhone(phone)) {
-            const quota = await consumeOtpQuota(db, phone);
+            const quota = await consumeQuota(db, `otp-number|${phone}`, OTP_SENDS_PER_NUMBER);
             if (!quota.allowed) {
-              throw new APIError(
-                "TOO_MANY_REQUESTS",
-                {
-                  code: "TOO_MANY_CODES",
-                  message: "Too many codes were sent to this number. Try again later.",
-                },
-                { "X-Retry-After": String(quota.retryAfter) },
+              throw tooManyRequests(
+                "TOO_MANY_CODES",
+                "Too many codes were sent to this number. Try again later.",
+                quota.retryAfter,
+              );
+            }
+            const budget = await consumeQuota(db, "otp-global", smsBudget);
+            if (!budget.allowed) {
+              // Alert: either a traffic spike or SMS pumping. Raise the budget deliberately.
+              console.error("[auth] ALERT: global SMS budget exhausted; refusing new codes");
+              throw tooManyRequests(
+                "SMS_BUDGET_EXCEEDED",
+                "We can't send codes right now. Try again later or sign in with email.",
+                budget.retryAfter,
               );
             }
           }
@@ -294,6 +406,20 @@ export function createAuth(options: CreateAuthOptions) {
     },
 
     databaseHooks: {
+      session: {
+        create: {
+          // Suspended users (SPEC §11) cannot start a session by any sign-in method;
+          // `suspendUser` revokes the sessions they already had.
+          async before(newSession) {
+            if (await isUserSuspended(db, newSession.userId)) {
+              throw new APIError("FORBIDDEN", {
+                code: "ACCOUNT_SUSPENDED",
+                message: "This account is suspended. Contact Nevile support.",
+              });
+            }
+          },
+        },
+      },
       user: {
         create: {
           // Runs after the sign-up transaction commits. A failure here must not fail the

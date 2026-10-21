@@ -83,8 +83,11 @@ All payments run through **Stripe Connect** (Nevile never stores card numbers).
 ### Fee model
 
 - Business pays **3%** (deducted from payout).
-- Customer pays a **service fee = 3% + the exact card processing cost** for that charge,
-  shown as a single "Service fee" line, so Nevile always nets **6%** of the job price.
+- Customer pays a **service fee = 3% + the card processing cost** on the pre-tax amount,
+  shown as a single "Service fee" line, so Nevile nets **6%** of the job price before
+  sales tax. The processor also takes its percentage on the sales tax collected; Nevile
+  absorbs that, so its real net is slightly lower (about 5.5–5.9% of the job price,
+  depending on the province's tax rate). The formula below is the canonical one.
 
 Customer total for job price `P` (before sales tax), with Stripe at 2.9% + $0.30:
 
@@ -101,11 +104,15 @@ Worked example, `P = $100.00`:
 | **Customer pays** (pre-tax) | **$106.39** |
 | Business receives | $97.00 |
 | Stripe processing | ≈ $3.39 |
-| **Nevile nets** | **≈ $6.00** |
+| **Nevile nets** | **≈ $6.00** (before processing on sales tax) |
 
 ### Sales tax
 
-- GST/HST/PST applied automatically by the job's province.
+- GST/HST (and QST in Quebec) applied automatically by the job's province.
+- Provincial sales tax (BC PST, Manitoba RST, Saskatchewan PST) is **not charged at
+  launch**: whether it applies to a home service depends on the province and the type of
+  service. It can be switched on per province once tax advice confirms it; until then
+  jobs in those provinces are charged GST only.
 - Applied to the business's price only if the business has entered a GST/HST registration
   number (small suppliers under the threshold charge none).
 - Always applied to Nevile's service fee.

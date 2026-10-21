@@ -160,6 +160,34 @@ describe("happy paths", () => {
     );
   });
 
+  it("the customer cannot cancel a confirmed job once it has started", () => {
+    const startsAt = at(DAY);
+    const booking = snap("confirmed", { startsAt });
+    expect(transition(booking, { type: "cancel_by_customer", at: at(DAY - 1) }).ok).toBe(true);
+    expectError(booking, "cancel_by_customer", startsAt, "job_started");
+    expectError(booking, "cancel_by_customer", at(DAY + 5 * HOUR), "job_started");
+    // Without a known start time the guard is skipped.
+    expect(transition(snap("confirmed"), { type: "cancel_by_customer", at: at(DAY) }).ok).toBe(
+      true,
+    );
+    // Withdrawing an unconfirmed request costs nothing, so it stays allowed.
+    for (const state of ["requested", "quote_requested", "quoted"] as const) {
+      const late = transition(snap(state, { startsAt }), {
+        type: "cancel_by_customer",
+        at: at(2 * DAY),
+      });
+      expect(late.ok && late.state).toBe("cancelled_by_customer");
+    }
+  });
+
+  it("a no-show after the start is a business cancellation or an admin refund", () => {
+    const booking = snap("confirmed", { startsAt: at(DAY) });
+    const business = transition(booking, { type: "cancel_by_business", at: at(DAY + HOUR) });
+    expect(business.ok && business.state).toBe("cancelled_by_business");
+    const admin = transition(booking, { type: "admin_refund", at: at(DAY + HOUR) });
+    expect(admin.ok && admin.state).toBe("refunded");
+  });
+
   it("declining is separate from cancelling", () => {
     for (const state of ["requested", "quote_requested", "quoted"] as const) {
       const result = transition(snap(state), { type: "decline", at: at(HOUR) });
@@ -219,6 +247,18 @@ describe("quote expiry (7 days)", () => {
   it("expires at 7 days", () => {
     expectError(quoted, "expire", at(7 * DAY - 1), "deadline_not_reached");
     expect(dueSystemEvent(quoted, at(7 * DAY))).toBe("expire");
+  });
+
+  it("is capped at the job start: a quote cannot be accepted for a slot already past", () => {
+    const startsAt = at(DAY);
+    const nearJob = snap("quoted", { startsAt });
+    expect(deadlineFor("quoted", T0, { startsAt })).toEqual(startsAt);
+    expect(transition(nearJob, { type: "accept_quote", at: at(DAY - 1) }).ok).toBe(true);
+    expectError(nearJob, "accept_quote", startsAt, "deadline_passed");
+    expectError(nearJob, "accept_quote", at(2 * DAY), "deadline_passed");
+    expect(dueSystemEvent(nearJob, startsAt)).toBe("expire");
+    // A later start does not extend the 7-day window.
+    expect(deadlineFor("quoted", T0, { startsAt: at(30 * DAY) })).toEqual(at(7 * DAY));
   });
 
   it("quote requests themselves never expire", () => {
@@ -308,13 +348,42 @@ describe("disputes", () => {
     }
   });
 
-  it("admin decides: release payout or refund", () => {
-    const release = transition(disputed, { type: "admin_release_payout", at: at(5 * DAY) });
+  it("admin decides once the fix window has ended: release payout or refund", () => {
+    const release = transition(disputed, { type: "admin_release_payout", at: fixDeadline });
     expect(release.ok && release.state).toBe("completed");
     const refund = transition(disputed, { type: "admin_refund", at: at(5 * DAY) });
     expect(refund.ok && refund.state).toBe("refunded");
-    // Admin can also step in before the window ends.
-    expect(transition(disputed, { type: "admin_refund", at: disputedAt }).ok).toBe(true);
+  });
+
+  it("keeps the business's fix window: no admin decision before it ends", () => {
+    const early = new Date(fixDeadline.getTime() - 1);
+    const scheduled: BookingSnapshot = { ...disputed, state: "fix_scheduled", enteredAt: at(DAY) };
+    for (const snapshot of [disputed, scheduled]) {
+      for (const type of ["admin_refund", "admin_release_payout"] as const) {
+        expect(needsAdminDecision(snapshot, early)).toBe(false);
+        const result = transition(snapshot, { type, at: early });
+        expect(result).toMatchObject({
+          ok: false,
+          error: { code: "deadline_not_reached", deadline: fixDeadline },
+        });
+      }
+    }
+  });
+
+  it("lets an admin act inside the fix window only with an explicit override", () => {
+    const result = transition(disputed, {
+      type: "admin_refund",
+      at: disputedAt,
+      adminOverride: true,
+    });
+    expect(result.ok && result.state).toBe("refunded");
+  });
+
+  it("does not hold admin refunds of undisputed bookings to a fix window", () => {
+    expect(transition(snap("confirmed"), { type: "admin_refund", at: T0 }).ok).toBe(true);
+    expect(
+      transition(snap("completed_pending_confirmation"), { type: "admin_refund", at: T0 }).ok,
+    ).toBe(true);
   });
 
   it("needs no admin decision outside disputes", () => {

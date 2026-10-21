@@ -3,7 +3,7 @@
  * approved mockup uses. The app is light-only for now (app.json userInterfaceStyle).
  */
 import { color, radius, type Season, seasonColor, space } from "@nevile/tokens";
-import { Platform, type TextStyle } from "react-native";
+import type { TextStyle } from "react-native";
 
 export type { Season };
 export { radius, space };
@@ -32,60 +32,55 @@ export const cardShadow = {
 export const MIN_TOUCH = 44;
 
 /**
- * Bricolage Grotesque / Figtree are not bundled yet, so both families fall back to the
- * platform system font. Swap these once the Expo Google Fonts packages are added.
+ * Seasons fonts: Bricolage Grotesque for display text, Figtree for body text. Each weight is
+ * its own family name (registered in `fonts.ts` and loaded by the root layout), because
+ * Android ignores `fontWeight` for custom fonts or fakes it. Set the family for the weight
+ * you want and leave `fontWeight` unset.
  */
-const systemFamily = Platform.select({ ios: "System", default: undefined });
-
 export const fontFamily = {
-  display: systemFamily,
-  body: systemFamily,
+  displayBold: "BricolageGrotesque_700Bold",
+  body: "Figtree_400Regular",
+  bodyMedium: "Figtree_500Medium",
+  bodySemiBold: "Figtree_600SemiBold",
 } as const;
 
 export const typography = {
   display: {
-    fontFamily: fontFamily.display,
+    fontFamily: fontFamily.displayBold,
     fontSize: 28,
     lineHeight: 32,
-    fontWeight: "700",
     letterSpacing: -0.5,
   },
   title: {
-    fontFamily: fontFamily.display,
+    fontFamily: fontFamily.displayBold,
     fontSize: 20,
     lineHeight: 26,
-    fontWeight: "700",
     letterSpacing: -0.2,
   },
   heading: {
-    fontFamily: fontFamily.display,
+    fontFamily: fontFamily.displayBold,
     fontSize: 17,
     lineHeight: 22,
-    fontWeight: "700",
   },
   body: {
     fontFamily: fontFamily.body,
     fontSize: 15,
     lineHeight: 22,
-    fontWeight: "400",
   },
   bodyStrong: {
-    fontFamily: fontFamily.body,
+    fontFamily: fontFamily.bodySemiBold,
     fontSize: 15,
     lineHeight: 22,
-    fontWeight: "600",
   },
   small: {
     fontFamily: fontFamily.body,
     fontSize: 13.5,
     lineHeight: 19,
-    fontWeight: "400",
   },
   caption: {
-    fontFamily: fontFamily.body,
+    fontFamily: fontFamily.bodySemiBold,
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: "600",
   },
 } as const satisfies Record<string, TextStyle>;
 

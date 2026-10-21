@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   pgTable,
@@ -61,10 +62,11 @@ export const bookings = pgTable(
     quoteId: uuid("quote_id")
       .unique()
       .references(() => quotes.id, { onDelete: "restrict" }),
-    // Default crew member for generated visits (owner/manager assigns, SPEC §1).
-    assignedMemberId: uuid("assigned_member_id").references(() => businessMembers.id, {
-      onDelete: "set null",
-    }),
+    // Default crew member for generated visits (owner/manager assigns, SPEC §1). Must be
+    // a member of this booking's business: composite FK (business_id, assigned_member_id)
+    // with ON DELETE SET NULL (assigned_member_id), added in custom SQL because Drizzle
+    // cannot express a column-list SET NULL.
+    assignedMemberId: uuid("assigned_member_id"),
     kind: bookingKind("kind").notNull(),
     status: bookingStatus("status").notNull(),
     priceCents: cents("price_cents").notNull(),
@@ -91,6 +93,10 @@ export const bookings = pgTable(
     ...timestamps(),
   },
   (t) => [
+    // Targets of composite FKs that tie visits, payments, tips and reviews to the
+    // booking's own business and customer.
+    unique("bookings_id_business_unique").on(t.id, t.businessId),
+    unique("bookings_id_business_customer_unique").on(t.id, t.businessId, t.customerId),
     index("bookings_customer_created_idx").on(t.customerId, t.createdAt),
     index("bookings_business_status_created_idx").on(t.businessId, t.status, t.createdAt),
     index("bookings_service_id_idx").on(t.serviceId),
@@ -184,9 +190,11 @@ export const snowContracts = pgTable(
 
 /**
  * One unit of work on a crew calendar. A slot is only locked once a visit exists,
- * i.e. after the booking is confirmed (SPEC §4). Overlap protection per assigned
- * member is an exclusion constraint added in a custom migration
- * (`visits_no_member_overlap`, needs btree_gist).
+ * i.e. after the booking is confirmed (SPEC §4). Every live visit holds a crew member
+ * of the booking's business (instant book and approval assign one at confirmation, the
+ * owner/manager can reassign), and overlap protection per member is an exclusion
+ * constraint added in a custom migration (`visits_no_member_overlap`, needs btree_gist).
+ * Cancelled and refunded visits never hold a slot.
  */
 export const visits = pgTable(
   "visits",
@@ -195,9 +203,11 @@ export const visits = pgTable(
     bookingId: uuid("booking_id")
       .notNull()
       .references(() => bookings.id, { onDelete: "cascade" }),
-    assignedMemberId: uuid("assigned_member_id").references(() => businessMembers.id, {
-      onDelete: "set null",
-    }),
+    // Always the booking's business (composite FK below).
+    businessId: uuid("business_id").notNull(),
+    // A crew member of `business_id`. Removing a member who still holds visits is refused:
+    // reassign the visits (or deactivate the member) first, so no slot is freed silently.
+    assignedMemberId: uuid("assigned_member_id"),
     // 1 for one-offs; occurrence number for recurring series and contract visits.
     sequence: integer("sequence").notNull().default(1),
     startsAt: tstz("starts_at").notNull(),
@@ -221,6 +231,18 @@ export const visits = pgTable(
   },
   (t) => [
     unique("visits_booking_sequence_unique").on(t.bookingId, t.sequence),
+    // Target of composite FKs that tie payments, tips and reviews to the visit's booking.
+    unique("visits_id_booking_unique").on(t.id, t.bookingId),
+    foreignKey({
+      name: "visits_booking_business_fk",
+      columns: [t.bookingId, t.businessId],
+      foreignColumns: [bookings.id, bookings.businessId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "visits_member_business_fk",
+      columns: [t.businessId, t.assignedMemberId],
+      foreignColumns: [businessMembers.businessId, businessMembers.id],
+    }).onDelete("restrict"),
     index("visits_booking_starts_idx").on(t.bookingId, t.startsAt),
     index("visits_member_starts_idx").on(t.assignedMemberId, t.startsAt),
     index("visits_auto_confirm_idx")
@@ -240,6 +262,10 @@ export const visits = pgTable(
     check(
       "visits_completed_fields",
       sql`${t.status} <> 'completed' OR ${t.confirmedAt} IS NOT NULL`,
+    ),
+    check(
+      "visits_live_has_member",
+      sql`${t.status} IN ('cancelled_by_customer', 'cancelled_by_business', 'refunded') OR ${t.assignedMemberId} IS NOT NULL`,
     ),
     check(
       "visits_cancelled_fields",

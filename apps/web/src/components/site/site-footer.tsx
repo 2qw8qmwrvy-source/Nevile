@@ -2,11 +2,12 @@ import type { Route } from "next";
 import Link from "next/link";
 import { Container } from "@/components/ui/container.tsx";
 import { Logo } from "@/components/ui/logo.tsx";
+import { getSessionOrNull } from "@/lib/auth.ts";
 import { authRoutes } from "@/lib/routes.ts";
 
 type FooterColumn = { title: string; label: string; links: { href: Route; label: string }[] };
 
-const columns: FooterColumn[] = [
+const staticColumns: FooterColumn[] = [
   {
     title: "Customers",
     label: "For customers",
@@ -26,17 +27,25 @@ const columns: FooterColumn[] = [
       { href: "/for-businesses#fees", label: "Payouts and fees" },
     ],
   },
-  {
-    title: "Account",
-    label: "Account",
-    links: [
-      { href: authRoutes.signIn, label: "Sign in" },
-      { href: authRoutes.signUp, label: "Create an account" },
-    ],
-  },
 ];
 
-export function SiteFooter() {
+function accountColumn(signedIn: boolean): FooterColumn {
+  return {
+    title: "Account",
+    label: "Account",
+    links: signedIn
+      ? [{ href: "/account", label: "Your account" }]
+      : [
+          { href: authRoutes.signIn, label: "Sign in" },
+          { href: authRoutes.signUp, label: "Create an account" },
+        ],
+  };
+}
+
+export async function SiteFooter() {
+  // Same per-request cached session read as the header.
+  const signedIn = (await getSessionOrNull()) !== null;
+  const columns = [...staticColumns, accountColumn(signedIn)];
   const year = new Date().getFullYear();
   return (
     <footer className="mt-14 border-t border-border bg-surface">

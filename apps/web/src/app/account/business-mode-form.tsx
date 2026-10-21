@@ -1,6 +1,11 @@
 "use client";
 
-import { PROVINCE_CODES, PROVINCES, type ProvinceCode } from "@nevile/core";
+import {
+  BUSINESS_NAME_MAX_LENGTH,
+  PROVINCE_CODES,
+  PROVINCES,
+  type ProvinceCode,
+} from "@nevile/core";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState } from "react";
@@ -8,9 +13,6 @@ import { FormAlert } from "@/app/(auth)/_components/form-alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Field, Input, Select } from "@/components/ui/field.tsx";
 import { useTRPC } from "@/lib/trpc.ts";
-
-// Mirrors BUSINESS_NAME_MAX_LENGTH in @nevile/api (server-only, so not imported here).
-const NAME_MAX_LENGTH = 80;
 
 /**
  * "Switch to business mode" for accounts without a business: names the business and its
@@ -71,7 +73,7 @@ export function BusinessModeForm({ defaultOpen = false }: { defaultOpen?: boolea
           name="businessName"
           autoComplete="organization"
           value={name}
-          maxLength={NAME_MAX_LENGTH}
+          maxLength={BUSINESS_NAME_MAX_LENGTH}
           onChange={(event) => setName(event.target.value)}
           required
         />

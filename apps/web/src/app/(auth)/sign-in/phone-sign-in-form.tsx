@@ -1,5 +1,6 @@
 "use client";
 
+import { OTP_EXPIRES_IN_SECONDS, OTP_LENGTH } from "@nevile/auth/client";
 import { normalizeCanadianPhone } from "@nevile/core";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
@@ -9,7 +10,8 @@ import { Field, Input } from "@/components/ui/field.tsx";
 import { authClient, authErrorMessage } from "@/lib/auth-client.ts";
 import { FormAlert } from "../_components/form-alert.tsx";
 
-const CODE_LENGTH = 6;
+const CODE_LENGTH = OTP_LENGTH;
+const CODE_EXPIRES_IN_MINUTES = OTP_EXPIRES_IN_SECONDS / 60;
 const RESEND_AFTER_SECONDS = 30;
 
 /** "+14165551234" → "(416) 555-1234" */
@@ -125,7 +127,9 @@ export function PhoneSignInForm({ next }: { next: string }) {
       {error ? (
         <FormAlert tone="error">{error}</FormAlert>
       ) : notice ? (
-        <FormAlert tone="info">{notice} It expires in 5 minutes.</FormAlert>
+        <FormAlert tone="info">
+          {notice} It expires in {CODE_EXPIRES_IN_MINUTES} minutes.
+        </FormAlert>
       ) : null}
       <div ref={codeFieldRef}>
         <Field label="Code">

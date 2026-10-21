@@ -2,6 +2,8 @@
  * Canadian sales tax (GST / HST / PST / QST) as dated data. SPEC §7 "Sales tax".
  *
  * Rules:
+ * - GST/HST (and QST in Quebec) by the job's province; provincial PST/RST is off at
+ *   launch (see `pstAppliesToHomeServices`).
  * - Tax on the job price applies only when the business is GST/HST-registered
  *   (small suppliers under the threshold charge none).
  * - Tax on Nevile's service fee always applies.
@@ -76,9 +78,10 @@ export type ProvinceSalesTax = {
   /** Sorted by `effectiveFrom` ascending; each period ends when the next one starts. */
   periods: readonly SalesTaxPeriod[];
   /**
-   * Whether provincial sales tax is charged on residential home services (and on
-   * Nevile's fee for them). PST applicability to these services varies by province and
-   * service type, so it is off by default — pending accountant review (SPEC §7 sales tax).
+   * Whether provincial sales tax (BC PST, MB RST, SK PST) is charged on residential home
+   * services (and on Nevile's fee for them). SPEC §7: not charged at launch, because it
+   * depends on the province and the service type; switch a province on here once tax
+   * advice confirms it. QST is a value-added tax and is never gated by this flag.
    */
   pstAppliesToHomeServices: boolean;
 };

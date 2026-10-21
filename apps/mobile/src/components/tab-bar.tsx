@@ -1,7 +1,7 @@
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { Pressable, StyleSheet, View } from "react-native";
 
-import { colors, radius } from "@/theme";
+import { colors, fontFamily, radius } from "@/theme";
 
 import { Text } from "./text.tsx";
 
@@ -63,7 +63,10 @@ export function TabBar({ state, descriptors, emitter, navigateToTab, insets }: B
               variant="caption"
               numberOfLines={1}
               maxFontSizeMultiplier={1.3}
-              style={{ color: tint, fontWeight: focused ? "600" : "500" }}
+              style={{
+                color: tint,
+                fontFamily: focused ? fontFamily.bodySemiBold : fontFamily.bodyMedium,
+              }}
             >
               {label}
             </Text>

@@ -5,14 +5,17 @@
  * - one-off job: upfront, when the booking is confirmed;
  * - recurring visit: 3 calendar days before the visit, at the same local wall-clock time
  *   (or immediately at confirmation if that moment has already passed);
- * - snow-contract visit: when the customer confirms the visit, or when it auto-confirms
- *   48h after being marked complete, whichever comes first.
+ * - snow-contract visit: once the visit is confirmed complete — by the customer, by the
+ *   48h auto-confirm, or by an admin releasing a dispute. Pending confirmation, it is
+ *   due at the auto-confirm time (48h after it last entered pending confirmation, so a
+ *   fixed visit restarts the clock). A disputed visit, or one with a fix scheduled, is
+ *   not charged until it is resolved.
  *
  * Payouts run as a weekly batch every Monday (America/Toronto). The cut-off is the end of
  * Sunday local time: a visit confirmed complete at any time up to Sunday 23:59:59.999 is
  * paid the following Monday; one confirmed on Monday itself waits for the next Monday.
  */
-import { COMPLETION_CONFIRMATION_HOURS } from "./booking-lifecycle.ts";
+import { type BookingSnapshot, deadlineFor } from "./booking-lifecycle.ts";
 import {
   addCalendarDays,
   addLocalDays,
@@ -21,7 +24,6 @@ import {
   DEFAULT_TIME_ZONE,
   formatIsoDate,
   fromLocal,
-  MS_PER_HOUR,
   parseIsoDate,
   toLocal,
   weekdayOf,
@@ -44,15 +46,22 @@ export type ChargeTimingInput =
     }
   | {
       kind: "snow_contract_visit";
-      /** When the business logged the visit as complete. */
-      markedCompleteAt: Date;
-      customerConfirmedAt?: Date | null;
+      /** The visit's lifecycle state and when it entered that state. */
+      visit: Pick<BookingSnapshot, "state" | "enteredAt">;
     };
 
 export type ChargeKind = ChargeTimingInput["kind"];
 
-/** The instant the customer's saved card should be charged. */
-export function chargeAtFor(input: ChargeTimingInput): Date {
+type ScheduledChargeInput = Exclude<ChargeTimingInput, { kind: "snow_contract_visit" }>;
+
+/**
+ * The instant the customer's saved card should be charged. For a snow-contract visit,
+ * null means "not chargeable now": not yet done, disputed / fix scheduled, cancelled or
+ * refunded.
+ */
+export function chargeAtFor(input: ScheduledChargeInput): Date;
+export function chargeAtFor(input: ChargeTimingInput): Date | null;
+export function chargeAtFor(input: ChargeTimingInput): Date | null {
   switch (input.kind) {
     case "one_off":
       assertValidDate(input.confirmedAt, "confirmedAt");
@@ -73,14 +82,13 @@ export function chargeAtFor(input: ChargeTimingInput): Date {
       return scheduled;
     }
     case "snow_contract_visit": {
-      assertValidDate(input.markedCompleteAt, "markedCompleteAt");
-      const autoConfirmAt =
-        input.markedCompleteAt.getTime() + COMPLETION_CONFIRMATION_HOURS * MS_PER_HOUR;
-      if (input.customerConfirmedAt) {
-        assertValidDate(input.customerConfirmedAt, "customerConfirmedAt");
-        return new Date(Math.min(input.customerConfirmedAt.getTime(), autoConfirmAt));
-      }
-      return new Date(autoConfirmAt);
+      const { state, enteredAt } = input.visit;
+      assertValidDate(enteredAt, "visit.enteredAt");
+      // Confirmed by the customer, auto-confirmed, or released by an admin.
+      if (state === "completed") return new Date(enteredAt.getTime());
+      // Due when it auto-confirms; an earlier customer confirmation moves it to `completed`.
+      if (state === "completed_pending_confirmation") return deadlineFor(state, enteredAt);
+      return null;
     }
     default:
       throw new RangeError("unknown charge kind");

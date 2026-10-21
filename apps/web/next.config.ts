@@ -1,32 +1,19 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
-const isDev = process.env.NODE_ENV === "development";
+// The monorepo keeps one `.env` at the root (copied from `.env.example`). Next only reads
+// `apps/web/.env*`, so load the root file as well. Values that are already set (the shell,
+// `apps/web/.env*`) win; the file only fills gaps.
+const rootEnvFile = fileURLToPath(new URL("../../.env", import.meta.url));
+if (existsSync(rootEnvFile)) process.loadEnvFile(rootEnvFile);
+
 const isProd = process.env.NODE_ENV === "production";
 
-/**
- * Static CSP (no per-request nonce, so pages can stay statically rendered).
- * - Fonts are self-hosted by next/font, so everything is same-origin.
- * - Next injects inline bootstrap scripts and style attributes, which need 'unsafe-inline'.
- * - React needs 'unsafe-eval' only in development (error-stack reconstruction).
- */
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' blob: data:",
-  "font-src 'self'",
-  `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  "manifest-src 'self'",
-  "worker-src 'self' blob:",
-  ...(isProd ? ["upgrade-insecure-requests"] : []),
-].join("; ");
-
+// The page Content Security Policy is per request (nonce): see src/proxy.ts and
+// src/lib/csp.ts. API responses are never rendered as pages, so nothing may load there.
+const apiCsp = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -45,6 +32,8 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   typedRoutes: true,
+  // CLAUDE.md is the contributor guide; don't let `next dev` write apps/web/AGENTS.md.
+  agentRules: false,
   // Internal packages ship TypeScript source.
   transpilePackages: [
     "@nevile/api",
@@ -54,7 +43,13 @@ const nextConfig: NextConfig = {
     "@nevile/tokens",
   ],
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      {
+        source: "/api/:path*",
+        headers: [{ key: "Content-Security-Policy", value: apiCsp }],
+      },
+    ];
   },
 };
 

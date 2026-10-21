@@ -11,9 +11,10 @@
  *   computed exactly in integer arithmetic and rounded half-up to the cent.
  *
  * The formula follows the SPEC and grosses up the *pre-tax* amount. The processor also
- * charges its percentage on the sales tax collected, so the real processing cost is a
- * little higher than the fee covers; `estimatedProcessingCents` is computed on the full
- * charged total so `platformNetCents` reports Nevile's margin honestly.
+ * charges its percentage on the sales tax collected; SPEC §7 has Nevile absorb that, so
+ * its real net is slightly under 6% (≈ 5.5–5.9% depending on the tax rate).
+ * `estimatedProcessingCents` is computed on the full charged total so `platformNetCents`
+ * reports Nevile's margin honestly.
  */
 import {
   assertCents,

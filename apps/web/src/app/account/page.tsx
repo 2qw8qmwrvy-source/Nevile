@@ -1,9 +1,8 @@
 import { PROVINCES } from "@nevile/core";
-import type { Metadata, Route } from "next";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Container } from "@/components/ui/container.tsx";
 import { getSession } from "@/lib/auth.ts";
@@ -15,9 +14,6 @@ export const metadata: Metadata = {
   title: "Your account",
   robots: { index: false, follow: false },
 };
-
-// The business area is built separately; typed routes only know pages that exist.
-const BUSINESS_HOME = "/business" as Route;
 
 const ROLE_LABELS = { owner: "Owner", manager: "Manager", crew: "Crew" } as const;
 
@@ -115,7 +111,7 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
           {businesses.length > 0 ? (
             <>
               <p className="mt-2 text-[15px] leading-relaxed text-muted">
-                Manage bookings, your team calendar and payouts.
+                You're a member of these businesses.
               </p>
               <ul className="mt-4 grid gap-2.5">
                 {businesses.map(({ business, role }) => (
@@ -131,9 +127,9 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
                   </li>
                 ))}
               </ul>
-              <Button href={BUSINESS_HOME} size="lg" block className="mt-5">
-                Switch to business mode
-              </Button>
+              <p className="mt-4 text-sm leading-relaxed text-muted">
+                Managing your services, calendar and crew from the website is coming soon.
+              </p>
             </>
           ) : (
             <BusinessModeForm defaultOpen={intent === "business"} />

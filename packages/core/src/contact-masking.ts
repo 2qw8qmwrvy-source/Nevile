@@ -7,13 +7,18 @@
  * digit by digit with separators — plus any other international number written with a
  * leading "+". To avoid masking prices, times, dates, postal codes and quantities, the
  * separators must follow the number's area-code / exchange / line structure
- * ("2026-10-21 10" is a date and a time, not 202-610-2110), and a number right after "$"
- * is treated as a price. Seven-digit local numbers are not masked: they are
+ * ("2026-10-21 10" is a date and a time, not 202-610-2110). A dollar amount right after
+ * "$" (up to 7 digits, plus cents) is a price and is never part of a phone number, but
+ * anything written after the price is still checked ("$120. 416-555-1234" is masked).
+ * A bare 3-3-4 split whose parts are ascending multiples of 25 ("450 / 600 / 1200") is
+ * read as a price list. Seven-digit local numbers are not masked: they are
  * indistinguishable from ranges like "200-1500".
  *
  * Email detection covers normal addresses and common obfuscations such as
- * "jo (at) mail (dot) com" or "jo at mail dot ca" (the latter only for well-known TLDs).
- * Spelled-out digits ("four one six…") are not detected.
+ * "jo (at) mail (dot) com", "jo [@] mail.com" or "jo dot smith at mail dot ca" (the
+ * obfuscated forms only for well-known TLDs). With the bare word "at", a literal "."
+ * must not be followed by a space, so sentences like "Arriving at noon. Email me" are
+ * left alone. Spelled-out digits ("four one six…") are not detected.
  */
 
 export const CONTACT_MASK = "[hidden until booked]";
@@ -24,8 +29,18 @@ const KNOWN_TLD =
   "(?:com|ca|net|org|info|biz|io|co|me|us|uk|edu|gov|app|dev|xyz|live|email|online|ly|ai)";
 const BRACKET_OPEN = "[\\(\\[\\{<]";
 const BRACKET_CLOSE = "[\\)\\]\\}>]";
-const AT = `(?:[ \\t]*[@＠][ \\t]*|[ \\t]*${BRACKET_OPEN}[ \\t]*at[ \\t]*${BRACKET_CLOSE}[ \\t]*|[ \\t]+at[ \\t]+)`;
-const DOT = `(?:[ \\t]*\\.[ \\t]*|[ \\t]*${BRACKET_OPEN}[ \\t]*dot[ \\t]*${BRACKET_CLOSE}[ \\t]*|[ \\t]+dot[ \\t]+)`;
+/** "@" (optionally spaced) or a bracketed "at" / "@": unambiguous at-signs. */
+const AT_SYMBOL = `(?:[ \\t]*[@＠][ \\t]*|[ \\t]*${BRACKET_OPEN}[ \\t]*(?:at|[@＠])[ \\t]*${BRACKET_CLOSE}[ \\t]*)`;
+/** The bare word "at", which is also ordinary English. */
+const AT_WORD = "[ \\t]+at[ \\t]+";
+const DOT_WORD = `(?:[ \\t]*${BRACKET_OPEN}[ \\t]*dot[ \\t]*${BRACKET_CLOSE}[ \\t]*|[ \\t]+dot[ \\t]+)`;
+/**
+ * A literal "." either hugs the next label ("example.com", "example .com") or has
+ * space before it ("example . com"); "noon. Email" is the end of a sentence.
+ */
+const DOT = `(?:[ \\t]+\\.[ \\t]*|\\.|${DOT_WORD})`;
+const OBFUSCATED_LOCAL = `${LOCAL}(?:${DOT_WORD}${LOCAL})*`;
+const OBFUSCATED_DOMAIN = `${LABEL}(?:${DOT}${LABEL})*${DOT}${KNOWN_TLD}`;
 
 /** A standard address: any TLD, no spaces. */
 const PLAIN_EMAIL = new RegExp(
@@ -34,7 +49,7 @@ const PLAIN_EMAIL = new RegExp(
 );
 /** Obfuscated / spaced address: only with a well-known TLD to limit false positives. */
 const OBFUSCATED_EMAIL = new RegExp(
-  `(?<![a-z0-9._%+\\-])${LOCAL}${AT}${LABEL}(?:${DOT}${LABEL})*${DOT}${KNOWN_TLD}(?![a-z0-9\\-])`,
+  `(?<![a-z0-9._%+\\-])${OBFUSCATED_LOCAL}(?:${AT_SYMBOL}|${AT_WORD})${OBFUSCATED_DOMAIN}(?![a-z0-9\\-])`,
   "gi",
 );
 
@@ -86,6 +101,39 @@ function isNanpNumber(groups: readonly DigitGroup[]): boolean {
 
 type Span = { start: number; end: number };
 
+/** The longest dollar amount (in whole dollars) read as a price after "$": $9,999,999. */
+const MAX_PRICE_DIGITS = 7;
+
+/**
+ * How many leading digit groups of a chain that follows "$" are the price: the dollars,
+ * plus the cents when written as ".5" / ".50". A ten-digit "$4165551234" is not a price.
+ */
+function priceGroupCount(text: string, groups: readonly DigitGroup[]): number {
+  const [dollars, cents] = groups;
+  if (!dollars || dollars.digits.length > MAX_PRICE_DIGITS) return 0;
+  if (cents && cents.digits.length <= 2 && text.slice(dollars.end, cents.start) === ".") {
+    return 2;
+  }
+  return 1;
+}
+
+/**
+ * "450 / 600 / 1200", "350-450-1100": three ascending round amounts in a 3-3-4 split
+ * are a price list, not a phone number. Real numbers almost never look like this, and
+ * nobody can pick their number to match.
+ */
+function isPriceLadder(groups: readonly DigitGroup[]): boolean {
+  if (groups.length !== 3) return false;
+  const values = groups.map((group) => Number(group.digits));
+  const lengths = groups.map((group) => group.digits.length).join("-");
+  return (
+    lengths === "3-3-4" &&
+    values.every((value) => value % 25 === 0) &&
+    (values[0] ?? 0) < (values[1] ?? 0) &&
+    (values[1] ?? 0) < (values[2] ?? 0)
+  );
+}
+
 function phoneSpansInChain(text: string, chainStart: number, chain: string): Span[] {
   const groups: DigitGroup[] = [];
   for (const match of chain.matchAll(DIGIT_RUN)) {
@@ -95,14 +143,19 @@ function phoneSpansInChain(text: string, chainStart: number, chain: string): Spa
   const spans: Span[] = [];
   const intlPrefixed =
     text[chainStart - 1] === "+" || text.slice(chainStart - 2, chainStart) === "+ ";
-  let i = 0;
+  // "$120. 416-555-1234": the price is never part of a number, but what follows it is.
+  const firstCandidate = text[chainStart - 1] === "$" ? priceGroupCount(text, groups) : 0;
+  let i = firstCandidate;
   while (i < groups.length) {
     let found = -1;
     let count = 0;
     for (let j = i; j < groups.length; j++) {
       count += groups[j]?.digits.length ?? 0;
       if (count > 11) break;
-      if (count >= 10 && isNanpNumber(groups.slice(i, j + 1))) found = j;
+      const candidate = groups.slice(i, j + 1);
+      if (count >= 10 && isNanpNumber(candidate) && !isBarePriceLadder(text, candidate)) {
+        found = j;
+      }
     }
     if (found === -1 && i === 0 && intlPrefixed) {
       // "+44 20 7946 0958": any 8–15 digit number written after a "+".
@@ -121,6 +174,14 @@ function phoneSpansInChain(text: string, chainStart: number, chain: string): Spa
   return spans;
 }
 
+/** A price ladder written with nothing that marks it as a phone number ("+", "("). */
+function isBarePriceLadder(text: string, groups: readonly DigitGroup[]): boolean {
+  const first = groups[0];
+  if (!first || !isPriceLadder(groups)) return false;
+  const before = text.slice(Math.max(0, first.start - 2), first.start);
+  return !/[+(]\s?$/.test(before);
+}
+
 const PHONE_PREFIX = /(?:\+ ?)?(?:\( ?)?$/;
 
 /** Widens a phone span to swallow a leading "+", "(" or "+ (" and a matching ")". */
@@ -137,8 +198,6 @@ function widen(text: string, span: Span): Span {
 function maskPhones(text: string): string {
   const spans: Span[] = [];
   for (const match of text.matchAll(DIGIT_CHAIN)) {
-    // "$4165551234" is a price, not a phone number.
-    if (text[match.index - 1] === "$") continue;
     for (const span of phoneSpansInChain(text, match.index, match[0])) {
       spans.push(widen(text, span));
     }

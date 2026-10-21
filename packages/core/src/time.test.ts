@@ -61,6 +61,60 @@ describe("toLocal / fromLocal", () => {
     expect(at.toISOString()).toBe("2026-11-01T05:30:00.000Z");
   });
 
+  it.each(["America/Los_Angeles", "America/Toronto", "America/St_Johns", "Europe/London", "UTC"])(
+    "gives the same instants whatever the host zone is (TZ=%s)",
+    (hostZone) => {
+      const original = process.env.TZ;
+      process.env.TZ = hostZone;
+      try {
+        // Sanity: the host zone really changed (Node applies TZ at runtime).
+        const hostOffset = new Date(Date.UTC(2026, 6, 1)).getTimezoneOffset();
+        const expectedHostOffset: Record<string, number> = {
+          "America/Los_Angeles": 420,
+          "America/Toronto": 240,
+          "America/St_Johns": 150,
+          "Europe/London": -60,
+          UTC: 0,
+        };
+        expect(hostOffset).toBe(expectedHostOffset[hostZone]);
+        const iso = (local: Parameters<typeof fromLocal>[0], zone: string) =>
+          fromLocal(local, zone).toISOString();
+        // Ambiguous fall-back times resolve to the first (daylight) occurrence.
+        expect(iso({ year: 2026, month: 11, day: 1, hour: 1, minute: 30 }, TORONTO)).toBe(
+          "2026-11-01T05:30:00.000Z",
+        );
+        expect(
+          iso({ year: 2026, month: 11, day: 1, hour: 1, minute: 30 }, "America/Vancouver"),
+        ).toBe("2026-11-01T08:30:00.000Z");
+        expect(
+          iso({ year: 2026, month: 11, day: 1, hour: 1, minute: 30 }, "America/St_Johns"),
+        ).toBe("2026-11-01T04:00:00.000Z");
+        // Spring-forward gaps move forward by the gap.
+        expect(iso({ year: 2026, month: 3, day: 8, hour: 2, minute: 30 }, TORONTO)).toBe(
+          "2026-03-08T07:30:00.000Z",
+        );
+        // Ordinary times, including a half-hour zone.
+        expect(iso({ year: 2026, month: 7, day: 1, hour: 9 }, TORONTO)).toBe(
+          "2026-07-01T13:00:00.000Z",
+        );
+        expect(iso({ year: 2026, month: 1, day: 15, hour: 9 }, "America/St_Johns")).toBe(
+          "2026-01-15T12:30:00.000Z",
+        );
+        // Days that do not exist roll over like Date.UTC does.
+        expect(iso({ year: 2026, month: 2, day: 30, hour: 9 }, TORONTO)).toBe(
+          "2026-03-02T14:00:00.000Z",
+        );
+        // The 23-hour day in the local zone keeps its wall-clock time.
+        expect(addLocalDays(new Date("2026-03-07T14:00:00Z"), 1, TORONTO).toISOString()).toBe(
+          "2026-03-08T13:00:00.000Z",
+        );
+      } finally {
+        process.env.TZ = original;
+      }
+      expect(new Date(Date.UTC(2026, 0, 1)).getTimezoneOffset()).toBe(-330);
+    },
+  );
+
   it("rejects invalid dates and zones", () => {
     expect(() => toLocal(new Date(Number.NaN))).toThrow(RangeError);
     expect(() => toLocal(new Date(), "Mars/Olympus")).toThrow(RangeError);

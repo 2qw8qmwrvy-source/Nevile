@@ -40,7 +40,7 @@ describe("rate table data", () => {
     }
   });
 
-  it("keeps PST off for home services pending accountant review", () => {
+  it("keeps PST/RST off at launch (SPEC §7 sales tax)", () => {
     for (const code of ["BC", "MB", "SK"] as const) {
       expect(SALES_TAX_TABLE[code].pstAppliesToHomeServices).toBe(false);
     }

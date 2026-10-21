@@ -2,7 +2,7 @@
  * Time-zone helpers. Instants are plain `Date`s (UTC); anything that depends on local
  * days or wall-clock time takes an explicit IANA zone and never uses the host zone.
  */
-import { TZDate } from "@date-fns/tz";
+import { TZDate, tzOffset } from "@date-fns/tz";
 
 export const DEFAULT_TIME_ZONE = "America/Toronto";
 
@@ -59,10 +59,17 @@ export function toLocal(at: Date, timeZone: string = DEFAULT_TIME_ZONE): LocalDa
   };
 }
 
+/** UTC offset of `timeZone` at `instant` (ms since epoch), in milliseconds. */
+function offsetMs(timeZone: string, instant: number): number {
+  // tzOffset reads the zone through Intl (never the host zone) and returns minutes.
+  return Math.round(tzOffset(timeZone, new Date(instant)) * 60) * 1000;
+}
+
 /**
  * The instant at which the wall clock in `timeZone` shows the given time.
  * A time skipped by a spring-forward gap moves forward by the gap (02:30 -> 03:30);
  * an ambiguous fall-back time resolves to its first (daylight-time) occurrence.
+ * Computed from the zone's offsets only, so the result never depends on the host zone.
  */
 export function fromLocal(
   local: Pick<LocalDateTime, "year" | "month" | "day"> &
@@ -70,17 +77,23 @@ export function fromLocal(
   timeZone: string = DEFAULT_TIME_ZONE,
 ): Date {
   assertTimeZone(timeZone);
-  const zoned = new TZDate(
-    local.year,
-    local.month - 1,
-    local.day,
-    local.hour ?? 0,
-    local.minute ?? 0,
-    local.second ?? 0,
-    local.millisecond ?? 0,
-    timeZone,
-  );
-  return new Date(zoned.getTime());
+  // The wall-clock fields read as if they were UTC (out-of-range fields roll over).
+  const fields = new Date(0);
+  fields.setUTCFullYear(local.year, local.month - 1, local.day);
+  fields.setUTCHours(local.hour ?? 0, local.minute ?? 0, local.second ?? 0, local.millisecond ?? 0);
+  const wall = fields.getTime();
+  if (Number.isNaN(wall)) throw new RangeError("invalid local date-time");
+  // The offsets in force a day either side cover any transition near this time.
+  const offsetBefore = offsetMs(timeZone, wall - MS_PER_DAY);
+  const offsetAfter = offsetMs(timeZone, wall + MS_PER_DAY);
+  const matches = [wall - offsetBefore, wall - offsetAfter]
+    .filter((instant) => offsetMs(timeZone, instant) === wall - instant)
+    .sort((a, b) => a - b);
+  const first = matches[0];
+  if (first !== undefined) return new Date(first);
+  // Skipped by a spring-forward gap: reading the time with the earlier offset lands
+  // just after the transition, i.e. the wall-clock time moved forward by the gap.
+  return new Date(wall - offsetBefore);
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;

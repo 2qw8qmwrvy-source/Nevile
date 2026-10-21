@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { check, date, index, pgTable, text, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  date,
+  foreignKey,
+  index,
+  pgTable,
+  text,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "./auth.ts";
 import { bookings, visits } from "./bookings.ts";
 import { businesses } from "./businesses.ts";
@@ -27,6 +37,8 @@ export const payouts = pgTable(
   },
   (t) => [
     unique("payouts_business_period_unique").on(t.businessId, t.periodStart),
+    // Target of composite FKs: money is only swept into its own business's payout.
+    unique("payouts_id_business_unique").on(t.id, t.businessId),
     index("payouts_status_idx").on(t.status),
     nonNegative("payouts", t.amountCents),
     check("payouts_period_range", sql`${t.periodEnd} > ${t.periodStart}`),
@@ -38,7 +50,14 @@ export const payouts = pgTable(
  * A customer charge. Funds are held on the platform until the visit is confirmed
  * (`released_at`), then swept into the business's next weekly payout.
  * `amount_cents` is what the customer pays; the business receives
- * price + price tax − business fee.
+ * price + price tax − business fee, less what `refunds` returned (each refund records
+ * its own price / tax / fee parts and the business-fee reduction).
+ *
+ * Integrity (composite FKs and the `payments_charge_shape` trigger in custom SQL):
+ * `business_id` is the booking's business, `visit_id` belongs to `booking_id`,
+ * `payout_id` is a payout of the same business, and a booking is charged in one shape
+ * only — per visit (recurring jobs, per-visit snow contracts) or once for the booking
+ * (one-off and on-demand jobs, season-priced snow contracts).
  */
 export const payments = pgTable(
   "payments",
@@ -47,6 +66,8 @@ export const payments = pgTable(
     bookingId: uuid("booking_id")
       .notNull()
       .references(() => bookings.id, { onDelete: "restrict" }),
+    // The booking's business (composite FK), so payouts can only take their own money.
+    businessId: uuid("business_id").notNull(),
     // Null for booking-level charges (one-off upfront, season-priced contract).
     visitId: uuid("visit_id").references(() => visits.id, { onDelete: "restrict" }),
     stripePaymentIntentId: text("stripe_payment_intent_id").notNull().unique(),
@@ -70,6 +91,21 @@ export const payments = pgTable(
     ...timestamps(),
   },
   (t) => [
+    foreignKey({
+      name: "payments_booking_business_fk",
+      columns: [t.bookingId, t.businessId],
+      foreignColumns: [bookings.id, bookings.businessId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "payments_visit_booking_fk",
+      columns: [t.visitId, t.bookingId],
+      foreignColumns: [visits.id, visits.bookingId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "payments_payout_business_fk",
+      columns: [t.payoutId, t.businessId],
+      foreignColumns: [payouts.id, payouts.businessId],
+    }).onDelete("restrict"),
     index("payments_booking_id_idx").on(t.bookingId),
     index("payments_visit_id_idx").on(t.visitId),
     index("payments_status_idx").on(t.status),
@@ -100,6 +136,14 @@ export const payments = pgTable(
   ],
 );
 
+/**
+ * Money returned on a payment, split like the payment itself (core's `RefundBreakdown`):
+ * `amount_cents` = price + service fee + price tax + fee tax refunded. The business's
+ * payout for the payment is then (price − Σ price refunded) − (business fee −
+ * Σ business-fee reduction) + (price tax − Σ price tax refunded). The
+ * `refunds_within_payment` trigger (custom SQL) keeps the live refunds of a payment
+ * within what was paid, part by part.
+ */
 export const refunds = pgTable(
   "refunds",
   {
@@ -110,9 +154,17 @@ export const refunds = pgTable(
     disputeId: uuid("dispute_id").references(() => disputes.id, { onDelete: "restrict" }),
     stripeRefundId: text("stripe_refund_id").unique(),
     amountCents: cents("amount_cents").notNull(),
-    // Portion of the refund that is the customer service fee (only refunded on
-    // business-initiated cancellations, SPEC §5).
+    // Part of the job price refunded.
+    priceCents: cents("price_cents").notNull().default(0),
+    // Part of the customer service fee refunded (only on business-initiated
+    // cancellations and admin refunds, SPEC §5).
     serviceFeeCents: cents("service_fee_cents").notNull().default(0),
+    // Sales tax refunded on the price and on the service fee.
+    priceTaxCents: cents("price_tax_cents").notNull().default(0),
+    feeTaxCents: cents("fee_tax_cents").notNull().default(0),
+    // How much less of the 3% business fee Nevile keeps (it is charged on the retained
+    // price only).
+    businessFeeAdjustmentCents: cents("business_fee_adjustment_cents").notNull().default(0),
     reason: refundReason("reason").notNull(),
     status: refundStatus("status").notNull().default("pending"),
     initiatedByUserId: text("initiated_by_user_id").references(() => user.id, {
@@ -124,12 +176,23 @@ export const refunds = pgTable(
     index("refunds_payment_id_idx").on(t.paymentId),
     index("refunds_dispute_id_idx").on(t.disputeId),
     positive("refunds", t.amountCents),
+    nonNegative("refunds", t.priceCents),
     nonNegative("refunds", t.serviceFeeCents),
-    check("refunds_fee_within_amount", sql`${t.serviceFeeCents} <= ${t.amountCents}`),
+    nonNegative("refunds", t.priceTaxCents),
+    nonNegative("refunds", t.feeTaxCents),
+    nonNegative("refunds", t.businessFeeAdjustmentCents),
+    check(
+      "refunds_amount_is_sum",
+      sql`${t.amountCents} = ${t.priceCents} + ${t.serviceFeeCents} + ${t.priceTaxCents} + ${t.feeTaxCents}`,
+    ),
   ],
 );
 
-/** Tips go 100% to the business; Nevile absorbs the processing cost (SPEC §7). */
+/**
+ * Tips go 100% to the business; Nevile absorbs the processing cost (SPEC §7), recorded in
+ * `processing_fee_cents` for the revenue reports. Composite FKs tie the visit, booking,
+ * customer, business and payout together.
+ */
 export const tips = pgTable(
   "tips",
   {
@@ -137,6 +200,7 @@ export const tips = pgTable(
     visitId: uuid("visit_id")
       .notNull()
       .references(() => visits.id, { onDelete: "restrict" }),
+    bookingId: uuid("booking_id").notNull(),
     customerId: text("customer_id")
       .notNull()
       .references(() => user.id, { onDelete: "restrict" }),
@@ -145,16 +209,36 @@ export const tips = pgTable(
       .references(() => businesses.id, { onDelete: "restrict" }),
     amountCents: cents("amount_cents").notNull(),
     stripePaymentIntentId: text("stripe_payment_intent_id").notNull().unique(),
+    stripeChargeId: text("stripe_charge_id").unique(),
+    // Actual Stripe processing cost of the tip charge (absorbed by Nevile), once known.
+    processingFeeCents: cents("processing_fee_cents"),
     status: paymentStatus("status").notNull().default("pending"),
+    succeededAt: tstz("succeeded_at"),
     payoutId: uuid("payout_id").references(() => payouts.id, { onDelete: "restrict" }),
     ...timestamps(),
   },
   (t) => [
+    foreignKey({
+      name: "tips_visit_booking_fk",
+      columns: [t.visitId, t.bookingId],
+      foreignColumns: [visits.id, visits.bookingId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "tips_booking_parties_fk",
+      columns: [t.bookingId, t.businessId, t.customerId],
+      foreignColumns: [bookings.id, bookings.businessId, bookings.customerId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "tips_payout_business_fk",
+      columns: [t.payoutId, t.businessId],
+      foreignColumns: [payouts.id, payouts.businessId],
+    }).onDelete("restrict"),
     index("tips_business_created_idx").on(t.businessId, t.createdAt),
     index("tips_payout_id_idx").on(t.payoutId),
     uniqueIndex("tips_one_live_per_visit_uidx")
       .on(t.visitId)
       .where(sql`${t.status} NOT IN ('failed', 'cancelled')`),
     positive("tips", t.amountCents),
+    nonNegative("tips", t.processingFeeCents),
   ],
 );

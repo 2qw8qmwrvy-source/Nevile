@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CANADIAN_AREA_CODES,
   canadianPhoneSchema,
   cancellationPolicySchema,
   emailSchema,
@@ -71,6 +72,17 @@ describe("canadianPhoneSchema", () => {
     expect(normalizeCanadianPhone(input)).toBe("+14165551234");
   });
 
+  it("accepts every Canadian area code, including the newest overlays", () => {
+    expect(CANADIAN_AREA_CODES.size).toBeGreaterThan(50);
+    for (const area of CANADIAN_AREA_CODES) {
+      expect(area).toMatch(/^[2-9]\d{2}$/);
+      expect(normalizeCanadianPhone(`${area}5550123`)).toBe(`+1${area}5550123`);
+    }
+    for (const area of ["942", "753", "584", "474", "257", "368", "867", "879"]) {
+      expect(CANADIAN_AREA_CODES.has(area)).toBe(true);
+    }
+  });
+
   it.each([
     "555-1234", // no area code
     "123-456-7890", // area code starts with 1
@@ -85,6 +97,14 @@ describe("canadianPhoneSchema", () => {
     "41655512345", // 11 digits, no country code
     "416-555-CALL",
     "",
+    "+18765551234", // Jamaica
+    "+18095550123", // Dominican Republic
+    "+12845551234", // British Virgin Islands
+    "+19005551234", // premium-rate 900
+    "+19765551234", // premium-rate 976
+    "+18005551234", // toll-free
+    "+16005551234", // Canadian non-geographic
+    "+12125551234", // United States
   ])("rejects %s", (input) => {
     expect(canadianPhoneSchema.safeParse(input).success).toBe(false);
     expect(normalizeCanadianPhone(input)).toBeNull();

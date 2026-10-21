@@ -2,7 +2,14 @@ import { getDb } from "@nevile/db";
 import { createConsoleEmailSender, createConsoleSmsSender } from "./senders.ts";
 import { type Auth, createAuth } from "./server.ts";
 
-export { AUTH_COOKIE_PREFIX, MOBILE_APP_ORIGIN, NAME_MAX_LENGTH } from "./constants.ts";
+export {
+  AUTH_COOKIE_PREFIX,
+  EMAIL_VERIFICATION_EXPIRES_IN_SECONDS,
+  MOBILE_APP_ORIGIN,
+  NAME_MAX_LENGTH,
+  OTP_EXPIRES_IN_SECONDS,
+  OTP_LENGTH,
+} from "./constants.ts";
 export {
   contactEmail,
   isNormalizedCanadianPhone,
@@ -10,6 +17,7 @@ export {
   PHONE_PLACEHOLDER_EMAIL_DOMAIN,
   placeholderEmailForPhone,
 } from "./identity.ts";
+export { safeRedirectPath } from "./redirect.ts";
 export {
   createConsoleEmailSender,
   createConsoleSmsSender,
@@ -19,20 +27,23 @@ export {
   type SmsSender,
 } from "./senders.ts";
 export {
+  AUTH_EMAILS_PER_RECIPIENT,
   AUTH_RATE_LIMIT_RULES,
   type Auth,
   type CreateAuthOptions,
   createAuth,
-  EMAIL_VERIFICATION_EXPIRES_IN_SECONDS,
+  DEFAULT_CLIENT_IP_HEADER,
+  DEFAULT_SMS_BUDGET,
   OTP_ALLOWED_ATTEMPTS,
-  OTP_EXPIRES_IN_SECONDS,
-  OTP_LENGTH,
   OTP_SENDS_PER_NUMBER,
+  type Quota,
   SESSION_EXPIRES_IN_SECONDS,
   SESSION_UPDATE_AGE_SECONDS,
   type Session,
+  SIGN_IN_ATTEMPTS_PER_EMAIL,
   type User,
 } from "./server.ts";
+export { isUserSuspended, suspendUser, unsuspendUser } from "./suspension.ts";
 
 /** Used only outside production when BETTER_AUTH_SECRET is unset. Never deploy it. */
 const DEV_ONLY_SECRET = "nevile-local-development-secret-do-not-use-in-production";
@@ -50,6 +61,7 @@ function listFromEnv(value: string | undefined): string[] {
  * - BETTER_AUTH_SECRET (required in production)
  * - BETTER_AUTH_URL (public web origin; required in production, else http://localhost:3000)
  * - BETTER_AUTH_TRUSTED_ORIGINS, BETTER_AUTH_TRUSTED_PROXIES (optional, comma-separated)
+ * - BETTER_AUTH_CLIENT_IP_HEADER (optional; default x-forwarded-for, see `clientIpHeader`)
  * - DATABASE_URL (via @nevile/db)
  *
  * Outside production, emails and SMS codes are printed to the console. Production has no
@@ -78,6 +90,7 @@ function createAuthFromEnv(): Auth {
     smsSender: createConsoleSmsSender(),
     trustedOrigins: listFromEnv(process.env.BETTER_AUTH_TRUSTED_ORIGINS),
     trustedProxies: listFromEnv(process.env.BETTER_AUTH_TRUSTED_PROXIES),
+    clientIpHeader: process.env.BETTER_AUTH_CLIENT_IP_HEADER?.trim() || undefined,
     production,
   });
 }

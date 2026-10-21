@@ -1,5 +1,5 @@
 import "server-only";
-import { auth, type Session } from "@nevile/auth";
+import { auth, type Session, safeRedirectPath } from "@nevile/auth";
 import { headers } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
 import { cache } from "react";
@@ -28,13 +28,10 @@ export async function getSessionOrNull(): Promise<Session | null> {
 }
 
 /**
- * Only same-site paths are allowed as post-sign-in destinations, so a crafted
- * `?next=https://evil.example` link can't bounce users off-site.
+ * Only same-origin paths are allowed as post-sign-in destinations, so a crafted
+ * `?next=https://evil.example` (or `/%09/evil.example`) link can't bounce users off-site.
+ * The URL is parsed and its origin compared; see `safeRedirectPath` in @nevile/auth.
  */
 export function safeNextPath(value: string | string[] | undefined, fallback = "/account"): string {
-  const next = Array.isArray(value) ? value[0] : value;
-  if (!next?.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) {
-    return fallback;
-  }
-  return next;
+  return safeRedirectPath(value, fallback);
 }

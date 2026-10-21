@@ -1,5 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { PROVINCES, provinceCodeSchema } from "@nevile/core";
+import {
+  BUSINESS_NAME_MAX_LENGTH,
+  BUSINESS_NAME_MIN_LENGTH,
+  PROVINCES,
+  provinceCodeSchema,
+} from "@nevile/core";
 import {
   and,
   asc,
@@ -19,8 +24,7 @@ import { z } from "zod";
 import { slugify } from "../slug.ts";
 import { businessMemberProcedure, protectedProcedure, router } from "../trpc.ts";
 
-export const BUSINESS_NAME_MIN_LENGTH = 2;
-export const BUSINESS_NAME_MAX_LENGTH = 80;
+export { BUSINESS_NAME_MAX_LENGTH, BUSINESS_NAME_MIN_LENGTH };
 
 export const createBusinessInput = z.object({
   name: z

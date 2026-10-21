@@ -7,8 +7,11 @@
  * | moderate | 48 hours before start | 50% refund       |
  * | strict   | 7 days before start   | no refund        |
  *
- * Windows are measured in elapsed time (7 days = 168 hours) and are inclusive: cancelling
- * exactly 24h before the start of a flexible booking is still free.
+ * Hour windows are elapsed time; the day window is calendar days at the job's wall-clock
+ * time in the job's zone, like every other "N days before" rule (a 09:00 Saturday job is
+ * free to cancel until 09:00 the Saturday before, even across a DST change). Windows are
+ * inclusive: cancelling exactly 24h before the start of a flexible booking is still free.
+ * Once the job has started the customer can no longer cancel (see the booking lifecycle).
  *
  * Customer-initiated cancellations never refund the service fee (nor the tax on it).
  * The sales tax on the job price is refunded in proportion to the price refunded.
@@ -17,17 +20,23 @@
 
 import { BUSINESS_FEE_BPS } from "./fees.ts";
 import { assertCents, bigintToCents, type Cents, divideRoundHalfUp, percentOf } from "./money.ts";
-import { assertValidDate, MS_PER_HOUR } from "./time.ts";
+import { addLocalDays, assertValidDate, DEFAULT_TIME_ZONE, MS_PER_HOUR } from "./time.ts";
 
 export const CANCELLATION_POLICY_IDS = ["flexible", "moderate", "strict"] as const;
 export type CancellationPolicyId = (typeof CANCELLATION_POLICY_IDS)[number];
+
+export type CancellationWindow = {
+  amount: number;
+  /** "hours": elapsed time; "days": calendar days at the same local wall-clock time. */
+  unit: "hours" | "days";
+};
 
 export type CancellationPolicy = {
   id: CancellationPolicyId;
   label: string;
   description: string;
-  /** Free cancellation while at least this many hours remain before the start. */
-  freeUntilHoursBefore: number;
+  /** Free cancellation until this long before the start. */
+  freeWindow: CancellationWindow;
   /** Share of the job price refunded after the free window, in basis points. */
   lateRefundBps: number;
 };
@@ -37,21 +46,21 @@ export const CANCELLATION_POLICIES: Readonly<Record<CancellationPolicyId, Cancel
     id: "flexible",
     label: "Flexible",
     description: "Free cancellation until 24 hours before the job.",
-    freeUntilHoursBefore: 24,
+    freeWindow: { amount: 24, unit: "hours" },
     lateRefundBps: 0,
   },
   moderate: {
     id: "moderate",
     label: "Moderate",
     description: "Free cancellation until 48 hours before the job; after that, 50% refund.",
-    freeUntilHoursBefore: 48,
+    freeWindow: { amount: 48, unit: "hours" },
     lateRefundBps: 5000,
   },
   strict: {
     id: "strict",
     label: "Strict",
     description: "Free cancellation until 7 days before the job; after that, no refund.",
-    freeUntilHoursBefore: 7 * 24,
+    freeWindow: { amount: 7, unit: "days" },
     lateRefundBps: 0,
   },
 };
@@ -62,12 +71,19 @@ export function isCancellationPolicyId(value: unknown): value is CancellationPol
   );
 }
 
-/** The last instant at which a customer can still cancel for free (inclusive). */
-export function freeCancellationDeadline(policy: CancellationPolicyId, jobStartsAt: Date): Date {
+/**
+ * The last instant at which a customer can still cancel for free (inclusive).
+ * `jobTimeZone` (the job address's IANA zone) matters only for day-based windows.
+ */
+export function freeCancellationDeadline(
+  policy: CancellationPolicyId,
+  jobStartsAt: Date,
+  jobTimeZone: string = DEFAULT_TIME_ZONE,
+): Date {
   assertValidDate(jobStartsAt, "jobStartsAt");
-  return new Date(
-    jobStartsAt.getTime() - CANCELLATION_POLICIES[policy].freeUntilHoursBefore * MS_PER_HOUR,
-  );
+  const window = CANCELLATION_POLICIES[policy].freeWindow;
+  if (window.unit === "days") return addLocalDays(jobStartsAt, -window.amount, jobTimeZone);
+  return new Date(jobStartsAt.getTime() - window.amount * MS_PER_HOUR);
 }
 
 /** Amounts the customer paid for one booking/visit (a `ChargeBreakdown` fits). */
@@ -145,17 +161,24 @@ function breakdown(
 export type CustomerCancellationInput = PaidAmounts & {
   policy: CancellationPolicyId;
   jobStartsAt: Date;
+  /** IANA zone of the job address (bookings.timezone); defaults to America/Toronto. */
+  jobTimeZone?: string;
   cancelledAt: Date;
 };
 
 /**
- * Refund owed when the customer cancels. Cancelling after the start time is treated like
- * any other late cancellation (the booking lifecycle decides whether it is still allowed).
+ * Refund owed when the customer cancels. Throws once the job has started: a started job
+ * can no longer be cancelled by the customer (it is completed, disputed or refunded by
+ * an admin instead), matching `transition()`'s `job_started` guard.
  */
 export function refundForCustomerCancellation(input: CustomerCancellationInput): RefundBreakdown {
   assertPaid(input);
   assertValidDate(input.cancelledAt, "cancelledAt");
-  const deadline = freeCancellationDeadline(input.policy, input.jobStartsAt);
+  assertValidDate(input.jobStartsAt, "jobStartsAt");
+  if (input.cancelledAt.getTime() >= input.jobStartsAt.getTime()) {
+    throw new RangeError("cancelledAt must be before jobStartsAt: the job has already started");
+  }
+  const deadline = freeCancellationDeadline(input.policy, input.jobStartsAt, input.jobTimeZone);
   const isFree = input.cancelledAt.getTime() <= deadline.getTime();
   const refundBps = isFree ? 10_000 : CANCELLATION_POLICIES[input.policy].lateRefundBps;
   return breakdown(input, refundBps, false);

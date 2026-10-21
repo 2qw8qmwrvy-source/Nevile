@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { applyBookingEvent } from "./booking-lifecycle.ts";
 import {
   chargeAtFor,
   PAYOUT_TIME_ZONE,
@@ -67,33 +68,59 @@ describe("chargeAtFor", () => {
     ).toBe("2026-10-20T13:00:00.000Z");
   });
 
-  it("snow contract: charges when the customer confirms", () => {
-    const markedCompleteAt = new Date("2026-12-10T15:00:00Z");
-    const customerConfirmedAt = new Date("2026-12-10T20:00:00Z");
+  it("snow contract: charges when the visit is confirmed complete", () => {
+    const confirmedAt = new Date("2026-12-10T20:00:00Z");
     expect(
-      chargeAtFor({ kind: "snow_contract_visit", markedCompleteAt, customerConfirmedAt }),
-    ).toEqual(customerConfirmedAt);
+      chargeAtFor({
+        kind: "snow_contract_visit",
+        visit: { state: "completed", enteredAt: confirmedAt },
+      }),
+    ).toEqual(confirmedAt);
   });
 
-  it("snow contract: otherwise charges at the 48h auto-confirm", () => {
+  it("snow contract: pending confirmation is due at the 48h auto-confirm", () => {
     const markedCompleteAt = new Date("2026-12-10T15:00:00Z");
-    const auto = "2026-12-12T15:00:00.000Z";
-    expect(chargeAtFor({ kind: "snow_contract_visit", markedCompleteAt }).toISOString()).toBe(auto);
     expect(
       chargeAtFor({
         kind: "snow_contract_visit",
-        markedCompleteAt,
-        customerConfirmedAt: null,
-      }).toISOString(),
-    ).toBe(auto);
-    // A confirmation recorded after the auto-confirm does not delay the charge.
+        visit: { state: "completed_pending_confirmation", enteredAt: markedCompleteAt },
+      })?.toISOString(),
+    ).toBe("2026-12-12T15:00:00.000Z");
+  });
+
+  it("snow contract: never charges a disputed visit until it is resolved", () => {
+    const markedCompleteAt = new Date("2026-12-10T15:00:00Z");
+    let visit = applyBookingEvent(
+      { state: "completed_pending_confirmation", enteredAt: markedCompleteAt },
+      { type: "report_problem", at: new Date("2026-12-11T09:00:00Z") },
+    );
+    expect(chargeAtFor({ kind: "snow_contract_visit", visit })).toBeNull();
+    visit = applyBookingEvent(visit, {
+      type: "schedule_fix",
+      at: new Date("2026-12-11T12:00:00Z"),
+    });
+    expect(chargeAtFor({ kind: "snow_contract_visit", visit })).toBeNull();
+    // After the fix, the 48h auto-confirm restarts from the fix, not the first completion.
+    visit = applyBookingEvent(visit, { type: "mark_fixed", at: new Date("2026-12-13T10:00:00Z") });
+    expect(chargeAtFor({ kind: "snow_contract_visit", visit })?.toISOString()).toBe(
+      "2026-12-15T10:00:00.000Z",
+    );
+  });
+
+  it.each([
+    "confirmed",
+    "disputed",
+    "fix_scheduled",
+    "refunded",
+    "cancelled_by_customer",
+    "cancelled_by_business",
+  ] as const)("snow contract: nothing to charge for a %s visit", (state) => {
     expect(
       chargeAtFor({
         kind: "snow_contract_visit",
-        markedCompleteAt,
-        customerConfirmedAt: new Date("2026-12-13T00:00:00Z"),
-      }).toISOString(),
-    ).toBe(auto);
+        visit: { state, enteredAt: new Date("2026-12-10T15:00:00Z") },
+      }),
+    ).toBeNull();
   });
 
   it("rejects invalid dates", () => {
@@ -109,7 +136,10 @@ describe("chargeAtFor", () => {
       }),
     ).toThrow(RangeError);
     expect(() =>
-      chargeAtFor({ kind: "snow_contract_visit", markedCompleteAt: new Date("x") }),
+      chargeAtFor({
+        kind: "snow_contract_visit",
+        visit: { state: "completed", enteredAt: new Date("x") },
+      }),
     ).toThrow(RangeError);
   });
 });

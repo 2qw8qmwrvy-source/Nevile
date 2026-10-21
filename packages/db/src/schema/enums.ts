@@ -142,6 +142,11 @@ export const QUOTE_STATUSES = ["pending", "accepted", "declined", "expired", "wi
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 export const quoteStatus = pgEnum("quote_status", QUOTE_STATUSES);
 
+/** Whether a snow-contract quote's price is per visit or one price for the season. */
+export const SNOW_PRICE_BASES = ["per_visit", "season"] as const;
+export type SnowPriceBasis = (typeof SNOW_PRICE_BASES)[number];
+export const snowPriceBasis = pgEnum("snow_price_basis", SNOW_PRICE_BASES);
+
 export const VISIT_PHOTO_KINDS = ["before", "after"] as const;
 export type VisitPhotoKind = (typeof VISIT_PHOTO_KINDS)[number];
 export const visitPhotoKind = pgEnum("visit_photo_kind", VISIT_PHOTO_KINDS);
@@ -180,8 +185,17 @@ export const DISPUTE_STATUSES = ["open", "fix_scheduled", "escalated", "resolved
 export type DisputeStatus = (typeof DISPUTE_STATUSES)[number];
 export const disputeStatus = pgEnum("dispute_status", DISPUTE_STATUSES);
 
-/** Admin outcomes for an unresolved dispute (SPEC §6.4). */
-export const DISPUTE_RESOLUTIONS = ["full_payout", "partial_refund", "full_refund"] as const;
+/**
+ * How a dispute closed: the admin outcomes for an unresolved dispute (SPEC §6.4), or
+ * `customer_confirmed` when the customer accepted the work or the fix themselves
+ * (core's `confirm_completion` from `disputed` / `fix_scheduled`), with no admin decision.
+ */
+export const DISPUTE_RESOLUTIONS = [
+  "full_payout",
+  "partial_refund",
+  "full_refund",
+  "customer_confirmed",
+] as const;
 export type DisputeResolution = (typeof DISPUTE_RESOLUTIONS)[number];
 export const disputeResolution = pgEnum("dispute_resolution", DISPUTE_RESOLUTIONS);
 

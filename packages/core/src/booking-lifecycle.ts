@@ -12,10 +12,17 @@
  *
  * Timers (elapsed time, not calendar days):
  * - approval requests expire 24h after the request (or at the job start, if sooner);
- * - quotes expire 7 days after they are sent (re-sending a quote restarts the clock);
+ * - quotes expire 7 days after they are sent (or at the job start, if sooner);
+ *   re-sending a quote restarts the clock;
  * - completion auto-confirms 48h after the job is marked complete;
- * - the business has 3 days from the first problem report to fix it; after that the
- *   booking waits for an admin decision (see `needsAdminDecision`).
+ * - the business has 3 days from the first problem report to fix it; only after that
+ *   does an admin decide (see `needsAdminDecision`). Admin action inside the window
+ *   needs an explicit `adminOverride`, which the API must audit-log.
+ *
+ * Once a confirmed job's start time has passed the customer can no longer cancel it
+ * (no late-cancellation refund for work that may already be done). A job that did not
+ * happen is handled as a no-show: the business can still cancel it (full refund, counted
+ * against its reliability), or an admin refunds it.
  *
  * `declined` is not a cancellation: a business turning down a request or withdrawing a
  * quote does not count against its reliability stats, unlike `cancelled_by_business`.
@@ -81,6 +88,11 @@ export type BookingEvent = {
   type: BookingEventType;
   /** When the event happens; time-based guards are evaluated at this instant. */
   at: Date;
+  /**
+   * Admin events only: decide a dispute before the business's 3-day fix window ends
+   * (e.g. the business agrees to refund). The API must record the reason in the audit log.
+   */
+  adminOverride?: boolean;
 };
 
 /** The persisted facts the state machine needs about a booking. */
@@ -183,14 +195,19 @@ export function initialBookingState(input: {
 export type DeadlineOptions = {
   /** Fix-window anchor for `disputed` / `fix_scheduled`; defaults to `enteredAt`. */
   disputeOpenedAt?: Date | null;
-  /** Job start; an approval request cannot outlive it. */
+  /** Job start; neither an approval request nor a quote can outlive it. */
   startsAt?: Date | null;
 };
+
+function capAtStart(expiry: number, startsAt: Date | null | undefined): Date {
+  const start = startsAt?.getTime();
+  return new Date(start !== undefined && start < expiry ? start : expiry);
+}
 
 /**
  * When the timer attached to `state` runs out, or null if the state has no timer.
  * - requested: approval expires (24h, capped at the job start);
- * - quoted: quote expires (7 days);
+ * - quoted: quote expires (7 days, capped at the job start);
  * - completed_pending_confirmation: auto-confirm (48h);
  * - disputed / fix_scheduled: fix window ends, admin decides (3 days from the dispute).
  */
@@ -202,13 +219,10 @@ export function deadlineFor(
   assertValidDate(enteredAt, "enteredAt");
   const from = enteredAt.getTime();
   switch (state) {
-    case "requested": {
-      const expiry = from + APPROVAL_EXPIRY_HOURS * MS_PER_HOUR;
-      const start = options.startsAt?.getTime();
-      return new Date(start !== undefined && start < expiry ? start : expiry);
-    }
+    case "requested":
+      return capAtStart(from + APPROVAL_EXPIRY_HOURS * MS_PER_HOUR, options.startsAt);
     case "quoted":
-      return new Date(from + QUOTE_EXPIRY_DAYS * MS_PER_DAY);
+      return capAtStart(from + QUOTE_EXPIRY_DAYS * MS_PER_DAY, options.startsAt);
     case "completed_pending_confirmation":
       return new Date(from + COMPLETION_CONFIRMATION_HOURS * MS_PER_HOUR);
     case "disputed":
@@ -233,10 +247,12 @@ export type TransitionErrorCode =
   | "invalid_transition"
   /** The state's deadline has passed (e.g. accepting an expired quote). */
   | "deadline_passed"
-  /** A timer event fired before its deadline. */
+  /** A timer event fired (or an admin decided a dispute) before the deadline. */
   | "deadline_not_reached"
   /** Marking a job complete before it was scheduled to start. */
-  | "job_not_started";
+  | "job_not_started"
+  /** The customer cancelling a confirmed job at or after its start time. */
+  | "job_started";
 
 export type TransitionError = {
   code: TransitionErrorCode;
@@ -267,6 +283,11 @@ const BEFORE_DEADLINE: ReadonlySet<BookingEventType> = new Set([
 ]);
 /** Timer events that may fire only once the deadline is reached. */
 const AT_DEADLINE: ReadonlySet<BookingEventType> = new Set(["expire", "auto_confirm"]);
+/** Admin decisions that, on a dispute, wait for the fix window unless overridden. */
+const ADMIN_DECISIONS: ReadonlySet<BookingEventType> = new Set([
+  "admin_release_payout",
+  "admin_refund",
+]);
 
 function fail(
   snapshot: BookingSnapshot,
@@ -306,8 +327,31 @@ export function transition(snapshot: BookingSnapshot, event: BookingEvent): Tran
   if (deadline && AT_DEADLINE.has(event.type) && at < deadline.getTime()) {
     return fail(snapshot, event, "deadline_not_reached", `${event.type} is too early`, deadline);
   }
+  if (
+    deadline &&
+    ADMIN_DECISIONS.has(event.type) &&
+    (snapshot.state === "disputed" || snapshot.state === "fix_scheduled") &&
+    !event.adminOverride &&
+    at < deadline.getTime()
+  ) {
+    return fail(
+      snapshot,
+      event,
+      "deadline_not_reached",
+      "the business's fix window is still open",
+      deadline,
+    );
+  }
   if (event.type === "mark_complete" && snapshot.startsAt && at < snapshot.startsAt.getTime()) {
     return fail(snapshot, event, "job_not_started", "the job has not started yet");
+  }
+  if (
+    event.type === "cancel_by_customer" &&
+    snapshot.state === "confirmed" &&
+    snapshot.startsAt &&
+    at >= snapshot.startsAt.getTime()
+  ) {
+    return fail(snapshot, event, "job_started", "the job has already started");
   }
 
   const disputeOpenedAt =

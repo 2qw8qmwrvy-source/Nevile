@@ -26,15 +26,15 @@ describe("policy presets", () => {
   it("match SPEC §5", () => {
     expect(CANCELLATION_POLICY_IDS).toEqual(["flexible", "moderate", "strict"]);
     expect(CANCELLATION_POLICIES.flexible).toMatchObject({
-      freeUntilHoursBefore: 24,
+      freeWindow: { amount: 24, unit: "hours" },
       lateRefundBps: 0,
     });
     expect(CANCELLATION_POLICIES.moderate).toMatchObject({
-      freeUntilHoursBefore: 48,
+      freeWindow: { amount: 48, unit: "hours" },
       lateRefundBps: 5000,
     });
     expect(CANCELLATION_POLICIES.strict).toMatchObject({
-      freeUntilHoursBefore: 168,
+      freeWindow: { amount: 7, unit: "days" },
       lateRefundBps: 0,
     });
   });
@@ -45,7 +45,7 @@ describe("policy presets", () => {
     expect(isCancellationPolicyId(undefined)).toBe(false);
   });
 
-  it("computes the free-cancellation deadline in elapsed hours", () => {
+  it("computes the free-cancellation deadline (hours elapsed, days on the calendar)", () => {
     expect(freeCancellationDeadline("flexible", START).toISOString()).toBe(
       "2026-11-19T14:00:00.000Z",
     );
@@ -57,11 +57,34 @@ describe("policy presets", () => {
     );
   });
 
-  it("uses 168 elapsed hours for 'strict' even across a DST change", () => {
-    // 09:00 EST on 2026-11-04; seven days earlier, 168h back, is 10:00 EDT on 2026-10-28.
-    const start = new Date("2026-11-04T14:00:00Z");
-    expect(freeCancellationDeadline("strict", start).toISOString()).toBe(
-      "2026-10-28T14:00:00.000Z",
+  it("keeps the job's wall-clock time for 'strict' across DST (7 calendar days)", () => {
+    // 09:00 EST on 2026-11-04 → 09:00 EDT on 2026-10-28 (169 elapsed hours).
+    const fall = new Date("2026-11-04T14:00:00Z");
+    expect(freeCancellationDeadline("strict", fall).toISOString()).toBe("2026-10-28T13:00:00.000Z");
+    // 09:00 EDT on Sat 2026-03-14 → 09:00 EST on Sat 2026-03-07 (167 elapsed hours).
+    const spring = new Date("2026-03-14T13:00:00Z");
+    expect(freeCancellationDeadline("strict", spring).toISOString()).toBe(
+      "2026-03-07T14:00:00.000Z",
+    );
+    // A customer cancelling at 08:30 local on 03-07 is still inside the free window.
+    const refund = refundForCustomerCancellation({
+      ...PAID,
+      policy: "strict",
+      jobStartsAt: spring,
+      cancelledAt: new Date("2026-03-07T13:30:00Z"),
+    });
+    expect(refund.isFreeCancellation).toBe(true);
+  });
+
+  it("uses the job's zone for 'strict'", () => {
+    // 09:00 PDT in Vancouver on 2026-03-14 → 09:00 PST on 2026-03-07.
+    const start = new Date("2026-03-14T16:00:00Z");
+    expect(freeCancellationDeadline("strict", start, "America/Vancouver").toISOString()).toBe(
+      "2026-03-07T17:00:00.000Z",
+    );
+    // Hour windows are elapsed time whatever the zone.
+    expect(freeCancellationDeadline("flexible", start, "America/Vancouver").toISOString()).toBe(
+      "2026-03-13T16:00:00.000Z",
     );
   });
 });
@@ -143,14 +166,19 @@ describe("refundForCustomerCancellation", () => {
   });
 
   it("strict: inside 7 days refunds nothing", () => {
+    // START is 09:00 EST on 2026-11-20; no DST change in the week before it.
+    expect(cancel("strict", before(168 * HOUR)).isFreeCancellation).toBe(true);
     const refund = cancel("strict", before(168 * HOUR - 1));
     expect(refund.totalRefundCents).toBe(0);
     expect(refund.retainedPriceCents).toBe(10000);
   });
 
-  it("applies the late rule after the job has started", () => {
-    expect(cancel("moderate", new Date(START.getTime() + HOUR)).priceRefundCents).toBe(5000);
-    expect(cancel("flexible", START).priceRefundCents).toBe(0);
+  it("refuses a cancellation at or after the job's start", () => {
+    expect(() => cancel("moderate", new Date(START.getTime() + 5 * HOUR))).toThrow(
+      /already started/,
+    );
+    expect(() => cancel("flexible", START)).toThrow(RangeError);
+    expect(cancel("flexible", before(1)).priceRefundCents).toBe(0);
   });
 
   it("refunds no tax when the business charged none", () => {

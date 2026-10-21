@@ -1,12 +1,11 @@
 import type { Route } from "next";
 
 /**
- * Links into the auth area (src/app/(auth), owned by the auth module). They are cast
- * because typed routes only know pages that exist when types are generated, and these
- * pages are built separately.
+ * Links into the auth area (src/app/(auth)). `satisfies Route` lets typed routes check
+ * them at build time, so renaming an auth page breaks the build instead of the link.
  */
 export const authRoutes = {
-  signIn: "/sign-in" as Route,
-  signUp: "/sign-up" as Route,
-  signUpBusiness: "/sign-up?intent=business" as Route,
-} as const;
+  signIn: "/sign-in",
+  signUp: "/sign-up",
+  signUpBusiness: "/sign-up?intent=business",
+} as const satisfies Record<string, Route>;

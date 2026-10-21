@@ -70,6 +70,28 @@ describe("phone numbers", () => {
     expect(maskContactInfo("416 555 1234 2 times")).toBe(`${M} 2 times`);
   });
 
+  it("keeps a $ price but still masks a phone number written right after it", () => {
+    expect(maskContactInfo("It's $120. 416-555-1234 is my cell")).toBe(
+      `It's $120. ${M} is my cell`,
+    );
+    expect(maskContactInfo("Price is $95 416 555 1234 call me")).toBe(`Price is $95 ${M} call me`);
+    expect(maskContactInfo("$1 4165551234")).toBe(`$1 ${M}`);
+    expect(maskContactInfo("Total $80/416-555-1234")).toBe(`Total $80/${M}`);
+    expect(maskContactInfo("$75 - 647 555 0000")).toBe(`$75 - ${M}`);
+    expect(maskContactInfo("$120.50 416-555-1234")).toBe(`$120.50 ${M}`);
+  });
+
+  it("does not treat a ten-digit number after $ as a price", () => {
+    expect(maskContactInfo("$4165551234")).toBe(`$${M}`);
+    expect(maskContactInfo("$ 416 555 1234")).toBe(`$ ${M}`);
+  });
+
+  it("still masks a phone number whose parts happen to be round ascending amounts", () => {
+    expect(maskContactInfo("(450) 600-1200")).toBe(M);
+    expect(maskContactInfo("+1 450 600 1200")).toBe(M);
+    expect(maskContactInfo("1-450-600-1200")).toBe(M);
+  });
+
   it.each([
     "123-456-7890", // area codes never start with 0 or 1
     "416-055-1234", // nor do exchanges
@@ -98,6 +120,13 @@ describe("emails", () => {
     "Jane AT Example DOT Com",
     "jane at example.com",
     "jane＠example.com",
+    "jane[@]gmail.com",
+    "jane (@) gmail.com",
+    "jane {＠} gmail.com",
+    "jane at example . com",
+    "jane dot doe at gmail dot com",
+    "jane (dot) doe (at) gmail (dot) com",
+    "jane.doe at gmail dot com",
   ])("masks %s", (email) => {
     expect(maskContactInfo(email)).toBe(M);
   });
@@ -120,7 +149,11 @@ describe("leaves ordinary text alone", () => {
   it.each([
     "That will be $180 for the visit.",
     "Total $1,234.56 including tax",
-    "$4165551234",
+    "Quote: $1200 for the season",
+    "$450 / 600 / 1200 for small, medium and large",
+    "Small/medium/large: 450 / 600 / 1200",
+    "Tiers 350-450-1100",
+    "Season price 450.600.1200",
     "We can come at 9:00",
     "Between 9:00-10:30 works",
     "10:30am or 2pm",
@@ -143,6 +176,11 @@ describe("leaves ordinary text alone", () => {
     "We'll be at site. Co-op parking is fine",
     "Meet at 10.30 near the gate",
     "Rated 5/5!",
+    "Arriving at noon. Email me if anything changes",
+    "We finished at 3. Me and Sam will be back Tuesday",
+    "Crew arrives at 8. Info about parking below",
+    "Paid at checkout. Online receipt is in the app",
+    "See you @ 5pm. Me and Sam will bring the mower",
     "",
   ])("%s", (text) => {
     expect(maskContactInfo(text)).toBe(text);

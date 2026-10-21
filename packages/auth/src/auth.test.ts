@@ -2,7 +2,15 @@ import { createDb, type Database, eq, profiles, sql, user } from "@nevile/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { isPlaceholderEmail, placeholderEmailForPhone } from "./identity.ts";
 import type { EmailMessage, SmsMessage } from "./senders.ts";
-import { type Auth, createAuth, OTP_SENDS_PER_NUMBER } from "./server.ts";
+import {
+  AUTH_EMAILS_PER_RECIPIENT,
+  type Auth,
+  type CreateAuthOptions,
+  createAuth,
+  OTP_SENDS_PER_NUMBER,
+  SIGN_IN_ATTEMPTS_PER_EMAIL,
+} from "./server.ts";
+import { suspendUser, unsuspendUser } from "./suspension.ts";
 import { freshTestDatabase } from "./test/database.ts";
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -50,17 +58,23 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
   const emails: EmailMessage[] = [];
   const sms: SmsMessage[] = [];
 
-  beforeAll(async () => {
-    const url = await freshTestDatabase(TEST_DATABASE_URL as string, "auth");
-    db = createDb(url, { max: 4 });
-    auth = createAuth({
+  /** An instance on the test database; `overrides` change individual options. */
+  function makeAuth(overrides: Partial<CreateAuthOptions> = {}): Auth {
+    return createAuth({
       db,
       secret: "test-secret-test-secret-test-secret-0123",
       baseURL: BASE_URL,
       emailSender: { send: async (message) => void emails.push(message) },
       smsSender: { send: async (message) => void sms.push(message) },
       production: false,
+      ...overrides,
     });
+  }
+
+  beforeAll(async () => {
+    const url = await freshTestDatabase(TEST_DATABASE_URL as string, "auth");
+    db = createDb(url, { max: 4 });
+    auth = makeAuth();
   });
 
   afterAll(async () => {
@@ -184,6 +198,58 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       expect(emails).toHaveLength(0);
     });
 
+    it("limits password sign-in attempts per account, whatever the IP", async () => {
+      const body = { email: "Target@Example.com", password: "wrong password!" };
+      for (let attempt = 0; attempt < SIGN_IN_ATTEMPTS_PER_EMAIL.max; attempt += 1) {
+        expect(await rejection(auth.api.signInEmail({ body }))).toMatchObject({ status: 401 });
+      }
+      // The same address in another spelling shares the counter.
+      expect(
+        await rejection(auth.api.signInEmail({ body: { ...body, email: " target@example.com " } })),
+      ).toEqual({ status: 429, code: "TOO_MANY_ATTEMPTS" });
+      // Other accounts are unaffected.
+      expect(
+        await rejection(auth.api.signInEmail({ body: { ...body, email: "other@example.com" } })),
+      ).toMatchObject({ status: 401 });
+    });
+
+    it("caps auth emails per recipient without changing the response", async () => {
+      const email = "flood@example.com";
+      await auth.api.signUpEmail({ body: { name: "Flo", email, password: PASSWORD } });
+      for (let send = 0; send < AUTH_EMAILS_PER_RECIPIENT.max + 2; send += 1) {
+        await expect(auth.api.sendVerificationEmail({ body: { email } })).resolves.toEqual({
+          status: true,
+        });
+      }
+      expect(emails.filter((message) => message.to === email)).toHaveLength(
+        AUTH_EMAILS_PER_RECIPIENT.max,
+      );
+    });
+
+    it("refuses sessions to suspended users and revokes the ones they had", async () => {
+      const email = "suspended@example.com";
+      const signUp = await auth.api.signUpEmail({
+        body: { name: "Sue", email, password: PASSWORD },
+      });
+      await db.update(user).set({ emailVerified: true }).where(eq(user.id, signUp.user.id));
+      const signedIn = await auth.api.signInEmail({
+        body: { email, password: PASSWORD },
+        returnHeaders: true,
+      });
+      const headers = new Headers({ cookie: cookieHeader(signedIn.headers) });
+      expect((await auth.api.getSession({ headers }))?.user.id).toBe(signUp.user.id);
+
+      await suspendUser(db, signUp.user.id, "chargeback fraud");
+      expect(await auth.api.getSession({ headers })).toBeNull();
+      expect(
+        await rejection(auth.api.signInEmail({ body: { email, password: PASSWORD } })),
+      ).toEqual({ status: 403, code: "ACCOUNT_SUSPENDED" });
+
+      await unsuspendUser(db, signUp.user.id);
+      const again = await auth.api.signInEmail({ body: { email, password: PASSWORD } });
+      expect(again.token).toEqual(expect.any(String));
+    });
+
     it("rejects a tampered verification token", async () => {
       expect(
         await rejection(auth.api.verifyEmail({ query: { token: "not-a-real-token" } })),
@@ -249,7 +315,16 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
     });
 
     it("only accepts normalized Canadian numbers", async () => {
-      for (const phoneNumber of ["416-555-0123", "4165550123", "+442071838750", "+14115550123"]) {
+      for (const phoneNumber of [
+        "416-555-0123",
+        "4165550123",
+        "+442071838750",
+        "+14115550123",
+        "+18765551234", // Jamaica: +1, but not Canada
+        "+18095550123", // Dominican Republic
+        "+19005551234", // premium rate
+        "+12125551234", // United States
+      ]) {
         expect(
           await rejection(auth.api.sendPhoneNumberOTP({ body: { phoneNumber } })),
         ).toMatchObject({ status: 400, code: "INVALID_PHONE_NUMBER" });
@@ -267,22 +342,102 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       ).toMatchObject({ status: 429, code: "TOO_MANY_CODES" });
       expect(sms).toHaveLength(OTP_SENDS_PER_NUMBER.max);
     });
+
+    it("stops sending codes once the global SMS budget is spent", async () => {
+      const budgeted = makeAuth({ smsBudget: { window: 600, max: 2 } });
+      await budgeted.api.sendPhoneNumberOTP({ body: { phoneNumber: "+14165550301" } });
+      await budgeted.api.sendPhoneNumberOTP({ body: { phoneNumber: "+16475550302" } });
+      expect(
+        await rejection(budgeted.api.sendPhoneNumberOTP({ body: { phoneNumber: "+19055550303" } })),
+      ).toEqual({ status: 429, code: "SMS_BUDGET_EXCEEDED" });
+      expect(sms).toHaveLength(2);
+    });
   });
 
   describe("HTTP handler", () => {
-    function post(path: string, body: unknown, ip = "203.0.113.7"): Promise<Response> {
-      return auth.handler(
+    function post(
+      path: string,
+      body: unknown,
+      ip = "203.0.113.7",
+      options: { instance?: Auth; headers?: Record<string, string> } = {},
+    ): Promise<Response> {
+      return (options.instance ?? auth).handler(
         new Request(`${BASE_URL}/api/auth${path}`, {
           method: "POST",
           headers: {
             "content-type": "application/json",
             origin: BASE_URL,
             "x-forwarded-for": ip,
+            ...options.headers,
           },
           body: JSON.stringify(body),
         }),
       );
     }
+
+    const wrongPassword = { email: "nobody@example.com", password: "wrong password!" };
+
+    it("never reads the client IP from X-Real-IP", async () => {
+      // A two-hop X-Forwarded-For is not trusted without trusted proxies; a rotating
+      // X-Real-IP used to become the rate-limit key and escape the limit.
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < 7; attempt += 1) {
+        const response = await post("/sign-in/email", wrongPassword, "1.1.1.1, 203.0.113.9", {
+          headers: { "x-real-ip": `198.51.100.${attempt + 1}` },
+        });
+        statuses.push(response.status);
+      }
+      expect(statuses.slice(0, 5)).toEqual([401, 401, 401, 401, 401]);
+      expect(statuses.slice(5)).toEqual([429, 429]);
+    });
+
+    it("uses the rightmost untrusted X-Forwarded-For hop behind trusted proxies", async () => {
+      const proxied = makeAuth({ production: true, trustedProxies: ["10.0.0.0/8"] });
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < 7; attempt += 1) {
+        // The client controls the leftmost entries; the proxy appends the real address.
+        const chain = `192.0.2.${attempt + 1}, 198.51.100.20, 10.0.0.5`;
+        statuses.push(
+          (await post("/sign-in/email", wrongPassword, chain, { instance: proxied })).status,
+        );
+      }
+      expect(statuses).toEqual([401, 401, 401, 401, 401, 429, 429]);
+      // A different real client behind the same proxy has its own bucket.
+      const other = await post("/sign-in/email", wrongPassword, "198.51.100.21, 10.0.0.5", {
+        instance: proxied,
+      });
+      expect(other.status).toBe(401);
+    });
+
+    it("reads only the configured edge header when one is set", async () => {
+      const edge = makeAuth({ clientIpHeader: "CF-Connecting-IP" });
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const response = await post("/sign-in/email", wrongPassword, `192.0.2.${attempt + 1}`, {
+          instance: edge,
+          headers: { "cf-connecting-ip": "198.51.100.30" },
+        });
+        statuses.push(response.status);
+      }
+      expect(statuses).toEqual([401, 401, 401, 401, 401, 429]);
+    });
+
+    it("refuses to start in production without a trusted client IP source", () => {
+      expect(() => makeAuth({ production: true })).toThrow(/trusted client IP/);
+      expect(() => makeAuth({ production: true, trustedProxies: ["10.0.0.1"] })).not.toThrow();
+      expect(() => makeAuth({ production: true, clientIpHeader: "fly-client-ip" })).not.toThrow();
+    });
+
+    it("does not expose the Expo OAuth proxy (open redirect)", async () => {
+      const response = await auth.handler(
+        new Request(
+          `${BASE_URL}/api/auth/expo-authorization-proxy?authorizationURL=${encodeURIComponent("https://evil.example/phish?state=abc")}&oauthState=x`,
+        ),
+      );
+      expect(response.status).toBe(404);
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.getSetCookie()).toEqual([]);
+    });
 
     it("rate-limits sign-in attempts per IP in the database", async () => {
       const body = { email: "nobody@example.com", password: "wrong password!" };

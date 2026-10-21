@@ -6,6 +6,8 @@ import { createdAt, tstz, updatedAt } from "./columns.ts";
  * Property keys must match Better Auth field names exactly; database columns are snake_case.
  * IDs are text because Better Auth generates them. Extra columns must stay nullable or
  * defaulted, otherwise Better Auth's schema check rejects inserts it never fills.
+ * Better Auth's admin plugin is not used: platform admins and suspensions are Nevile's
+ * own columns below, enforced by @nevile/auth (`suspendUser`, session-creation hook).
  */
 
 export const user = pgTable("user", {
@@ -17,11 +19,13 @@ export const user = pgTable("user", {
   // phone-number plugin
   phoneNumber: text("phone_number").unique(),
   phoneNumberVerified: boolean("phone_number_verified").default(false),
-  // admin plugin (platform admins, suspensions — SPEC §11)
-  role: text("role"),
-  banned: boolean("banned").default(false),
-  banReason: text("ban_reason"),
-  banExpires: tstz("ban_expires"),
+  // Nevile-owned (not Better Auth fields, so never settable through the auth API).
+  // Platform admin for the admin panel (SPEC §11).
+  isPlatformAdmin: boolean("is_platform_admin").notNull().default(false),
+  // Suspension (SPEC §11): set with `suspendUser` from @nevile/auth, which also revokes
+  // the user's sessions; a suspended user cannot start a new session.
+  suspendedAt: tstz("suspended_at"),
+  suspensionReason: text("suspension_reason"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -39,8 +43,6 @@ export const session = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    // admin plugin
-    impersonatedBy: text("impersonated_by"),
   },
   (t) => [index("session_user_id_idx").on(t.userId)],
 );
