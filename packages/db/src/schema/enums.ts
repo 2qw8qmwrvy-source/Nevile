@@ -1,11 +1,26 @@
+import type {
+  BookingState,
+  CancellationPolicyId,
+  PricingType,
+  ProvinceCode,
+  RecurrenceFrequency,
+} from "@nevile/core";
 import { pgEnum } from "drizzle-orm/pg-core";
 
 /**
- * Value lists are exported as `as const` tuples so the API layer can build Zod
- * schemas (`z.enum(BOOKING_STATUSES)`) from the same source as the Postgres enums.
+ * Enums shared with `@nevile/core` copy its value lists and are checked against the core
+ * union types at compile time (type-only imports, so loading the schema never pulls in
+ * core at runtime). Use the core types and Zod schemas for them; DB-only enums export
+ * their tuples here so the API can build `z.enum(...)` from the same source.
  */
 
-export const PROVINCES = [
+/** Compile-time proof that a tuple has exactly the members of a core union. */
+type SameMembers<A, B> = [Exclude<A, B>, Exclude<B, A>] extends [never, never] ? true : false;
+type Assert<T extends true> = T;
+
+// ── Shared with @nevile/core ──────────────────────────────────────────────────
+
+const provinceCodes = [
   "AB",
   "BC",
   "MB",
@@ -20,8 +35,68 @@ export const PROVINCES = [
   "SK",
   "YT",
 ] as const;
-export type Province = (typeof PROVINCES)[number];
-export const province = pgEnum("province", PROVINCES);
+type _ProvinceAligned = Assert<SameMembers<(typeof provinceCodes)[number], ProvinceCode>>;
+export const province = pgEnum("province", provinceCodes);
+
+const cancellationPolicyIds = ["flexible", "moderate", "strict"] as const;
+type _CancellationPolicyAligned = Assert<
+  SameMembers<(typeof cancellationPolicyIds)[number], CancellationPolicyId>
+>;
+export const cancellationPolicy = pgEnum("cancellation_policy", cancellationPolicyIds);
+
+const pricingTypes = ["fixed", "quote"] as const;
+type _PricingTypeAligned = Assert<SameMembers<(typeof pricingTypes)[number], PricingType>>;
+export const pricingType = pgEnum("pricing_type", pricingTypes);
+
+const recurrenceFrequencies = ["weekly", "biweekly", "monthly"] as const;
+type _RecurrenceFrequencyAligned = Assert<
+  SameMembers<(typeof recurrenceFrequencies)[number], RecurrenceFrequency>
+>;
+export const recurrenceFrequency = pgEnum("recurrence_frequency", recurrenceFrequencies);
+
+/**
+ * Exactly core's `BOOKING_STATES` (see `transition()` in @nevile/core), so a booking's
+ * status can be fed to and persisted from the state machine unchanged. The quote phase
+ * (`quote_requested`, `quoted`) is stored on `quote_requests` / `quotes`; a CHECK keeps
+ * those two values out of `bookings`.
+ */
+const bookingStates = [
+  "requested",
+  "quote_requested",
+  "quoted",
+  "confirmed",
+  "completed_pending_confirmation",
+  "disputed",
+  "fix_scheduled",
+  "completed",
+  "cancelled_by_customer",
+  "cancelled_by_business",
+  "declined",
+  "expired",
+  "refunded",
+] as const;
+type _BookingStateAligned = Assert<SameMembers<(typeof bookingStates)[number], BookingState>>;
+export const bookingStatus = pgEnum("booking_status", bookingStates);
+
+/**
+ * The post-confirmation subset of the booking state machine, tracked per visit so each
+ * occurrence of a recurring job or snow contract completes, disputes and pays on its own.
+ * A visit exists only once its slot is locked, so it starts at `confirmed`.
+ */
+export const VISIT_STATUSES = [
+  "confirmed",
+  "completed_pending_confirmation",
+  "disputed",
+  "fix_scheduled",
+  "completed",
+  "refunded",
+  "cancelled_by_customer",
+  "cancelled_by_business",
+] as const satisfies readonly BookingState[];
+export type VisitStatus = (typeof VISIT_STATUSES)[number];
+export const visitStatus = pgEnum("visit_status", VISIT_STATUSES);
+
+// ── DB-only ───────────────────────────────────────────────────────────────────
 
 /** The two sides of the marketplace; one login can act as either (SPEC §1). */
 export const PARTY_ROLES = ["customer", "business"] as const;
@@ -32,11 +107,6 @@ export const BUSINESS_PLANS = ["free", "pro"] as const;
 export type BusinessPlan = (typeof BUSINESS_PLANS)[number];
 export const businessPlan = pgEnum("business_plan", BUSINESS_PLANS);
 
-/** SPEC §5 presets: flexible 24h free, moderate 48h free then 50%, strict 7d free then none. */
-export const CANCELLATION_POLICIES = ["flexible", "moderate", "strict"] as const;
-export type CancellationPolicy = (typeof CANCELLATION_POLICIES)[number];
-export const cancellationPolicy = pgEnum("cancellation_policy", CANCELLATION_POLICIES);
-
 export const BUSINESS_MEMBER_ROLES = ["owner", "manager", "crew"] as const;
 export type BusinessMemberRole = (typeof BUSINESS_MEMBER_ROLES)[number];
 export const businessMemberRole = pgEnum("business_member_role", BUSINESS_MEMBER_ROLES);
@@ -46,42 +116,16 @@ export const APPROVAL_STATUSES = ["pending", "approved", "rejected"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 export const approvalStatus = pgEnum("approval_status", APPROVAL_STATUSES);
 
-export const PRICING_TYPES = ["fixed", "quote"] as const;
-export type PricingType = (typeof PRICING_TYPES)[number];
-export const pricingType = pgEnum("pricing_type", PRICING_TYPES);
-
 export const BOOKING_KINDS = ["one_off", "recurring", "snow_contract", "on_demand"] as const;
 export type BookingKind = (typeof BOOKING_KINDS)[number];
 export const bookingKind = pgEnum("booking_kind", BOOKING_KINDS);
 
 /**
- * Booking lifecycle (SPEC §4–6):
- * pending_approval → confirmed | declined | expired (24h, no charge)
- * confirmed → awaiting_confirmation (job marked complete, 48h window)
- * awaiting_confirmation → completed (confirmed or auto-confirmed) | disputed
- * disputed → completed (after fix / admin decision)
- * any open state → cancelled (by customer, business or admin)
- * Recurring and contract bookings stay `confirmed` while active; per-visit progress
- * lives on `visits.status`.
+ * open: awaiting the business · quoted: a quote is out · accepted: a booking was created ·
+ * declined: business turned it down · expired · cancelled: withdrawn by the customer.
+ * Maps onto core states quote_requested / quoted / confirmed / declined / expired /
+ * cancelled_by_customer.
  */
-export const BOOKING_STATUSES = [
-  "pending_approval",
-  "confirmed",
-  "awaiting_confirmation",
-  "disputed",
-  "completed",
-  "cancelled",
-  "declined",
-  "expired",
-] as const;
-export type BookingStatus = (typeof BOOKING_STATUSES)[number];
-export const bookingStatus = pgEnum("booking_status", BOOKING_STATUSES);
-
-export const CANCELLATION_PARTIES = ["customer", "business", "admin"] as const;
-export type CancellationParty = (typeof CANCELLATION_PARTIES)[number];
-export const cancellationParty = pgEnum("cancellation_party", CANCELLATION_PARTIES);
-
-/** open: awaiting the business; quoted: a quote is out; accepted → booking created. */
 export const QUOTE_REQUEST_STATUSES = [
   "open",
   "quoted",
@@ -97,25 +141,6 @@ export const quoteRequestStatus = pgEnum("quote_request_status", QUOTE_REQUEST_S
 export const QUOTE_STATUSES = ["pending", "accepted", "declined", "expired", "withdrawn"] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 export const quoteStatus = pgEnum("quote_status", QUOTE_STATUSES);
-
-export const RECURRENCE_FREQUENCIES = ["weekly", "biweekly", "monthly"] as const;
-export type RecurrenceFrequency = (typeof RECURRENCE_FREQUENCIES)[number];
-export const recurrenceFrequency = pgEnum("recurrence_frequency", RECURRENCE_FREQUENCIES);
-
-/**
- * Visit lifecycle (SPEC §6): scheduled → awaiting_confirmation (marked complete,
- * customer has 48h) → completed | disputed → resolved (fixed or admin decision).
- */
-export const VISIT_STATUSES = [
-  "scheduled",
-  "awaiting_confirmation",
-  "completed",
-  "disputed",
-  "resolved",
-  "cancelled",
-] as const;
-export type VisitStatus = (typeof VISIT_STATUSES)[number];
-export const visitStatus = pgEnum("visit_status", VISIT_STATUSES);
 
 export const VISIT_PHOTO_KINDS = ["before", "after"] as const;
 export type VisitPhotoKind = (typeof VISIT_PHOTO_KINDS)[number];
@@ -155,7 +180,7 @@ export const DISPUTE_STATUSES = ["open", "fix_scheduled", "escalated", "resolved
 export type DisputeStatus = (typeof DISPUTE_STATUSES)[number];
 export const disputeStatus = pgEnum("dispute_status", DISPUTE_STATUSES);
 
-/** Admin outcomes for an escalated dispute (SPEC §6.4). */
+/** Admin outcomes for an unresolved dispute (SPEC §6.4). */
 export const DISPUTE_RESOLUTIONS = ["full_payout", "partial_refund", "full_refund"] as const;
 export type DisputeResolution = (typeof DISPUTE_RESOLUTIONS)[number];
 export const disputeResolution = pgEnum("dispute_resolution", DISPUTE_RESOLUTIONS);

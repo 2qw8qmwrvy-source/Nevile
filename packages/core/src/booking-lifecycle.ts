@@ -22,6 +22,7 @@
  * `refunded` covers both admin outcomes that return money (full or partial refund); the
  * refunded amount lives on the payment record.
  */
+import type { PricingType } from "./schemas.ts";
 import { MS_PER_DAY, MS_PER_HOUR, assertValidDate } from "./time.ts";
 
 export const BOOKING_STATES = [
@@ -170,7 +171,8 @@ export function eventsFrom(state: BookingState): BookingEventType[] {
 
 /** Where a new booking starts. */
 export function initialBookingState(input: {
-  pricingType: "fixed" | "quote";
+  pricingType: PricingType;
+  /** Business confirms fixed-price bookings instantly instead of approving them. */
   instantBook: boolean;
 }): BookingState {
   if (input.pricingType === "quote") return "quote_requested";
