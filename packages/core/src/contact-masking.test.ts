@@ -56,6 +56,16 @@ describe("phone numbers", () => {
     expect(maskContactInfo(text)).toBe(`Hi!\nMy cell: ${M}\nWork: ${M} ext. 2`);
   });
 
+  it("masks back-to-back parenthesised numbers separately", () => {
+    expect(maskContactInfo("(416 555 1234)(647 555 0000)")).toBe(`${M}${M}`);
+    expect(maskContactInfo("416-555-1234(647)555-0000")).toBe(`${M}${M}`);
+  });
+
+  it("does not swallow an unrelated number before the phone", () => {
+    expect(maskContactInfo("Unit 5 416-555-1234")).toBe(`Unit 5 ${M}`);
+    expect(maskContactInfo("at 12:30 4165551234")).toBe(`at 12:30 ${M}`);
+  });
+
   it("masks a phone number followed by more digits", () => {
     expect(maskContactInfo("416 555 1234 2 times")).toBe(`${M} 2 times`);
   });

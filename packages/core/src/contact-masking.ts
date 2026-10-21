@@ -5,10 +5,11 @@
  * Phone detection targets North American numbers (+1 / NANP) in any common layout —
  * dashed, dotted, spaced, parenthesised, with or without a leading 1 / +1, or written
  * digit by digit with separators — plus any other international number written with a
- * leading "+". To avoid masking prices, times, dates, postal codes and quantities, a
- * group of digits may not straddle the area-code / exchange / line boundaries
- * ("2026-10-21 10" is a date and a time, not 202-610-2110). Seven-digit local numbers
- * are not masked: they are indistinguishable from ranges like "200-1500".
+ * leading "+". To avoid masking prices, times, dates, postal codes and quantities, the
+ * separators must follow the number's area-code / exchange / line structure
+ * ("2026-10-21 10" is a date and a time, not 202-610-2110), and a number right after "$"
+ * is treated as a price. Seven-digit local numbers are not masked: they are
+ * indistinguishable from ranges like "200-1500".
  *
  * Email detection covers normal addresses and common obfuscations such as
  * "jo (at) mail (dot) com" or "jo at mail dot ca" (the latter only for well-known TLDs).
@@ -145,8 +146,8 @@ function maskPhones(text: string): string {
   let result = "";
   let cursor = 0;
   for (const span of spans) {
-    result += text.slice(cursor, span.start) + CONTACT_MASK;
-    cursor = span.end;
+    result += text.slice(cursor, Math.max(cursor, span.start)) + CONTACT_MASK;
+    cursor = Math.max(cursor, span.end);
   }
   return result + text.slice(cursor);
 }

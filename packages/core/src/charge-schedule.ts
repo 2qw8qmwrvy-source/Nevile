@@ -17,6 +17,7 @@ import {
   addCalendarDays,
   addLocalDays,
   assertValidDate,
+  type CalendarDate,
   DEFAULT_TIME_ZONE,
   formatIsoDate,
   fromLocal,
@@ -95,7 +96,7 @@ export type PayoutBatch = {
   cutoffAt: Date;
 };
 
-function batchForMonday(monday: { year: number; month: number; day: number }, zone: string) {
+function batchForMonday(monday: CalendarDate, zone: string): PayoutBatch {
   const previous = addCalendarDays(monday, -7);
   return {
     payoutDate: formatIsoDate(monday),
