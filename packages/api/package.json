@@ -1,0 +1,19 @@
+{
+  "name": "@nevile/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nevile/auth": "workspace:*",
+    "@nevile/core": "workspace:*",
+    "@nevile/db": "workspace:*",
+    "@trpc/server": "11.19.0",
+    "superjson": "2.2.6",
+    "zod": "4.6.7"
+  }
+}
