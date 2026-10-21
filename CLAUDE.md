@@ -26,7 +26,7 @@ build step for them.
 - **Money is integer cents** (`number`, never floats for stored amounts). Currency is CAD.
   Round only at defined points, half-up to the cent (see `@nevile/core` money helpers).
 - **Time**: store `timestamptz` in UTC; business logic that depends on local days uses the
-  job's IANA zone (default `America/Toronto`).
+  job's IANA zone (default `America/Halifax`; Nova Scotia launch, see SPEC §2).
 - **Erasable TypeScript only** (`erasableSyntaxOnly`): no `enum`, no `namespace`, no
   constructor parameter properties. Use `as const` objects + union types. Node runs `.ts`
   files directly (type stripping), so scripts like `src/migrate.ts` need no build.

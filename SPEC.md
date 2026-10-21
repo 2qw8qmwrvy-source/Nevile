@@ -1,7 +1,7 @@
-# Nevile — Product Spec v1
+# Nevile — Product Spec v1.1
 
-Nevile is a Canadian marketplace where customers find, book, and pay local
-home-service businesses (lawn care, snow & ice removal, cleaning, and other
+Nevile is a Nova Scotia marketplace (built to expand across Canada) where customers find,
+book, and pay local home-service businesses (lawn care, snow & ice removal, cleaning, and other
 year-round household work) instead of relying on phone calls and word of mouth.
 
 Status: **agreed** — this document is the source of truth for v1. Change it via
@@ -14,14 +14,25 @@ pull request when a decision changes.
 | Decision | Detail |
 |---|---|
 | Dual role | One login can be both a customer and a business. A "Switch to business mode" toggle changes the app view. Ratings are tracked separately per role. |
-| Sign-in methods | Email + password (with email verification) and phone SMS one-time code. |
+| Sign-in methods | Email + password and phone SMS one-time code. |
+| Sign-up | Requires a **Nova Scotia postal code** (see §2). New users are signed in immediately; an email-confirmation banner is shown until the email is confirmed. |
+| Verification gate | Booking, paying, messaging, quote requests and all business tools require a **verified contact**: a confirmed email, or a phone number verified by SMS code. Browsing, saving and onboarding do not. |
+| Onboarding | Optional 3-step welcome after sign-up (see §16). |
 | Business teams | Supported from day one and **free** on every plan. Owner adds crew members; each crew member has their own calendar. |
 | Job assignment | Customer books the *business*; the owner/manager assigns the job to a crew member. |
 | Business verification | Stripe Connect identity verification is required before a business can receive payouts. Uploading proof of insurance (reviewed by admin) earns a **Verified** badge. |
 
 ## 2. Location
 
-- **Launch market:** Canada only. Currency **CAD**. Canadian address & postal code formats.
+- **Launch market: Nova Scotia only, province-wide.** Currency **CAD**.
+- **Sign-up is blocked outside Nova Scotia:** the sign-up form asks for a postal code and
+  only Nova Scotia postal codes (first letter **B**) are accepted, checked on the server.
+  Others see "Nevile is only in Nova Scotia for now." Existing accounts are not affected
+  by later expansion settings.
+- Businesses' service areas and job addresses must be in Nova Scotia.
+- **Default time zone: `America/Halifax`** (Atlantic). All local-day logic (deadlines,
+  payout weeks, seasons) uses the job's zone, defaulting to Halifax.
+- Launch provinces are a configuration list, so expanding later is a setting, not a rewrite.
 - **Service area:** Facebook-Marketplace-style — business drops a pin on a map and
   drags a radius slider. Customers only see businesses whose radius covers their address.
 
@@ -60,7 +71,7 @@ Each business picks one of three cancellation policy presets:
 
 | Preset | Rule |
 |---|---|
-| Flexible | Free cancellation until 24h before the job. |
+| Flexible | Free until 24h before; after that, 50% refund. |
 | Moderate | Free until 48h before; after that, 50% refund. |
 | Strict | Free until 7 days before; after that, no refund. |
 
@@ -83,28 +94,31 @@ All payments run through **Stripe Connect** (Nevile never stores card numbers).
 ### Fee model
 
 - Business pays **3%** (deducted from payout).
-- Customer pays a **service fee = 3% + the card processing cost** on the pre-tax amount,
-  shown as a single "Service fee" line, so Nevile nets **6%** of the job price before
-  sales tax. The processor also takes its percentage on the sales tax collected; Nevile
-  absorbs that, so its real net is slightly lower (about 5.5–5.9% of the job price,
-  depending on the province's tax rate). The formula below is the canonical one.
+- Customer pays a **service fee** shown as a single "Service fee" line. It is sized so that
+  after the card processor's cut of the **whole** charge (including sales tax), Nevile
+  nets **exactly 6%** of the job price (within ±1¢ from rounding).
 
-Customer total for job price `P` (before sales tax), with Stripe at 2.9% + $0.30:
+With card rate `r = 2.9%`, fixed fee `f = $0.30`, job price `P`, sales-tax rate on the job
+price `tP` (0 if the business is not GST/HST-registered) and on the service fee `tF`:
 
 ```
-customerTotal = (P × 1.03 + 0.30) / (1 − 0.029)
+serviceFee = (0.03·P + r·(1 + tP)·P + f) / (1 − r·(1 + tF))     rounded half-up to the cent
 ```
 
-Worked example, `P = $100.00`:
+Worked example, Nova Scotia (HST 14%), `P = $60.00`, tax-registered business:
 
 | Line | Amount |
 |---|---|
-| Job price | $100.00 |
-| Service fee | $6.39 |
-| **Customer pays** (pre-tax) | **$106.39** |
-| Business receives | $97.00 |
-| Stripe processing | ≈ $3.39 |
-| **Nevile nets** | **≈ $6.00** (before processing on sales tax) |
+| Job price | $60.00 |
+| Service fee | $4.22 |
+| HST (14%) | $8.99 ($8.40 on the job + $0.59 on the fee) |
+| **Customer pays** | **$73.21** |
+| Business receives | $58.20 (+ the $8.40 HST it collected on its own price) |
+| Card processing | ≈ $2.42 |
+| **Nevile nets** | **$3.60 (6%)** |
+
+More reference values (NS): `P = $100` registered → fee $6.83, total $121.79;
+`P = $60` not registered → fee $3.97, HST on fee $0.56, total $64.53.
 
 ### Sales tax
 
@@ -139,6 +153,11 @@ Worked example, `P = $100.00`:
 
 - Customers can tip after completion. **100% goes to the business**; Nevile takes no fee
   and absorbs the card processing cost on the tip.
+
+### Community donations
+
+See §15. Donations are separate from the job price and the service fee, carry no sales
+tax, and are never counted as Nevile revenue.
 
 ### Off-platform leakage protection
 
@@ -202,7 +221,8 @@ Full admin panel with reporting:
 
 ### Security baseline
 
-- Passwords hashed with a modern one-way algorithm; email verification required.
+- Passwords hashed with a modern one-way algorithm; verified contact required before any
+  money, messaging or business action (§1).
 - Rate limiting on sign-in, OTP, and other abuse-prone endpoints.
 - Server-side authorization on every request — users only access their own data.
 - All input validated server-side.
@@ -229,11 +249,82 @@ restyled in the Seasons look.
 | Fall accent / tint | `#A4471F` / `#F7E4DA` |
 | Radii | 18px cards, 12px inputs, pill buttons |
 
-The site's hero and featured categories re-theme by season (Winter: Dec–Feb,
-Spring: Mar–May, Summer: Jun–Aug, Fall: Sep–Nov).
+The site's hero and featured categories re-theme **automatically** by the current month in
+Nova Scotia (`America/Halifax`). There is **no manual season switcher**. Seasons follow
+Nova Scotia's climate rather than the astronomical calendar:
+
+| Season | Months |
+|---|---|
+| Winter | December – March |
+| Spring | April – May |
+| Summer | June – August |
+| Fall | September – November |
+
+In the **last month of each season** the hero adds a gentle nudge for what's next
+(November: "Snow's coming — lock in a seasonal snow contract"; March: spring yard
+cleanup; May: lawn-mowing season; August: book fall gutter and leaf cleanup).
 
 ## 14. Build order
 
 1. ~~Clickable UI mockups~~ — done, direction A chosen.
-2. Foundation: monorepo, domain rules (fees, tax, policies), database schema, auth, app shells.
-3. Listings & search → quotes & booking → scheduling → payments → ratings → subscription → admin.
+2. ~~Foundation: monorepo, domain rules (fees, tax, policies), database schema, auth, app shells.~~
+3. Smoother, safer, community (v1.1): Nova Scotia launch rules, onboarding, verification
+   gate, motion & performance polish, Nevile Neighbours groundwork, CI, browser tests,
+   monitoring, legal & accessibility drafts.
+4. Listings & search → quotes & booking → scheduling → payments (donations plug in here)
+   → ratings → subscription → admin.
+
+## 15. Nevile Neighbours (community program)
+
+Nevile's community program helps Nova Scotians who can't keep up with their homes
+(for example older adults or people with disabilities) get yard work, snow clearing or
+cleaning done by local Nevile pros.
+
+**Status: built behind a switch that is OFF** (`NEVILE_NEIGHBOURS_ENABLED`) until the
+owner decides who legally holds donated money (a partner registered charity, or a
+separate Nevile account with legal/accounting sign-off). While off, program pages say
+"launching soon", donation options are hidden at checkout, and referrals are not accepted.
+
+| Topic | Decision |
+|---|---|
+| Funding | **Optional customer donations at checkout only.** Nevile's fee is not used. |
+| Checkout options | "Round up to the next dollar" (if the total is already whole, round-up offers $1), or **$2 / $5 / custom** ($1–$500). **Nothing is pre-selected.** |
+| Card fees on donations | **Deducted from the donation**: 2.9% of the donated amount (the donation rides on the same card charge, so no extra fixed fee), rounded half-up. Shown openly on the impact page. Example: $2.00 donated → $0.06 fee → $1.94 to the fund. |
+| Refunds | A donation is refunded automatically only when its booking is refunded **in full** (business cancellation or full admin refund). Otherwise donations are final. |
+| Who is helped | **Partner referrals only.** Registered local organizations (seniors' centres, community support agencies, faith groups) are added by Nevile admins; their staff submit referrals. |
+| Referral data | Minimal: homeowner first name, a contact route through the partner, the job address (Nova Scotia), the service needed, preferred timing, and the partner's confirmation that the homeowner **consented**. **No health, disability, age or income details** are collected. Admin approves or declines each referral. |
+| Spending | Approved referral jobs are booked with Nevile pros at their **normal full price**, paid from the fund, and run like any other booking. |
+| Transparency | Public **impact page**: total donated, card fees, amount paid to pros, jobs completed, by region. No names or addresses; a region is shown only once it has at least 3 completed jobs. |
+| Wording | Soft, accurate claims only, e.g. "We're setting aside donations from our community to help neighbours who can't keep up with their homes." **No fixed percentage or outcome is promised.** |
+| Money ledger | Every donation, fee and payout is an append-only ledger entry; the fund balance is derived from the ledger, never stored as an editable number. |
+
+## 16. Onboarding & feel
+
+- **Welcome (optional, skippable), web and mobile:**
+  1. "I need help at home" / "I run a business" / both.
+  2. Postal code (customers) or service area (businesses), Nova Scotia only.
+  3. Interests: which services matter to them (used to personalise the homepage).
+- **Motion:** subtle and fast (150–250 ms fades/slides, press feedback, season crossfade),
+  disabled automatically when the device asks for reduced motion.
+- **Speed:** instant-feeling navigation (prefetching, loading skeletons, no layout shift);
+  pages keep the strict per-request security policy (§17), so speed comes from streaming
+  and caching rather than fully static pages.
+- **Phone-first layouts** on every web page; touch targets ≥ 44 px.
+- Friendly empty states everywhere.
+
+## 17. Quality, monitoring & compliance
+
+- **Continuous integration:** every push and pull request runs lint, type checks, all
+  tests (with a real Postgres), the web build, the mobile bundle and browser tests. The
+  `main` branch is protected so failing changes cannot be merged.
+- **Browser tests (Playwright):** sign-up (including the Nova Scotia block), sign-in,
+  onboarding, the verification gate and community pages, at desktop and phone sizes,
+  with automated accessibility checks (axe).
+- **Monitoring:** `/api/health` for uptime checks; error reporting (Sentry) that is off
+  until a DSN is configured; environment variables validated at startup.
+- **Dependency updates:** automated weekly update pull requests.
+- **Legal drafts for lawyer review:** Privacy Policy (PIPEDA), Terms of Service, and
+  **CASL**-compliant marketing consent (an optional, unticked checkbox, with the consent
+  text version and timestamp recorded).
+- **Accessibility:** WCAG 2.1 AA target, in line with the Nova Scotia Accessibility Act;
+  an accessibility statement page with a way to report problems.
