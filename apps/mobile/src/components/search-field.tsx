@@ -1,5 +1,12 @@
 import type { Ref } from "react";
-import { Pressable, StyleSheet, TextInput, type TextInputProps, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  TextInput,
+  type TextInputInstance,
+  type TextInputProps,
+  View,
+} from "react-native";
 
 import { colors, MIN_TOUCH, radius, typography } from "@/theme";
 
@@ -9,7 +16,7 @@ export type SearchFieldProps = Omit<TextInputProps, "style"> & {
   /** Accessible name for the field (there is no visible label). */
   label: string;
   onClear?: () => void;
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
 };
 
 /** Rounded search input with a leading magnifier and an optional clear button. */
