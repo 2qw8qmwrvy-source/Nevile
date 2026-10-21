@@ -1,3 +1,4 @@
+import { color } from "@nevile/tokens";
 import Link from "next/link";
 import { cn } from "@/lib/cn.ts";
 
@@ -7,7 +8,7 @@ type LogoMarkProps = { size?: number; className?: string };
 export function LogoMark({ size = 34, className }: LogoMarkProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 34 34" aria-hidden="true" focusable="false" className={className}>
-      <rect width="34" height="34" rx="11" fill="var(--nv-primary)" />
+      <rect width="34" height="34" rx="11" fill={color.primary} />
       <path
         d="M9 17.5 17 10.5l8 7"
         fill="none"
