@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expo } from "@better-auth/expo";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@nevile/core";
 import {
   and,
   authSchema,
@@ -14,8 +15,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { phoneNumber } from "better-auth/plugins/phone-number";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@nevile/core";
-import { AUTH_COOKIE_PREFIX, MOBILE_APP_ORIGIN } from "./constants.ts";
+import { AUTH_COOKIE_PREFIX, MOBILE_APP_ORIGIN, NAME_MAX_LENGTH } from "./constants.ts";
 import { existingAccountEmail, otpSms, verificationEmail } from "./emails.ts";
 import {
   isNormalizedCanadianPhone,
@@ -35,7 +35,6 @@ export const OTP_EXPIRES_IN_SECONDS = 5 * MINUTE;
 export const OTP_ALLOWED_ATTEMPTS = 3;
 /** Per phone number, on top of the per-IP limit: at most 3 codes per 10 minutes. */
 export const OTP_SENDS_PER_NUMBER = { window: 10 * MINUTE, max: 3 } as const;
-export const NAME_MAX_LENGTH = 100;
 
 /**
  * Per IP and path, in seconds. Stricter than Better Auth's defaults for the endpoints
@@ -145,7 +144,9 @@ export function createAuth(options: CreateAuthOptions) {
       // same way for new and already-registered emails (no account enumeration).
       autoSignIn: false,
       async onExistingUserSignUp({ user }) {
-        await emailSender.send(existingAccountEmail({ to: user.email, name: user.name, signInUrl }));
+        await emailSender.send(
+          existingAccountEmail({ to: user.email, name: user.name, signInUrl }),
+        );
       },
       // The synthetic "duplicate email" response must match a real new user field for
       // field, including the phone-number plugin's columns.
@@ -167,6 +168,8 @@ export function createAuth(options: CreateAuthOptions) {
       autoSignInAfterVerification: false,
       expiresIn: EMAIL_VERIFICATION_EXPIRES_IN_SECONDS,
       async sendVerificationEmail({ user, token }) {
+        // Phone accounts' placeholder addresses are undeliverable by design.
+        if (isPlaceholderEmail(user.email)) return;
         await emailSender.send(
           verificationEmail({
             to: user.email,
@@ -236,7 +239,9 @@ export function createAuth(options: CreateAuthOptions) {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path === "/sign-up/email") {
           const body = bodyOf(ctx.body);
-          const unknownField = Object.keys(body ?? {}).find((key) => !SIGN_UP_EMAIL_FIELDS.has(key));
+          const unknownField = Object.keys(body ?? {}).find(
+            (key) => !SIGN_UP_EMAIL_FIELDS.has(key),
+          );
           if (unknownField) {
             throw new APIError("BAD_REQUEST", {
               code: "FIELD_NOT_ALLOWED",

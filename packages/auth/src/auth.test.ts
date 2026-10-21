@@ -88,9 +88,9 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       const token = tokenFrom(emails[0]);
 
       // Unverified: refused, and a fresh link is sent because the password was right.
-      expect(await rejection(auth.api.signInEmail({ body: { email, password: PASSWORD } }))).toEqual(
-        { status: 403, code: "EMAIL_NOT_VERIFIED" },
-      );
+      expect(
+        await rejection(auth.api.signInEmail({ body: { email, password: PASSWORD } })),
+      ).toEqual({ status: 403, code: "EMAIL_NOT_VERIFIED" });
       expect(emails).toHaveLength(2);
 
       await auth.api.verifyEmail({ query: { token } });
@@ -164,14 +164,20 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       expect(
         await rejection(
           auth.api.signUpEmail({
-            body: { name: "Mallory", email: placeholderEmailForPhone("+14165550199"), password: PASSWORD },
+            body: {
+              name: "Mallory",
+              email: placeholderEmailForPhone("+14165550199"),
+              password: PASSWORD,
+            },
           }),
         ),
       ).toMatchObject({ status: 400, code: "INVALID_EMAIL" });
 
       expect(
         await rejection(
-          auth.api.signUpEmail({ body: { name: "  ", email: "blank@example.com", password: PASSWORD } }),
+          auth.api.signUpEmail({
+            body: { name: "  ", email: "blank@example.com", password: PASSWORD },
+          }),
         ),
       ).toMatchObject({ status: 400, code: "INVALID_NAME" });
 
@@ -208,7 +214,8 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
 
       // A used code cannot be replayed.
       expect(
-        (await rejection(auth.api.verifyPhoneNumber({ body: { phoneNumber: phone, code } }))).status,
+        (await rejection(auth.api.verifyPhoneNumber({ body: { phoneNumber: phone, code } })))
+          .status,
       ).toBe(400);
 
       await auth.api.sendPhoneNumberOTP({ body: { phoneNumber: phone } });
@@ -216,6 +223,10 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
         body: { phoneNumber: phone, code: codeFrom(sms[1]) },
       });
       expect(again.user?.id).toBe(created?.id);
+
+      // The placeholder address is never mailed.
+      await auth.api.sendVerificationEmail({ body: { email: created?.email ?? "" } });
+      expect(emails).toHaveLength(0);
     });
 
     it("locks a code after three wrong attempts", async () => {
@@ -225,8 +236,11 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       const wrong = code === "000000" ? "111111" : "000000";
       for (let attempt = 0; attempt < 3; attempt += 1) {
         expect(
-          (await rejection(auth.api.verifyPhoneNumber({ body: { phoneNumber: other, code: wrong } })))
-            .code,
+          (
+            await rejection(
+              auth.api.verifyPhoneNumber({ body: { phoneNumber: other, code: wrong } }),
+            )
+          ).code,
         ).toBe("INVALID_OTP");
       }
       expect(

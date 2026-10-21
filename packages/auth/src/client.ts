@@ -2,7 +2,7 @@ import type { BetterAuthClientPlugin } from "better-auth/client";
 import { phoneNumberClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
-export { AUTH_COOKIE_PREFIX, MOBILE_APP_ORIGIN } from "./constants.ts";
+export { AUTH_COOKIE_PREFIX, MOBILE_APP_ORIGIN, NAME_MAX_LENGTH } from "./constants.ts";
 
 /**
  * React auth client for web and mobile. `baseURL` is the web origin hosting `/api/auth`;

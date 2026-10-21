@@ -2,6 +2,7 @@ import { getDb } from "@nevile/db";
 import { createConsoleEmailSender, createConsoleSmsSender } from "./senders.ts";
 import { type Auth, createAuth } from "./server.ts";
 
+export { AUTH_COOKIE_PREFIX, MOBILE_APP_ORIGIN, NAME_MAX_LENGTH } from "./constants.ts";
 export {
   contactEmail,
   isNormalizedCanadianPhone,
@@ -17,14 +18,12 @@ export {
   type SmsMessage,
   type SmsSender,
 } from "./senders.ts";
-export { AUTH_COOKIE_PREFIX, MOBILE_APP_ORIGIN } from "./constants.ts";
 export {
   AUTH_RATE_LIMIT_RULES,
   type Auth,
   type CreateAuthOptions,
   createAuth,
   EMAIL_VERIFICATION_EXPIRES_IN_SECONDS,
-  NAME_MAX_LENGTH,
   OTP_ALLOWED_ATTEMPTS,
   OTP_EXPIRES_IN_SECONDS,
   OTP_LENGTH,

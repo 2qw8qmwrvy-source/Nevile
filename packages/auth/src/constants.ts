@@ -5,3 +5,6 @@ export const AUTH_COOKIE_PREFIX = "nevile";
 
 /** Origin of the Expo app's deep links (`scheme` in apps/mobile/app.json). */
 export const MOBILE_APP_ORIGIN = "nevile://";
+
+/** Longest accepted display name, enforced on sign-up and profile updates. */
+export const NAME_MAX_LENGTH = 100;

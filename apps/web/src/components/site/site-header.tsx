@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button.tsx";
 import { Container } from "@/components/ui/container.tsx";
 import { Logo } from "@/components/ui/logo.tsx";
+import { getSessionOrNull } from "@/lib/auth.ts";
 import { authRoutes } from "@/lib/routes.ts";
 import { DesktopNav, MobileMenu } from "./header-nav.tsx";
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  const signedIn = (await getSessionOrNull()) !== null;
   return (
     <header className="relative z-30 w-full">
       <a
@@ -17,11 +19,19 @@ export function SiteHeader() {
         <Logo />
         <DesktopNav />
         <div className="ml-auto flex items-center gap-1.5">
-          <Button href={authRoutes.signIn} variant="ghost" className="hidden sm:inline-flex">
-            Sign in
-          </Button>
-          <Button href={authRoutes.signUp}>Sign up</Button>
-          <MobileMenu />
+          {signedIn ? (
+            <Button href="/account" variant="secondary">
+              Account
+            </Button>
+          ) : (
+            <>
+              <Button href={authRoutes.signIn} variant="ghost" className="hidden sm:inline-flex">
+                Sign in
+              </Button>
+              <Button href={authRoutes.signUp}>Sign up</Button>
+            </>
+          )}
+          <MobileMenu signedIn={signedIn} />
         </div>
       </Container>
     </header>

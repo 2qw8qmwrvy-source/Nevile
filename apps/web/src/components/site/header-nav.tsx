@@ -38,7 +38,7 @@ export function DesktopNav() {
 }
 
 /** Phone-width menu: a disclosure button and a panel below the header. */
-export function MobileMenu() {
+export function MobileMenu({ signedIn = false }: { signedIn?: boolean }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const panelId = useId();
@@ -92,19 +92,21 @@ export function MobileMenu() {
               {item.label}
             </Link>
           ))}
-          <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border pt-3">
-            <Button
-              href={authRoutes.signIn}
-              variant="secondary"
-              block
-              onClick={() => setOpen(false)}
-            >
-              Sign in
-            </Button>
-            <Button href={authRoutes.signUp} block onClick={() => setOpen(false)}>
-              Sign up
-            </Button>
-          </div>
+          {signedIn ? null : (
+            <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border pt-3">
+              <Button
+                href={authRoutes.signIn}
+                variant="secondary"
+                block
+                onClick={() => setOpen(false)}
+              >
+                Sign in
+              </Button>
+              <Button href={authRoutes.signUp} block onClick={() => setOpen(false)}>
+                Sign up
+              </Button>
+            </div>
+          )}
         </nav>
       </div>
     </div>

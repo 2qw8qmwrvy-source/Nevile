@@ -18,6 +18,8 @@ export interface CreateContextOptions {
   resHeaders?: Headers;
   db?: Database;
   auth?: Pick<Auth, "api">;
+  /** A session already read for this request (skips the lookup). */
+  session?: Session | null;
 }
 
 /** Resolves the session from the request cookies once per request. */
@@ -25,7 +27,9 @@ export async function createContext(options: CreateContextOptions): Promise<Cont
   const auth = options.auth ?? defaultAuth;
   const { headers, resHeaders } = options;
   let session: Session | null;
-  if (resHeaders) {
+  if (options.session !== undefined) {
+    session = options.session;
+  } else if (resHeaders) {
     const result = await auth.api.getSession({ headers, returnHeaders: true });
     for (const cookie of result.headers.getSetCookie()) resHeaders.append("set-cookie", cookie);
     session = result.response;

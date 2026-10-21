@@ -2,6 +2,7 @@ import { color } from "@nevile/tokens";
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import type { ReactNode } from "react";
+import { Providers } from "@/components/providers.tsx";
 import { SiteFooter } from "@/components/site/site-footer.tsx";
 import { SiteHeader } from "@/components/site/site-header.tsx";
 import { tokenCssVars } from "@/lib/theme.ts";
@@ -58,7 +59,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="flex min-h-dvh flex-col bg-ground font-sans text-ink">
         <SiteHeader />
         <main id="main" className="flex-1">
-          {children}
+          <Providers>{children}</Providers>
         </main>
         <SiteFooter />
       </body>

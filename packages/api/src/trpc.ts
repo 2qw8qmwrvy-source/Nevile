@@ -1,4 +1,11 @@
-import { BUSINESS_MEMBER_ROLES, type BusinessMemberRole, and, businesses, businessMembers, eq } from "@nevile/db";
+import {
+  and,
+  BUSINESS_MEMBER_ROLES,
+  type BusinessMemberRole,
+  businesses,
+  businessMembers,
+  eq,
+} from "@nevile/db";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError, z } from "zod";
@@ -6,8 +13,12 @@ import type { Context } from "./context.ts";
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
+  // Input validation failures carry per-field messages so forms can show them inline.
   errorFormatter({ shape, error }) {
-    const zodError = error.cause instanceof ZodError ? z.flattenError(error.cause) : null;
+    const zodError =
+      error.cause instanceof ZodError
+        ? z.flattenError(error.cause as ZodError<Record<string, unknown>>)
+        : null;
     return { ...shape, data: { ...shape.data, zodError } };
   },
 });
@@ -32,7 +43,9 @@ export const businessIdInput = z.object({ businessId: z.uuid() });
  * `roles`, and adds `ctx.business` and `ctx.membership`. Non-members get NOT_FOUND so a
  * business id can't be probed; members without the role get FORBIDDEN.
  */
-export function businessMemberProcedure(roles: readonly BusinessMemberRole[] = BUSINESS_MEMBER_ROLES) {
+export function businessMemberProcedure(
+  roles: readonly BusinessMemberRole[] = BUSINESS_MEMBER_ROLES,
+) {
   return protectedProcedure.input(businessIdInput).use(async ({ ctx, input, next }) => {
     const [row] = await ctx.db
       .select({ membership: businessMembers, business: businesses })
