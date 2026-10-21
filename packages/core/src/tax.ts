@@ -9,7 +9,7 @@
  * - Each tax line is computed separately on the price and on the fee (two different
  *   suppliers) and each amount is rounded half-up to the cent.
  */
-import { type Cents, assertCents, formatBasisPoints, percentOf } from "./money.ts";
+import { assertCents, type Cents, formatBasisPoints, percentOf } from "./money.ts";
 import { isIsoDate, localDateString } from "./time.ts";
 
 export const PROVINCE_CODES = [

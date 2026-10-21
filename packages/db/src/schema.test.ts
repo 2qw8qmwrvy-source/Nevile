@@ -180,7 +180,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
 
   describe("migrations", () => {
     it("creates every table declared in the Drizzle schema", async () => {
-      const declared = Object.values(schema)
+      const declared = (Object.values(schema) as unknown[])
         .filter((value): value is PgTable => is(value, PgTable))
         .map((table) => getTableName(table))
         .sort();
@@ -202,6 +202,26 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
           "audit_log",
         ]),
       );
+    });
+
+    it("resolves every declared relation in relational queries", async () => {
+      const tables = (db._.schema ?? {}) as Record<string, { relations: object }>;
+      const queries = db.query as unknown as Record<
+        string,
+        { findFirst: (config: { with: Record<string, true> }) => Promise<unknown> }
+      >;
+      const tableNames = Object.keys(tables);
+      expect(tableNames.length).toBeGreaterThan(30);
+      for (const name of tableNames) {
+        const relationNames = Object.keys(tables[name]?.relations ?? {});
+        const withAll = Object.fromEntries(relationNames.map((key) => [key, true as const]));
+        await expect(queries[name]?.findFirst({ with: withAll })).resolves.not.toThrow();
+      }
+      const owner = await db.query.user.findFirst({
+        where: eq(user.id, ids.owner),
+        with: { sessions: true, accounts: true, memberships: { with: { business: true } } },
+      });
+      expect(owner?.memberships[0]?.business.slug).toBe("evergreen-lawn-snow");
     });
 
     it("records the generated and the custom migration in the journal", async () => {
@@ -479,9 +499,9 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
           db.update(auditLog).set({ action: "tampered" }).where(eq(auditLog.id, entryId)),
         ),
       ).toMatchObject({ code: "42501" });
-      expect(await violation(db.delete(auditLog).where(eq(auditLog.id, entryId)))).toMatchObject(
-        { code: "42501" },
-      );
+      expect(await violation(db.delete(auditLog).where(eq(auditLog.id, entryId)))).toMatchObject({
+        code: "42501",
+      });
       expect(await violation(db.execute(sql`TRUNCATE audit_log`))).toMatchObject({
         code: "42501",
       });

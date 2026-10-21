@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  PROVINCES,
+  calculateSalesTax,
+  isProvinceCode,
   PROVINCE_CODES,
+  PROVINCES,
   type ProvinceCode,
   SALES_TAX_DATA_FROM,
   SALES_TAX_TABLE,
   type SalesTaxTable,
-  calculateSalesTax,
-  isProvinceCode,
   salesTaxRatesFor,
 } from "./tax.ts";
 import { isIsoDate, isValidTimeZone } from "./time.ts";
@@ -79,9 +79,7 @@ describe("salesTaxRatesFor", () => {
 
   it("includes PST when enabled for the province", () => {
     const describeRates = (code: ProvinceCode) =>
-      salesTaxRatesFor(code, TODAY, withPstEnabled).components.map(
-        (c) => `${c.name} ${c.rateBps}`,
-      );
+      salesTaxRatesFor(code, TODAY, withPstEnabled).components.map((c) => `${c.name} ${c.rateBps}`);
     expect(describeRates("BC")).toEqual(["GST 500", "PST 700"]);
     expect(describeRates("MB")).toEqual(["GST 500", "RST 700"]);
     expect(describeRates("SK")).toEqual(["GST 500", "PST 600"]);

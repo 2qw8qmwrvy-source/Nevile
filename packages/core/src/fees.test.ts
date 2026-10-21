@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   BUSINESS_FEE_BPS,
   CUSTOMER_PLATFORM_FEE_BPS,
-  DEFAULT_CARD_PROCESSING,
   calculateBusinessFee,
   calculateCharge,
   calculateServiceFee,
   calculateTip,
+  DEFAULT_CARD_PROCESSING,
   estimateProcessingCents,
 } from "./fees.ts";
 import type { ProvinceCode } from "./tax.ts";
@@ -149,9 +149,9 @@ describe("calculateCharge", () => {
   it("reports the SPEC pre-tax example honestly once tax is charged", () => {
     // Pre-tax, Nevile nets $6.00 (SPEC table); processing on the tax lowers it.
     const pre = ontario(10000, false);
-    expect(pre.serviceFeeCents + pre.businessFeeCents - estimateProcessingCents(pre.subtotalCents)).toBe(
-      600,
-    );
+    expect(
+      pre.serviceFeeCents + pre.businessFeeCents - estimateProcessingCents(pre.subtotalCents),
+    ).toBe(600);
     expect(ontario(10000).platformNetCents).toBe(560);
   });
 

@@ -1,14 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  check,
-  date,
-  index,
-  pgTable,
-  text,
-  unique,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, date, index, pgTable, text, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth.ts";
 import { bookings, visits } from "./bookings.ts";
 import { businesses } from "./businesses.ts";
@@ -105,10 +96,7 @@ export const payments = pgTable(
       "payments_amount_is_sum",
       sql`${t.amountCents} = ${t.priceCents} + ${t.serviceFeeCents} + ${t.priceTaxCents} + ${t.feeTaxCents}`,
     ),
-    check(
-      "payments_business_fee_within_price",
-      sql`${t.businessFeeCents} <= ${t.priceCents}`,
-    ),
+    check("payments_business_fee_within_price", sql`${t.businessFeeCents} <= ${t.priceCents}`),
   ],
 );
 

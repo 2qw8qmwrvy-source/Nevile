@@ -1,14 +1,7 @@
 import { sql } from "drizzle-orm";
-import {
-  check,
-  doublePrecision,
-  index,
-  pgTable,
-  text,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, doublePrecision, index, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth.ts";
-import { latitudeCheck, longitudeCheck, id, timestamps, tstz } from "./columns.ts";
+import { id, latitudeCheck, longitudeCheck, timestamps, tstz } from "./columns.ts";
 import { partyRole, province } from "./enums.ts";
 
 /**

@@ -14,9 +14,10 @@
  * The sales tax on the job price is refunded in proportion to the price refunded.
  * Business-initiated cancellations refund everything, including the service fee.
  */
-import { type Cents, assertCents, bigintToCents, divideRoundHalfUp, percentOf } from "./money.ts";
+
 import { BUSINESS_FEE_BPS } from "./fees.ts";
-import { MS_PER_HOUR, assertValidDate } from "./time.ts";
+import { assertCents, bigintToCents, type Cents, divideRoundHalfUp, percentOf } from "./money.ts";
+import { assertValidDate, MS_PER_HOUR } from "./time.ts";
 
 export const CANCELLATION_POLICY_IDS = ["flexible", "moderate", "strict"] as const;
 export type CancellationPolicyId = (typeof CANCELLATION_POLICY_IDS)[number];

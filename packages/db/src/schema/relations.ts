@@ -353,4 +353,3 @@ export const subscriptionRelations = relations(subscriptions, ({ one }) => ({
 export const planPriceRelations = relations(planPrices, ({ one }) => ({
   createdBy: one(user, { fields: [planPrices.createdByUserId], references: [user.id] }),
 }));
-

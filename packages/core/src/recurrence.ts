@@ -9,10 +9,10 @@
  * forward) moves forward by the gap; an ambiguous one (fall back) uses the first instant.
  */
 import {
-  type CalendarDate,
-  DEFAULT_TIME_ZONE,
   addCalendarDays,
   assertValidDate,
+  type CalendarDate,
+  DEFAULT_TIME_ZONE,
   daysInMonth,
   formatIsoDate,
   fromLocal,
@@ -85,7 +85,11 @@ export function generateOccurrences(input: RecurrenceInput): Date[] {
   for (let n = 0; occurrences.length < maxCount; n++) {
     const date = nthDate(first, input.frequency, n);
     if (endDate !== undefined && formatIsoDate(date) > endDate) break;
-    occurrences.push(n === 0 ? new Date(input.firstStartsAt.getTime()) : fromLocal({ ...first, ...date }, timeZone));
+    occurrences.push(
+      n === 0
+        ? new Date(input.firstStartsAt.getTime())
+        : fromLocal({ ...first, ...date }, timeZone),
+    );
   }
   return occurrences;
 }

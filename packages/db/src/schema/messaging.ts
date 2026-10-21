@@ -36,10 +36,7 @@ export const conversations = pgTable(
   (t) => [
     index("conversations_customer_last_message_idx").on(t.customerId, t.lastMessageAt),
     index("conversations_business_last_message_idx").on(t.businessId, t.lastMessageAt),
-    check(
-      "conversations_scoped",
-      sql`num_nonnulls(${t.quoteRequestId}, ${t.bookingId}) >= 1`,
-    ),
+    check("conversations_scoped", sql`num_nonnulls(${t.quoteRequestId}, ${t.bookingId}) >= 1`),
   ],
 );
 

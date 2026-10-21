@@ -49,30 +49,38 @@ function isNanpLeading(digit: string | undefined): boolean {
 }
 
 /**
- * Whether consecutive digit groups form a NANP number: 10 digits, or 11 starting with 1,
- * with no group crossing the area-code/exchange/line boundaries.
+ * Whether consecutive digit groups form a NANP number: 10 digits, or 11 starting with 1.
+ * The separators must follow the number's structure: either every cut falls on a
+ * segment boundary (4165551234, 416 5551234, 416-555-1234) or every segment boundary is
+ * a cut, with extra cuts allowed inside segments (4 1 6 5 5 5 1 2 3 4, 416 555 12 34).
+ * Dates and times such as "2026-10-21 10" (cuts at 4, 6, 8) fit neither.
  */
 function isNanpNumber(groups: readonly DigitGroup[]): boolean {
   const digits = groups.map((group) => group.digits).join("");
-  let boundaries: readonly number[];
+  let required: readonly number[];
+  let optional: readonly number[];
   let offset: number;
   if (digits.length === 10) {
-    boundaries = [3, 6];
+    required = [3, 6];
+    optional = [];
     offset = 0;
   } else if (digits.length === 11 && digits[0] === "1") {
-    boundaries = [4, 7];
+    required = [4, 7];
+    optional = [1];
     offset = 1;
   } else {
     return false;
   }
   if (!isNanpLeading(digits[offset]) || !isNanpLeading(digits[offset + 3])) return false;
+  const cuts: number[] = [];
   let position = 0;
-  for (const group of groups) {
-    const start = position;
+  for (const group of groups.slice(0, -1)) {
     position += group.digits.length;
-    if (boundaries.some((boundary) => start < boundary && boundary < position)) return false;
+    cuts.push(position);
   }
-  return true;
+  const coarse = cuts.every((cut) => required.includes(cut) || optional.includes(cut));
+  const fine = required.every((boundary) => cuts.includes(boundary));
+  return coarse || fine;
 }
 
 type Span = { start: number; end: number };
@@ -84,7 +92,8 @@ function phoneSpansInChain(text: string, chainStart: number, chain: string): Spa
     groups.push({ start, end: start + match[0].length, digits: match[0] });
   }
   const spans: Span[] = [];
-  const intlPrefixed = text[chainStart - 1] === "+" || text.slice(chainStart - 2, chainStart) === "+ ";
+  const intlPrefixed =
+    text[chainStart - 1] === "+" || text.slice(chainStart - 2, chainStart) === "+ ";
   let i = 0;
   while (i < groups.length) {
     let found = -1;
@@ -111,13 +120,16 @@ function phoneSpansInChain(text: string, chainStart: number, chain: string): Spa
   return spans;
 }
 
-/** Widens a phone span to swallow a leading "+", "(" or "+1 (" and a trailing ")". */
+const PHONE_PREFIX = /(?:\+ ?)?(?:\( ?)?$/;
+
+/** Widens a phone span to swallow a leading "+", "(" or "+ (" and a matching ")". */
 function widen(text: string, span: Span): Span {
-  let { start, end } = span;
-  if (text[start - 1] === "(") start--;
-  while (text[start - 1] === " " && (text[start - 2] === "+" || text[start - 2] === "(")) start--;
-  if (text[start - 1] === "+") start--;
-  if (text[end] === ")" && text.lastIndexOf("(", end) >= start) end++;
+  const prefix = PHONE_PREFIX.exec(text.slice(Math.max(0, span.start - 4), span.start));
+  const start = span.start - (prefix?.[0].length ?? 0);
+  let end = span.end;
+  const inner = text.slice(start, end);
+  const unclosed = inner.split("(").length - inner.split(")").length;
+  if (unclosed > 0 && text[end] === ")") end++;
   return { start, end };
 }
 

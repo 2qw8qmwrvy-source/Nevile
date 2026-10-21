@@ -16,19 +16,14 @@
  * charged total so `platformNetCents` reports Nevile's margin honestly.
  */
 import {
-  type Cents,
   assertCents,
   basisPointsToPpm,
   bigintToCents,
+  type Cents,
   divideRoundHalfUp,
   percentOf,
 } from "./money.ts";
-import {
-  type ProvinceCode,
-  type SalesTaxTable,
-  type TaxLine,
-  calculateSalesTax,
-} from "./tax.ts";
+import { calculateSalesTax, type ProvinceCode, type SalesTaxTable, type TaxLine } from "./tax.ts";
 
 /** Deducted from the business's payout. */
 export const BUSINESS_FEE_BPS = 300;

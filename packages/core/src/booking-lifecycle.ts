@@ -23,7 +23,7 @@
  * refunded amount lives on the payment record.
  */
 import type { PricingType } from "./schemas.ts";
-import { MS_PER_DAY, MS_PER_HOUR, assertValidDate } from "./time.ts";
+import { assertValidDate, MS_PER_DAY, MS_PER_HOUR } from "./time.ts";
 
 export const BOOKING_STATES = [
   "requested",
@@ -152,9 +152,10 @@ const RULES: Readonly<Record<BookingEventType, Rule>> = {
 
 /** Who is allowed to trigger each event (enforced by the API layer). */
 export const BOOKING_EVENT_ACTORS: Readonly<Record<BookingEventType, BookingActor>> =
-  Object.fromEntries(
-    BOOKING_EVENT_TYPES.map((type) => [type, RULES[type].actor]),
-  ) as Record<BookingEventType, BookingActor>;
+  Object.fromEntries(BOOKING_EVENT_TYPES.map((type) => [type, RULES[type].actor])) as Record<
+    BookingEventType,
+    BookingActor
+  >;
 
 export function isBookingState(value: unknown): value is BookingState {
   return typeof value === "string" && (BOOKING_STATES as readonly string[]).includes(value);
@@ -274,7 +275,10 @@ function fail(
   message: string,
   deadline?: Date,
 ): TransitionResult {
-  return { ok: false, error: { code, state: snapshot.state, event: event.type, message, deadline } };
+  return {
+    ok: false,
+    error: { code, state: snapshot.state, event: event.type, message, deadline },
+  };
 }
 
 /**
@@ -302,11 +306,7 @@ export function transition(snapshot: BookingSnapshot, event: BookingEvent): Tran
   if (deadline && AT_DEADLINE.has(event.type) && at < deadline.getTime()) {
     return fail(snapshot, event, "deadline_not_reached", `${event.type} is too early`, deadline);
   }
-  if (
-    event.type === "mark_complete" &&
-    snapshot.startsAt &&
-    at < snapshot.startsAt.getTime()
-  ) {
+  if (event.type === "mark_complete" && snapshot.startsAt && at < snapshot.startsAt.getTime()) {
     return fail(snapshot, event, "job_not_started", "the job has not started yet");
   }
 
@@ -318,10 +318,7 @@ export function transition(snapshot: BookingSnapshot, event: BookingEvent): Tran
 }
 
 /** Like `transition`, but returns the new snapshot or throws on an invalid transition. */
-export function applyBookingEvent(
-  snapshot: BookingSnapshot,
-  event: BookingEvent,
-): BookingSnapshot {
+export function applyBookingEvent(snapshot: BookingSnapshot, event: BookingEvent): BookingSnapshot {
   const result = transition(snapshot, event);
   if (!result.ok) {
     throw new Error(`[${result.error.code}] ${result.error.message}`);

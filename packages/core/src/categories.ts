@@ -58,7 +58,8 @@ export const DEFAULT_CATEGORIES: readonly Category[] = [
   {
     slug: "yard-cleanup",
     name: "Yard Cleanup",
-    description: "Seasonal tidy-ups: debris removal, pruning, bed clearing and yard waste haul-away.",
+    description:
+      "Seasonal tidy-ups: debris removal, pruning, bed clearing and yard waste haul-away.",
   },
 ];
 

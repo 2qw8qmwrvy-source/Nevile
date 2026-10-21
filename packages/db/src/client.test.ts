@@ -34,9 +34,7 @@ describe("client", () => {
     expect(getDb()).toBe(getDb());
     const rows = await db.select({ id: serviceCategories.id }).from(serviceCategories).limit(1);
     expect(Array.isArray(rows)).toBe(true);
-    const viaTransaction = await db.transaction(async (tx) =>
-      tx.$count(serviceCategories),
-    );
+    const viaTransaction = await db.transaction(async (tx) => tx.$count(serviceCategories));
     expect(typeof viaTransaction).toBe("number");
   });
 });

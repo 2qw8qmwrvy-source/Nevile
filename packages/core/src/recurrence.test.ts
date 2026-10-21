@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MAX_OCCURRENCES,
+  generateOccurrences,
   RECURRENCE_FREQUENCIES,
   type RecurrenceFrequency,
-  generateOccurrences,
 } from "./recurrence.ts";
 import { fromLocal, toLocal } from "./time.ts";
 
@@ -85,7 +85,11 @@ describe("weekly", () => {
 describe("biweekly", () => {
   it("repeats every 14 days at the same local time", () => {
     const first = fromLocal({ year: 2026, month: 10, day: 20, hour: 15, minute: 30 }, TORONTO);
-    const visits = generateOccurrences({ frequency: "biweekly", firstStartsAt: first, maxCount: 4 });
+    const visits = generateOccurrences({
+      frequency: "biweekly",
+      firstStartsAt: first,
+      maxCount: 4,
+    });
     expect(localTimes(visits)).toEqual([
       "2026-10-20 15:30",
       "2026-11-03 15:30",
@@ -213,9 +217,9 @@ describe("bounds", () => {
   });
 
   it.each([0, -1, 1.5, 1001])("rejects maxCount %s", (maxCount) => {
-    expect(() => generateOccurrences({ frequency: "weekly", firstStartsAt: first, maxCount })).toThrow(
-      RangeError,
-    );
+    expect(() =>
+      generateOccurrences({ frequency: "weekly", firstStartsAt: first, maxCount }),
+    ).toThrow(RangeError);
   });
 
   it("rejects bad input", () => {

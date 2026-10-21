@@ -1,8 +1,8 @@
 import { account, rateLimit, session, user, verification } from "./schema/auth.ts";
 
 export {
-  closeDb,
   type CreateDbOptions,
+  closeDb,
   createDb,
   type Database,
   type DbExecutor,

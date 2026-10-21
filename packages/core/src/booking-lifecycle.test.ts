@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyBookingEvent,
   BOOKING_EVENT_ACTORS,
   BOOKING_EVENT_TYPES,
   BOOKING_STATES,
   type BookingEventType,
   type BookingSnapshot,
   type BookingState,
-  TERMINAL_BOOKING_STATES,
-  applyBookingEvent,
   deadlineFor,
   dueSystemEvent,
   eventsFrom,
@@ -15,6 +14,7 @@ import {
   isBookingState,
   isTerminalBookingState,
   needsAdminDecision,
+  TERMINAL_BOOKING_STATES,
   transition,
 } from "./booking-lifecycle.ts";
 
@@ -99,9 +99,9 @@ describe("states and events", () => {
   });
 
   it("throws on an invalid event time", () => {
-    expect(() => transition(snap("confirmed"), { type: "mark_complete", at: new Date("x") })).toThrow(
-      RangeError,
-    );
+    expect(() =>
+      transition(snap("confirmed"), { type: "mark_complete", at: new Date("x") }),
+    ).toThrow(RangeError);
   });
 });
 
@@ -113,7 +113,10 @@ describe("happy paths", () => {
     expect(booking.enteredAt).toEqual(at(2 * HOUR));
     booking = applyBookingEvent(booking, { type: "mark_complete", at: at(3 * DAY + 2 * HOUR) });
     expect(booking.state).toBe("completed_pending_confirmation");
-    booking = applyBookingEvent(booking, { type: "confirm_completion", at: at(3 * DAY + 5 * HOUR) });
+    booking = applyBookingEvent(booking, {
+      type: "confirm_completion",
+      at: at(3 * DAY + 5 * HOUR),
+    });
     expect(booking.state).toBe("completed");
     expect(booking.disputeOpenedAt).toBeNull();
   });
@@ -297,7 +300,10 @@ describe("disputes", () => {
 
   it("the customer can close a dispute by confirming", () => {
     for (const state of ["disputed", "fix_scheduled"] as const) {
-      const result = transition({ ...disputed, state }, { type: "confirm_completion", at: at(DAY) });
+      const result = transition(
+        { ...disputed, state },
+        { type: "confirm_completion", at: at(DAY) },
+      );
       expect(result.ok && result.state).toBe("completed");
     }
   });

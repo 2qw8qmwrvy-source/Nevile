@@ -14,13 +14,13 @@
  */
 import { COMPLETION_CONFIRMATION_HOURS } from "./booking-lifecycle.ts";
 import {
-  DEFAULT_TIME_ZONE,
-  MS_PER_HOUR,
   addCalendarDays,
   addLocalDays,
   assertValidDate,
+  DEFAULT_TIME_ZONE,
   formatIsoDate,
   fromLocal,
+  MS_PER_HOUR,
   parseIsoDate,
   toLocal,
   weekdayOf,
@@ -116,7 +116,10 @@ export function payoutBatchFor(
 }
 
 /** The confirmation window covered by the batch paid on `payoutDate` (a Monday). */
-export function payoutBatchOn(payoutDate: string, timeZone: string = PAYOUT_TIME_ZONE): PayoutBatch {
+export function payoutBatchOn(
+  payoutDate: string,
+  timeZone: string = PAYOUT_TIME_ZONE,
+): PayoutBatch {
   const date = parseIsoDate(payoutDate);
   if (!date) throw new RangeError(`payoutDate must be YYYY-MM-DD, got "${payoutDate}"`);
   if (weekdayOf(date) !== PAYOUT_WEEKDAY) {

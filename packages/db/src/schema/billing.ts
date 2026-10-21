@@ -47,9 +47,7 @@ export const planPrices = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    uniqueIndex("plan_prices_one_active_per_plan_uidx")
-      .on(t.plan)
-      .where(sql`${t.active}`),
+    uniqueIndex("plan_prices_one_active_per_plan_uidx").on(t.plan).where(sql`${t.active}`),
     nonNegative("plan_prices", t.monthlyAmountCents),
   ],
 );

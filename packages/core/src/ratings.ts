@@ -11,7 +11,7 @@
  *   public reply up to 1000 characters. Ratings are visible immediately.
  */
 import { z } from "zod";
-import { DEFAULT_TIME_ZONE, MS_PER_DAY, assertValidDate, toLocal } from "./time.ts";
+import { assertValidDate, DEFAULT_TIME_ZONE, MS_PER_DAY, toLocal } from "./time.ts";
 
 export const RATING_WINDOW_DAYS = 14;
 export const RATING_COMMENT_MAX_LENGTH = 1000;
@@ -40,7 +40,7 @@ export type CanRateReason =
   | "monthly_limit_reached";
 
 export type CanRateResult =
-  | { ok: true; /** Last instant a rating is accepted. */ deadline: Date }
+  | { ok: true /** Last instant a rating is accepted. */; deadline: Date }
   | { ok: false; reason: CanRateReason };
 
 export function ratingDeadline(jobCompletedAt: Date): Date {
@@ -71,7 +71,10 @@ export function canRate(input: CanRateInput): CanRateResult {
  * Calendar-month key ("YYYY-MM") used to enforce the one-rating-per-month rule for
  * recurring jobs and contracts, in the job's local zone.
  */
-export function ratingMonthKey(visitCompletedAt: Date, timeZone: string = DEFAULT_TIME_ZONE): string {
+export function ratingMonthKey(
+  visitCompletedAt: Date,
+  timeZone: string = DEFAULT_TIME_ZONE,
+): string {
   const local = toLocal(visitCompletedAt, timeZone);
   return `${String(local.year).padStart(4, "0")}-${String(local.month).padStart(2, "0")}`;
 }

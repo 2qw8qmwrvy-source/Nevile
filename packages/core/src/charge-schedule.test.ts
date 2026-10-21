@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  PAYOUT_TIME_ZONE,
-  RECURRING_CHARGE_DAYS_BEFORE,
   chargeAtFor,
+  PAYOUT_TIME_ZONE,
   payoutBatchFor,
   payoutBatchOn,
+  RECURRING_CHARGE_DAYS_BEFORE,
 } from "./charge-schedule.ts";
 import { fromLocal, toLocal } from "./time.ts";
 
@@ -59,7 +59,11 @@ describe("chargeAtFor", () => {
     );
     const early = new Date("2026-10-01T18:00:00Z");
     expect(
-      chargeAtFor({ kind: "recurring_visit", visitStartsAt: visit, confirmedAt: early }).toISOString(),
+      chargeAtFor({
+        kind: "recurring_visit",
+        visitStartsAt: visit,
+        confirmedAt: early,
+      }).toISOString(),
     ).toBe("2026-10-20T13:00:00.000Z");
   });
 

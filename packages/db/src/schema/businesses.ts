@@ -104,9 +104,7 @@ export const businessMembers = pgTable(
   (t) => [
     unique("business_members_business_user_unique").on(t.businessId, t.userId),
     index("business_members_user_id_idx").on(t.userId),
-    uniqueIndex("business_members_one_owner_uidx")
-      .on(t.businessId)
-      .where(sql`${t.role} = 'owner'`),
+    uniqueIndex("business_members_one_owner_uidx").on(t.businessId).where(sql`${t.role} = 'owner'`),
     check("business_members_calendar_color_hex", sql`${t.calendarColor} ~ '^#[0-9A-Fa-f]{6}$'`),
   ],
 );

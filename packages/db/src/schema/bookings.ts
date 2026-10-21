@@ -115,10 +115,7 @@ export const bookings = pgTable(
       "bookings_requested_range",
       sql`${t.requestedEndsAt} IS NULL OR ${t.requestedStartsAt} IS NULL OR ${t.requestedEndsAt} > ${t.requestedStartsAt}`,
     ),
-    check(
-      "bookings_no_quote_phase_status",
-      sql`${t.status} NOT IN ('quote_requested', 'quoted')`,
-    ),
+    check("bookings_no_quote_phase_status", sql`${t.status} NOT IN ('quote_requested', 'quoted')`),
     check(
       "bookings_requested_expiry",
       sql`${t.status} <> 'requested' OR ${t.approvalExpiresAt} IS NOT NULL`,
@@ -229,9 +226,7 @@ export const visits = pgTable(
     index("visits_auto_confirm_idx")
       .on(t.autoConfirmAt)
       .where(sql`${t.status} = 'completed_pending_confirmation'`),
-    index("visits_charge_due_idx")
-      .on(t.chargeDueAt)
-      .where(sql`${t.chargeDueAt} IS NOT NULL`),
+    index("visits_charge_due_idx").on(t.chargeDueAt).where(sql`${t.chargeDueAt} IS NOT NULL`),
     positive("visits", t.sequence),
     check("visits_range", sql`${t.endsAt} > ${t.startsAt}`),
     check(

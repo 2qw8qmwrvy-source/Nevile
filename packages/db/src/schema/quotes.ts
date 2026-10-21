@@ -65,9 +65,7 @@ export const quotes = pgTable(
   },
   (t) => [
     index("quotes_quote_request_id_idx").on(t.quoteRequestId),
-    index("quotes_pending_expires_idx")
-      .on(t.expiresAt)
-      .where(sql`${t.status} = 'pending'`),
+    index("quotes_pending_expires_idx").on(t.expiresAt).where(sql`${t.status} = 'pending'`),
     uniqueIndex("quotes_one_pending_per_request_uidx")
       .on(t.quoteRequestId)
       .where(sql`${t.status} = 'pending'`),

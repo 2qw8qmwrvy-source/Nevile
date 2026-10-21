@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   CANCELLATION_POLICIES,
   CANCELLATION_POLICY_IDS,
-  type PaidAmounts,
   freeCancellationDeadline,
   isCancellationPolicyId,
+  type PaidAmounts,
   refundForBusinessCancellation,
   refundForCustomerCancellation,
 } from "./cancellation.ts";
@@ -128,7 +128,12 @@ describe("refundForCustomerCancellation", () => {
   });
 
   it("moderate: rounds the half refund and proportional tax half-up", () => {
-    const paid = { priceCents: 6001, serviceFeeCents: 395, taxOnPriceCents: 780, taxOnFeeCents: 51 };
+    const paid = {
+      priceCents: 6001,
+      serviceFeeCents: 395,
+      taxOnPriceCents: 780,
+      taxOnFeeCents: 51,
+    };
     const refund = cancel("moderate", before(HOUR), paid);
     expect(refund.priceRefundCents).toBe(3001); // 3000.5 -> 3001
     expect(refund.taxOnPriceRefundCents).toBe(390); // 780 × 3001 / 6001 = 390.06
