@@ -183,7 +183,7 @@ Full admin panel with reporting:
 
 | Layer | Choice |
 |---|---|
-| Language | TypeScript |
+| Language | TypeScript 6 (latest release supported by Next.js and Expo tooling; TS 7 native compiler to be adopted once the toolchain supports it) |
 | Repo | Monorepo |
 | Web | Next.js 16 + React 19, Tailwind CSS 4 |
 | Mobile | Expo (React Native) iOS & Android apps, built alongside web |
@@ -203,8 +203,30 @@ Full admin panel with reporting:
 - Audit log for all money movements and admin actions.
 - OWASP Top 10 reviewed before launch.
 
-## 13. Next steps
+## 13. Design direction
 
-1. Clickable UI mockups (2–3 design directions) — pick one before coding.
-2. Monorepo scaffold, database schema, auth.
-3. Build in order: listings & search → quotes & booking → scheduling → payments → ratings → subscription → admin.
+**Chosen: "A · Seasons"** across customer web, business web, and mobile, with the
+**list + map search results** and **radius-slider service area** from direction B,
+restyled in the Seasons look.
+
+| Token | Value |
+|---|---|
+| Display font | Bricolage Grotesque (600/700/800) |
+| Body font | Figtree (400/500/600) |
+| Ground / surface / border | `#F5F6F1` / `#FFFFFF` / `#E1E5DC` |
+| Ink / muted | `#18211D` / `#4F5A54` |
+| Primary (evergreen) / hover | `#1E5B43` / `#174A36` |
+| Winter accent / tint | `#2D6A9F` / `#E3EEF7` |
+| Spring accent / tint | `#3F7F3A` / `#E5F1E1` |
+| Summer accent / tint | `#A86A12` / `#FBEFD9` |
+| Fall accent / tint | `#A4471F` / `#F7E4DA` |
+| Radii | 18px cards, 12px inputs, pill buttons |
+
+The site's hero and featured categories re-theme by season (Winter: Dec–Feb,
+Spring: Mar–May, Summer: Jun–Aug, Fall: Sep–Nov).
+
+## 14. Build order
+
+1. ~~Clickable UI mockups~~ — done, direction A chosen.
+2. Foundation: monorepo, domain rules (fees, tax, policies), database schema, auth, app shells.
+3. Listings & search → quotes & booking → scheduling → payments → ratings → subscription → admin.
