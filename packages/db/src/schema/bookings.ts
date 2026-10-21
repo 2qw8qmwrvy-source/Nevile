@@ -27,7 +27,6 @@ import { addresses } from "./customers.ts";
 import {
   bookingKind,
   bookingStatus,
-  cancellationParty,
   cancellationPolicy,
   province,
   recurrenceFrequency,
@@ -88,7 +87,6 @@ export const bookings = pgTable(
     approvalExpiresAt: tstz("approval_expires_at"),
     confirmedAt: tstz("confirmed_at"),
     cancelledAt: tstz("cancelled_at"),
-    cancelledBy: cancellationParty("cancelled_by"),
     cancellationReason: text("cancellation_reason"),
     ...timestamps(),
   },
@@ -98,13 +96,13 @@ export const bookings = pgTable(
     index("bookings_service_id_idx").on(t.serviceId),
     index("bookings_address_id_idx").on(t.addressId),
     index("bookings_assigned_member_id_idx").on(t.assignedMemberId),
-    index("bookings_pending_approval_expires_idx")
+    index("bookings_requested_expires_idx")
       .on(t.approvalExpiresAt)
-      .where(sql`${t.status} = 'pending_approval'`),
+      .where(sql`${t.status} = 'requested'`),
     // Reliability stats: business-initiated cancellations (SPEC §5).
     index("bookings_business_cancellations_idx")
       .on(t.businessId, t.cancelledAt)
-      .where(sql`${t.cancelledBy} = 'business'`),
+      .where(sql`${t.status} = 'cancelled_by_business'`),
     nonNegative("bookings", t.priceCents),
     nonNegative("bookings", t.serviceFeeCents),
     nonNegative("bookings", t.priceTaxCents),
@@ -118,12 +116,16 @@ export const bookings = pgTable(
       sql`${t.requestedEndsAt} IS NULL OR ${t.requestedStartsAt} IS NULL OR ${t.requestedEndsAt} > ${t.requestedStartsAt}`,
     ),
     check(
-      "bookings_pending_approval_expiry",
-      sql`${t.status} <> 'pending_approval' OR ${t.approvalExpiresAt} IS NOT NULL`,
+      "bookings_no_quote_phase_status",
+      sql`${t.status} NOT IN ('quote_requested', 'quoted')`,
+    ),
+    check(
+      "bookings_requested_expiry",
+      sql`${t.status} <> 'requested' OR ${t.approvalExpiresAt} IS NOT NULL`,
     ),
     check(
       "bookings_cancelled_fields",
-      sql`${t.status} <> 'cancelled' OR (${t.cancelledAt} IS NOT NULL AND ${t.cancelledBy} IS NOT NULL)`,
+      sql`${t.status} NOT IN ('cancelled_by_customer', 'cancelled_by_business') OR ${t.cancelledAt} IS NOT NULL`,
     ),
   ],
 );
@@ -203,11 +205,12 @@ export const visits = pgTable(
     sequence: integer("sequence").notNull().default(1),
     startsAt: tstz("starts_at").notNull(),
     endsAt: tstz("ends_at").notNull(),
-    status: visitStatus("status").notNull().default("scheduled"),
+    status: visitStatus("status").notNull().default("confirmed"),
     completedAt: tstz("completed_at"),
     completedByUserId: text("completed_by_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    // Customer confirmation time (or the auto-confirm / admin decision time).
     confirmedAt: tstz("confirmed_at"),
     // True when the 48h window lapsed without a customer response.
     autoConfirmed: boolean("auto_confirmed").notNull().default(false),
@@ -215,7 +218,6 @@ export const visits = pgTable(
     // When this visit should be charged (recurring: 3 days before; snow: after confirm).
     chargeDueAt: tstz("charge_due_at"),
     cancelledAt: tstz("cancelled_at"),
-    cancelledBy: cancellationParty("cancelled_by"),
     // Business-only notes (customers never see them).
     businessNotes: text("business_notes"),
     ...timestamps(),
@@ -226,27 +228,27 @@ export const visits = pgTable(
     index("visits_member_starts_idx").on(t.assignedMemberId, t.startsAt),
     index("visits_auto_confirm_idx")
       .on(t.autoConfirmAt)
-      .where(sql`${t.status} = 'awaiting_confirmation'`),
+      .where(sql`${t.status} = 'completed_pending_confirmation'`),
     index("visits_charge_due_idx")
       .on(t.chargeDueAt)
       .where(sql`${t.chargeDueAt} IS NOT NULL`),
     positive("visits", t.sequence),
     check("visits_range", sql`${t.endsAt} > ${t.startsAt}`),
     check(
+      "visits_marked_complete_fields",
+      sql`${t.status} NOT IN ('completed_pending_confirmation', 'disputed', 'fix_scheduled', 'completed') OR ${t.completedAt} IS NOT NULL`,
+    ),
+    check(
+      "visits_pending_confirmation_fields",
+      sql`${t.status} <> 'completed_pending_confirmation' OR ${t.autoConfirmAt} IS NOT NULL`,
+    ),
+    check(
       "visits_completed_fields",
-      sql`${t.status} IN ('scheduled', 'cancelled') OR ${t.completedAt} IS NOT NULL`,
-    ),
-    check(
-      "visits_awaiting_confirmation_fields",
-      sql`${t.status} <> 'awaiting_confirmation' OR ${t.autoConfirmAt} IS NOT NULL`,
-    ),
-    check(
-      "visits_confirmed_fields",
       sql`${t.status} <> 'completed' OR ${t.confirmedAt} IS NOT NULL`,
     ),
     check(
       "visits_cancelled_fields",
-      sql`${t.status} <> 'cancelled' OR (${t.cancelledAt} IS NOT NULL AND ${t.cancelledBy} IS NOT NULL)`,
+      sql`${t.status} NOT IN ('cancelled_by_customer', 'cancelled_by_business') OR ${t.cancelledAt} IS NOT NULL`,
     ),
   ],
 );

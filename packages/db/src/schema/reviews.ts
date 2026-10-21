@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, date, index, pgTable, smallint, text, unique, uuid } from "drizzle-orm/pg-core";
+import { check, index, pgTable, smallint, text, unique, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth.ts";
 import { bookings, visits } from "./bookings.ts";
 import { businesses } from "./businesses.ts";
@@ -37,8 +37,8 @@ export const reviews = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     raterRole: partyRole("rater_role").notNull(),
-    // First day of the month of service, in the booking's timezone.
-    serviceMonth: date("service_month", { mode: "string" }).notNull(),
+    // "YYYY-MM" month of the rated visit in the job's zone (core `ratingMonthKey`).
+    serviceMonth: text("service_month").notNull(),
     stars: smallint("stars").notNull(),
     comment: text("comment"),
     reply: text("reply"),
@@ -55,9 +55,6 @@ export const reviews = pgTable(
     check("reviews_stars_range", sql`${t.stars} BETWEEN 1 AND 5`),
     check("reviews_not_self", sql`${t.raterUserId} <> ${t.rateeUserId}`),
     check("reviews_reply_fields", sql`(${t.reply} IS NULL) = (${t.replyAt} IS NULL)`),
-    check(
-      "reviews_service_month_first_day",
-      sql`EXTRACT(DAY FROM ${t.serviceMonth}) = 1`,
-    ),
+    check("reviews_service_month_format", sql`${t.serviceMonth} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
   ],
 );
