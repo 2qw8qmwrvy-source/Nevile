@@ -94,7 +94,13 @@ export function AccountScreen({
             Save your address, keep track of visits and message businesses — with email or a text
             code.
           </Text>
-          <Button label="Sign in or create account" fullWidth loading={loading} onPress={onSignIn} disabled={!onSignIn} />
+          <Button
+            label="Sign in or create account"
+            fullWidth
+            loading={loading}
+            onPress={onSignIn}
+            disabled={!onSignIn}
+          />
         </Card>
       )}
 
@@ -117,7 +123,11 @@ export function AccountScreen({
         <ListRow
           divider
           label={switchLabel}
-          description={mode === "customer" ? "Manage your services, calendar and crew" : "Find and book local pros"}
+          description={
+            mode === "customer"
+              ? "Manage your services, calendar and crew"
+              : "Find and book local pros"
+          }
           icon={icons.switchMode}
           onPress={onSwitchMode}
           disabled={!onSwitchMode}

@@ -14,7 +14,7 @@ const POINTS = [
 export function BusinessBand() {
   return (
     <section id="business" aria-labelledby="biz-title" className="pt-14">
-      <div className="on-dark grid items-center gap-10 rounded-panel bg-primary px-5 py-7 text-white sm:rounded-hero sm:px-12 sm:py-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+      <div className="on-dark grid grid-cols-[minmax(0,1fr)] items-center gap-10 rounded-panel bg-primary px-5 py-7 text-white sm:rounded-hero sm:px-12 sm:py-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div>
           <p className="text-[13px] font-semibold tracking-[0.08em] text-on-primary-muted uppercase">
             For businesses

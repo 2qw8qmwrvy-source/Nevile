@@ -30,7 +30,7 @@ export function HowItWorks() {
 
   return (
     <section id="how" aria-labelledby="how-title" className="pt-14">
-      <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-12">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-12">
         <div>
           <h2
             id="how-title"
@@ -64,15 +64,22 @@ export function HowItWorks() {
 
         <Card as="aside" aria-labelledby="receipt-title" className="p-6">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <p className="text-xs font-semibold tracking-[0.06em] text-muted uppercase">Example checkout</p>
+            <p className="text-xs font-semibold tracking-[0.06em] text-muted uppercase">
+              Example checkout
+            </p>
             <Badge variant="verified" icon={null} className="h-7">
               Charged at booking
             </Badge>
           </div>
-          <h3 id="receipt-title" className="mt-1.5 font-display text-xl leading-tight font-semibold">
+          <h3
+            id="receipt-title"
+            className="mt-1.5 font-display text-xl leading-tight font-semibold"
+          >
             A one-off lawn mow in Ontario
           </h3>
-          <p className="mt-1 text-sm text-muted">Flexible cancellation: free until 24h before the job</p>
+          <p className="mt-1 text-sm text-muted">
+            Flexible cancellation: free until 24h before the job
+          </p>
           <dl className="mt-3.5 text-[15px] tabular-nums">
             <div className="flex justify-between gap-3 border-b border-border py-2">
               <dt>Lawn mowing (standard lot)</dt>
@@ -83,7 +90,10 @@ export function HowItWorks() {
               <dd>{formatCad(charge.serviceFeeCents)}</dd>
             </div>
             {charge.taxLines.map((line) => (
-              <div key={line.kind} className="flex justify-between gap-3 border-b border-border py-2">
+              <div
+                key={line.kind}
+                className="flex justify-between gap-3 border-b border-border py-2"
+              >
                 <dt>{line.label}</dt>
                 <dd>{formatCad(line.amountCents)}</dd>
               </div>
@@ -107,8 +117,8 @@ export function HowItWorks() {
             <li className="flex items-start gap-2.5">
               <LockIcon size={18} className="mt-px flex-none text-primary" />
               <span>
-                <strong className="text-ink">Private until paid:</strong> phone and email unlock once
-                you&apos;ve paid.
+                <strong className="text-ink">Private until paid:</strong> phone and email unlock
+                once you&apos;ve paid.
               </span>
             </li>
           </ul>

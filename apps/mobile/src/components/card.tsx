@@ -1,5 +1,12 @@
 import type { ReactNode } from "react";
-import { Pressable, type PressableProps, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
+import {
+  Pressable,
+  type PressableProps,
+  type StyleProp,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from "react-native";
 
 import { cardShadow, colors, radius } from "@/theme";
 
@@ -11,7 +18,10 @@ type CardBaseProps = {
 };
 
 export type CardProps = CardBaseProps &
-  ({ onPress?: undefined } | (Omit<PressableProps, "children" | "style"> & { onPress: PressableProps["onPress"] }));
+  (
+    | { onPress?: undefined }
+    | (Omit<PressableProps, "children" | "style"> & { onPress: PressableProps["onPress"] })
+  );
 
 /** White surface card with the Seasons hairline border. Pressable when `onPress` is set. */
 export function Card({ children, style, flush = false, ...rest }: CardProps) {

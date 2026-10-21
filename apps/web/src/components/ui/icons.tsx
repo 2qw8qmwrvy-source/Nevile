@@ -1,6 +1,6 @@
 import type { SVGProps } from "react";
 
-export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & {
+export type IconProps = Omit<SVGProps<SVGSVGElement>, "children" | "name"> & {
   /** Pixel size for width and height. Defaults to 20. */
   size?: number;
   /** Accessible name. Without it the icon is decorative and hidden from assistive tech. */
@@ -60,6 +60,7 @@ export function Icon({
 }: IconProps & { name: IconName }) {
   const labelled = typeof title === "string" && title.length > 0;
   return (
+    // biome-ignore lint/a11y/noSvgWithoutTitle: decorative unless `title` is given, then it renders <title>.
     <svg
       width={size}
       height={size}
@@ -82,7 +83,7 @@ export function Icon({
 
 function named(name: IconName) {
   function NamedIcon(props: IconProps) {
-    return <Icon name={name} {...props} />;
+    return <Icon {...props} name={name} />;
   }
   NamedIcon.displayName = `Icon(${name})`;
   return NamedIcon;

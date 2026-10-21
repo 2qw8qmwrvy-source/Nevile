@@ -20,7 +20,14 @@ export type SearchFieldProps = Omit<TextInputProps, "style"> & {
 };
 
 /** Rounded search input with a leading magnifier and an optional clear button. */
-export function SearchField({ label, value, onClear, placeholder, ref, ...rest }: SearchFieldProps) {
+export function SearchField({
+  label,
+  value,
+  onClear,
+  placeholder,
+  ref,
+  ...rest
+}: SearchFieldProps) {
   const showClear = Boolean(onClear) && Boolean(value);
   return (
     <View style={styles.wrap}>
@@ -72,5 +79,10 @@ const styles = StyleSheet.create({
     color: colors.ink,
     paddingVertical: 0,
   },
-  clear: { width: MIN_TOUCH - 8, height: MIN_TOUCH - 8, alignItems: "center", justifyContent: "center" },
+  clear: {
+    width: MIN_TOUCH - 8,
+    height: MIN_TOUCH - 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

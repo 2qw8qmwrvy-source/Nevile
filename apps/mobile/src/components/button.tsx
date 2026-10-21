@@ -21,11 +21,27 @@ export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
   trailing?: ReactNode;
 };
 
-const palette: Record<ButtonVariant, { bg: string; pressed: string; fg: string; border: string }> = {
-  primary: { bg: colors.primary, pressed: colors.primaryPressed, fg: colors.onPrimary, border: colors.primary },
-  secondary: { bg: colors.surface, pressed: colors.ghostPressed, fg: colors.ink, border: colors.border },
-  ghost: { bg: "transparent", pressed: colors.ghostPressed, fg: colors.primary, border: "transparent" },
-};
+const palette: Record<ButtonVariant, { bg: string; pressed: string; fg: string; border: string }> =
+  {
+    primary: {
+      bg: colors.primary,
+      pressed: colors.primaryPressed,
+      fg: colors.onPrimary,
+      border: colors.primary,
+    },
+    secondary: {
+      bg: colors.surface,
+      pressed: colors.ghostPressed,
+      fg: colors.ink,
+      border: colors.border,
+    },
+    ghost: {
+      bg: "transparent",
+      pressed: colors.ghostPressed,
+      fg: colors.primary,
+      border: "transparent",
+    },
+  };
 
 export function Button({
   label,

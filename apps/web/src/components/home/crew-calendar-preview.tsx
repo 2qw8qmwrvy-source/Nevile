@@ -25,7 +25,7 @@ export function CrewCalendarPreview() {
   const { season } = useSeason();
   const { jobs, times } = SEASON_JOBS[season];
   return (
-    <figure className="rounded-card bg-surface p-4.5 text-ink shadow-card">
+    <figure className="m-0 min-w-0 rounded-card bg-surface p-4.5 text-ink shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
         <figcaption className="min-w-0">
           <span className="block text-xs font-semibold tracking-[0.06em] text-muted uppercase">
@@ -50,7 +50,10 @@ export function CrewCalendarPreview() {
             ))}
           </div>
           {CREW.map((member) => (
-            <div key={member.name} className="grid grid-cols-[60px_repeat(5,minmax(0,1fr))] gap-1.5">
+            <div
+              key={member.name}
+              className="grid grid-cols-[60px_repeat(5,minmax(0,1fr))] gap-1.5"
+            >
               <div className="flex min-w-0 items-center gap-1.5">
                 <span
                   className="inline-flex size-5.5 flex-none items-center justify-center rounded-full text-[11px] font-semibold text-white"
@@ -66,7 +69,9 @@ export function CrewCalendarPreview() {
                     <div
                       className={`h-full overflow-hidden rounded-lg border px-1.5 py-1 text-xs leading-tight transition-colors duration-300 ${kindStyle[kind].className}`}
                     >
-                      <span className="block font-semibold whitespace-nowrap">{jobs[kindStyle[kind].index]}</span>
+                      <span className="block font-semibold whitespace-nowrap">
+                        {jobs[kindStyle[kind].index]}
+                      </span>
                       <span className="block text-muted">{times[kindStyle[kind].index]}</span>
                     </div>
                   ) : null}

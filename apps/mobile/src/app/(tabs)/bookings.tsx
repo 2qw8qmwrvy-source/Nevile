@@ -12,7 +12,13 @@ export default function BookingsScreen() {
         icon={icons.booked}
         title="No bookings yet"
         message="When you book a local pro, your upcoming visits, recurring plans and receipts will live here."
-        action={<Button label="Find a pro" icon={icons.search} onPress={() => router.navigate("/search")} />}
+        action={
+          <Button
+            label="Find a pro"
+            icon={icons.search}
+            onPress={() => router.navigate("/search")}
+          />
+        }
       />
     </Screen>
   );

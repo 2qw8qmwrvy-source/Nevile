@@ -5,12 +5,12 @@
 import { color, radius, type Season, seasonColor, space } from "@nevile/tokens";
 import { Platform, type TextStyle } from "react-native";
 
-export { radius, space };
 export type { Season };
+export { radius, space };
 
 export const colors = {
   ...color,
-  /** Placeholder text — darker than `muted` would be on white for 4.5:1 contrast. */
+  /** Placeholder text (from the mockup); still 4.5:1 on white. */
   placeholder: "#5E6862",
   /** Pressed/hover border on cards. */
   borderStrong: "#B8C2B4",

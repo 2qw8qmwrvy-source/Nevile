@@ -29,7 +29,9 @@ const HOW_IT_WORKS = [
 ] as const;
 
 function openSearch(category?: Category) {
-  router.navigate(category ? { pathname: "/search", params: { category: category.slug } } : "/search");
+  router.navigate(
+    category ? { pathname: "/search", params: { category: category.slug } } : "/search",
+  );
 }
 
 export default function HomeScreen() {
@@ -94,7 +96,9 @@ export default function HomeScreen() {
             <View
               key={step.title}
               style={[styles.step, index > 0 && styles.stepDivider]}
-              accessible accessibilityLabel={`Step ${index + 1}: ${step.title}. ${step.body}`}>
+              accessible
+              accessibilityLabel={`Step ${index + 1}: ${step.title}. ${step.body}`}
+            >
               <View style={styles.stepNumber}>
                 <Text variant="bodyStrong" tone="onPrimary">
                   {index + 1}

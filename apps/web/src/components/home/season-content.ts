@@ -157,7 +157,10 @@ export const SEASON_ART: Record<Season, ArtPalette> = {
 };
 
 /** Example crew-calendar labels per season, for the business band illustration. */
-export const SEASON_JOBS: Record<Season, { jobs: [string, string, string]; times: [string, string, string] }> = {
+export const SEASON_JOBS: Record<
+  Season,
+  { jobs: [string, string, string]; times: [string, string, string] }
+> = {
   winter: { jobs: ["Snow", "Salting", "Windows"], times: ["6:00", "7:30", "10:00"] },
   spring: { jobs: ["Cleanup", "Mowing", "Wash"], times: ["8:00", "9:30", "1:00"] },
   summer: { jobs: ["Mowing", "Windows", "Gutters"], times: ["8:00", "10:00", "1:30"] },

@@ -1,7 +1,7 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/cn.ts";
 
-type CardProps = HTMLAttributes<HTMLDivElement> & {
+type CardProps = HTMLAttributes<HTMLElement> & {
   /** Inner padding preset. */
   padding?: "none" | "sm" | "md" | "lg";
   as?: "div" | "section" | "article" | "aside" | "li";

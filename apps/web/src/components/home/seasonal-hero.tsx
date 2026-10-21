@@ -10,7 +10,7 @@ export function SeasonalHero() {
   const { season } = useSeason();
   const copy = SEASON_COPY[season];
   return (
-    <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:gap-10">
+    <div className="grid grid-cols-[minmax(0,1fr)] items-center gap-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:gap-10">
       <div>
         <p className="inline-flex items-center gap-2 text-sm font-semibold tracking-[0.06em] text-season-ink uppercase">
           <Icon name={SEASON_ICONS[season]} size={18} />

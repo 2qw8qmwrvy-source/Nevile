@@ -24,8 +24,10 @@ export const CATEGORY_ICONS: Record<CategorySlug, IconName> = {
 /** The season a category is most associated with, used to tint its tile. */
 export function primarySeasonOf(slug: CategorySlug): Season | undefined {
   const order: readonly Season[] = ["winter", "fall", "spring", "summer"];
-  return order.find((season) => SEASONAL_CATEGORY_SLUGS[season][0] === slug)
-    ?? order.find((season) => SEASONAL_CATEGORY_SLUGS[season].includes(slug));
+  return (
+    order.find((season) => SEASONAL_CATEGORY_SLUGS[season][0] === slug) ??
+    order.find((season) => SEASONAL_CATEGORY_SLUGS[season].includes(slug))
+  );
 }
 
 export function categoryBySlug(slug: string | undefined): Category | undefined {

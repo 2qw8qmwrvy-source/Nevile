@@ -16,7 +16,7 @@ export function SearchCard({ categories }: SearchCardProps) {
     <search aria-label="Find a home service" className="mt-7 block">
       <Form
         action="/search"
-        className="grid items-end gap-3 rounded-card border border-border bg-surface p-4 shadow-card sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.35fr)_minmax(0,1fr)_auto]"
+        className="grid grid-cols-[minmax(0,1fr)] items-end gap-3 rounded-card border border-border bg-surface p-4 shadow-card sm:grid-cols-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.35fr)_minmax(0,1fr)_auto]"
       >
         <div>
           <Label htmlFor="q-service">What do you need?</Label>

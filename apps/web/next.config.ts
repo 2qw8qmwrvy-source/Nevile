@@ -46,7 +46,13 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
   // Internal packages ship TypeScript source.
-  transpilePackages: ["@nevile/api", "@nevile/auth", "@nevile/core", "@nevile/db", "@nevile/tokens"],
+  transpilePackages: [
+    "@nevile/api",
+    "@nevile/auth",
+    "@nevile/core",
+    "@nevile/db",
+    "@nevile/tokens",
+  ],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

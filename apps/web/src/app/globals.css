@@ -102,7 +102,9 @@
     *,
     *::before,
     *::after {
+      /* biome-ignore lint/complexity/noImportantStyles: must beat component transitions. */
       transition-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: must beat component animations. */
       animation-duration: 0.01ms !important;
     }
   }

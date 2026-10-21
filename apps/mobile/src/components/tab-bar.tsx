@@ -11,18 +11,32 @@ export function TabBar({ state, descriptors, emitter, navigateToTab, insets }: B
   return (
     <View
       accessibilityRole="tabbar"
-      style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 10), paddingLeft: insets.left + 8, paddingRight: insets.right + 8 }]}
+      style={[
+        styles.bar,
+        {
+          paddingBottom: Math.max(insets.bottom, 10),
+          paddingLeft: insets.left + 8,
+          paddingRight: insets.right + 8,
+        },
+      ]}
     >
       {state.routes.map((route, index) => {
         const descriptor = descriptors[route.key];
         if (!descriptor) return null;
         const { options } = descriptor;
         const focused = index === state.index;
-        const label = typeof options.tabBarLabel === "string" ? options.tabBarLabel : (options.title ?? route.name);
+        const label =
+          typeof options.tabBarLabel === "string"
+            ? options.tabBarLabel
+            : (options.title ?? route.name);
         const tint = focused ? colors.primary : colors.muted;
 
         const onPress = () => {
-          const event = emitter.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+          const event = emitter.emit({
+            type: "tabPress",
+            target: route.key,
+            canPreventDefault: true,
+          });
           if (!focused && !event.defaultPrevented) navigateToTab(route.key);
         };
         const onLongPress = () => {
@@ -34,7 +48,9 @@ export function TabBar({ state, descriptors, emitter, navigateToTab, insets }: B
             key={route.key}
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
-            accessibilityLabel={options.tabBarAccessibilityLabel ?? `${label}, tab, ${index + 1} of ${count}`}
+            accessibilityLabel={
+              options.tabBarAccessibilityLabel ?? `${label}, tab, ${index + 1} of ${count}`
+            }
             testID={options.tabBarButtonTestID}
             onPress={onPress}
             onLongPress={onLongPress}
@@ -66,7 +82,20 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingTop: 6,
   },
-  item: { flex: 1, minWidth: 0, minHeight: 56, alignItems: "center", justifyContent: "center", gap: 3 },
-  pill: { width: 52, height: 30, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  item: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+  },
+  pill: {
+    width: 52,
+    height: 30,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   pillActive: { backgroundColor: colors.tabPill },
 });

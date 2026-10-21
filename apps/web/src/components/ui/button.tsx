@@ -32,7 +32,8 @@ const base =
 
 const variants: Record<ButtonVariant, string> = {
   primary: "bg-primary text-on-primary hover:bg-primary-hover hover:text-on-primary",
-  secondary: "bg-surface text-ink border border-field hover:border-primary hover:text-primary-hover",
+  secondary:
+    "bg-surface text-ink border border-field hover:border-primary hover:text-primary-hover",
   ghost: "bg-transparent text-ink hover:bg-hover hover:text-ink",
   inverse: "bg-surface text-primary hover:bg-primary-soft hover:text-primary-hover",
 };
@@ -66,7 +67,11 @@ export function Button(props: ButtonProps) {
   if (props.href !== undefined) {
     const { variant, size, shape, block, className, children, href, ...rest } = props;
     return (
-      <Link href={href} className={buttonClasses({ variant, size, shape, block, className })} {...rest}>
+      <Link
+        href={href}
+        className={buttonClasses({ variant, size, shape, block, className })}
+        {...rest}
+      >
         {children}
       </Link>
     );

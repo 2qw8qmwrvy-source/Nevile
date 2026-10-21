@@ -26,7 +26,9 @@ export function Chip({ label, selected = false, icon, accessibilityLabel, ...res
       ]}
       {...rest}
     >
-      {icon ? <Icon name={icon} size={16} color={selected ? colors.onPrimary : colors.primary} /> : null}
+      {icon ? (
+        <Icon name={icon} size={16} color={selected ? colors.onPrimary : colors.primary} />
+      ) : null}
       <Text variant="bodyStrong" style={[styles.label, { color: fg }]} numberOfLines={1}>
         {label}
       </Text>

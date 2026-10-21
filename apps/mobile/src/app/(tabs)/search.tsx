@@ -55,7 +55,9 @@ export default function SearchScreen() {
             label={category.name}
             icon={CATEGORY_ICONS[category.slug]}
             selected={selected?.slug === category.slug}
-            onPress={() => selectCategory(selected?.slug === category.slug ? undefined : category.slug)}
+            onPress={() =>
+              selectCategory(selected?.slug === category.slug ? undefined : category.slug)
+            }
           />
         ))}
       </ScrollView>
@@ -92,7 +94,13 @@ export default function SearchScreen() {
           icon={CATEGORY_ICONS[selected.slug]}
           title={`No ${selected.name.toLowerCase()} pros yet`}
           message="Businesses near you will show up here as they join Nevile. Try another category in the meantime."
-          action={<Button label="Clear filter" variant="secondary" onPress={() => selectCategory(undefined)} />}
+          action={
+            <Button
+              label="Clear filter"
+              variant="secondary"
+              onPress={() => selectCategory(undefined)}
+            />
+          }
         />
       ) : trimmed ? (
         <EmptyState

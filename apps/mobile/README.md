@@ -1,56 +1,36 @@
-# Welcome to your Expo app 👋
+# Nevile mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Expo (SDK 58) iOS and Android app for Nevile, using Expo Router and the "A · Seasons"
+design (SPEC.md §13). Read `AGENTS.md` before touching Expo APIs — they change every SDK.
 
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run
 
 ```bash
-npm run reset-project
+pnpm --filter @nevile/mobile start      # dev server (press i / a for a simulator)
+pnpm --filter @nevile/mobile typecheck
+npx expo export --platform ios          # bundle smoke test (run inside apps/mobile)
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+## Layout
 
-### Other setup steps
+| Path | Purpose |
+|---|---|
+| `src/app/_layout.tsx` | Root stack + navigation theme. |
+| `src/app/(tabs)/` | Bottom tabs: Home, Search, Bookings, Inbox, Account. |
+| `src/app/(auth)/` | Reserved for the sign-in flow. |
+| `src/screens/` | Route-independent screens that take props (e.g. `AccountScreen` receives the session). |
+| `src/components/` | Shared UI: `Text`, `Button`, `Card`, `Badge`, `Chip`, `Screen`, `EmptyState`, `ListRow`, `SearchField`, `TabBar`, seasonal hero. |
+| `src/lib/` | App helpers (category icons, season/greeting). `src/lib/auth*` is reserved for auth. |
+| `src/theme/` | Seasons palette and type scale built on `@nevile/tokens`. |
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Workspace packages (`@nevile/core`, `@nevile/tokens`) are imported as TypeScript source;
+Expo's Metro config resolves them in the monorepo without a custom `metro.config.js`.
 
-## Learn more
+## Design notes
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Light-only for now (`userInterfaceStyle: "light"`); the Seasons palette has no dark variant yet.
+- Fonts fall back to the system font. Bricolage Grotesque (display) and Figtree (body) need
+  `@expo-google-fonts/bricolage-grotesque` and `@expo-google-fonts/figtree`; once added, set
+  them in `src/theme/index.ts` (`fontFamily`).
+- Icons use `expo-symbols`: SF Symbols on iOS, Material Symbols on Android/web.
+- Touch targets are at least 44pt; interactive elements carry accessibility roles and labels.

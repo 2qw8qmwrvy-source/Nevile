@@ -18,7 +18,13 @@ const toneColor: Record<TextTone, string> = {
 };
 
 /** Text with Seasons typography. Display/title variants are announced as headers. */
-export function Text({ variant = "body", tone = "ink", style, accessibilityRole, ...rest }: TextProps) {
+export function Text({
+  variant = "body",
+  tone = "ink",
+  style,
+  accessibilityRole,
+  ...rest
+}: TextProps) {
   const isHeading = variant === "display" || variant === "title" || variant === "heading";
   return (
     <RNText

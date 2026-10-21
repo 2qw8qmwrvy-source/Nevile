@@ -1,4 +1,4 @@
-import { color, radius, type Season, SEASONS, seasonColor } from "@nevile/tokens";
+import { color, radius, SEASONS, type Season, seasonColor } from "@nevile/tokens";
 import type { CSSProperties } from "react";
 
 /**

@@ -9,7 +9,10 @@ export const WHEN_OPTIONS = [
 
 export type WhenValue = (typeof WHEN_OPTIONS)[number]["value"];
 
-export const WHEN_VALUES = WHEN_OPTIONS.map((option) => option.value) as [WhenValue, ...WhenValue[]];
+export const WHEN_VALUES = WHEN_OPTIONS.map((option) => option.value) as [
+  WhenValue,
+  ...WhenValue[],
+];
 
 export const ADDRESS_MAX_LENGTH = 200;
 

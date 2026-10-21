@@ -21,7 +21,10 @@ const control =
 export function Label({ className, children, ...rest }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     // biome-ignore lint/a11y/noLabelWithoutControl: callers pass htmlFor via rest props.
-    <label className={cn("mb-1.5 ml-0.5 block text-[13px] font-semibold text-ink", className)} {...rest}>
+    <label
+      className={cn("mb-1.5 ml-0.5 block text-[13px] font-semibold text-ink", className)}
+      {...rest}
+    >
       {children}
     </label>
   );
@@ -128,7 +131,10 @@ export function Field({ label, children, hint, error, id, className }: FieldProp
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} className="mt-1.5 ml-0.5 flex items-start gap-1.5 text-sm font-medium text-danger">
+        <p
+          id={errorId}
+          className="mt-1.5 ml-0.5 flex items-start gap-1.5 text-sm font-medium text-danger"
+        >
           <Icon name="warning" size={16} className="mt-0.5 flex-none" />
           <span>{error}</span>
         </p>

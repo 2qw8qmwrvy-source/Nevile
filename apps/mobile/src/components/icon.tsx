@@ -6,7 +6,10 @@ type SymbolName = ComponentProps<typeof SymbolView>["name"];
 type SymbolPair = Extract<SymbolName, object>;
 
 /** A platform icon: SF Symbol on iOS, Material Symbol on Android and web. */
-export type IconName = { ios: NonNullable<SymbolPair["ios"]>; android: NonNullable<SymbolPair["android"]> };
+export type IconName = {
+  ios: NonNullable<SymbolPair["ios"]>;
+  android: NonNullable<SymbolPair["android"]>;
+};
 
 export type IconProps = {
   name: IconName;

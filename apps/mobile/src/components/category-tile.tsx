@@ -44,6 +44,12 @@ export function CategoryTile({ category, inSeason = false, season, onPress }: Ca
 const styles = StyleSheet.create({
   tile: { flex: 1, minHeight: 112, justifyContent: "space-between", gap: 12 },
   top: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 4 },
-  iconTile: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  iconTile: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   name: { lineHeight: 20 },
 });

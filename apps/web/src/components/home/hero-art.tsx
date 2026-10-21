@@ -47,7 +47,10 @@ export function HeroArt({ art }: { art: ArtPalette }) {
       </g>
       <g stroke="#6B4E3D" strokeLinecap="round" fill="none">
         <path d="M472 300V196" strokeWidth="9" />
-        <path d="M472 238L448 214M472 224L494 200M472 208L460 178M472 208L486 174" strokeWidth="4" />
+        <path
+          d="M472 238L448 214M472 224L494 200M472 208L460 178M472 208L486 174"
+          strokeWidth="4"
+        />
       </g>
       <g opacity={art.canopyOp}>
         <circle cx="444" cy="194" r="28" fill={art.canopy2} />
@@ -74,7 +77,11 @@ export function HeroArt({ art }: { art: ArtPalette }) {
       <rect x="146" y="195" width="188" height="5" rx="2.5" fill="#8C968F" />
       <rect x="172" y="214" width="38" height="30" rx="3" fill={art.window} />
       <rect x="270" y="214" width="38" height="30" rx="3" fill={art.window} />
-      <path d="M191 214V244M172 229H210M289 214V244M270 229H308" stroke="#FBF8F1" strokeWidth="2.5" />
+      <path
+        d="M191 214V244M172 229H210M289 214V244M270 229H308"
+        stroke="#FBF8F1"
+        strokeWidth="2.5"
+      />
       <rect x="168" y="244" width="46" height="4" rx="2" fill="#CFC8BA" />
       <rect x="266" y="244" width="46" height="4" rx="2" fill="#CFC8BA" />
       <rect x="224" y="222" width="32" height="52" rx="4" fill="#1E5B43" />

@@ -21,7 +21,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={navigationTheme}>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}>
+      <Stack
+        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}
+      >
         <Stack.Screen name="(tabs)" />
       </Stack>
     </ThemeProvider>

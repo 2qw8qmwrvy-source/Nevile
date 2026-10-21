@@ -93,7 +93,12 @@ export function MobileMenu() {
             </Link>
           ))}
           <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border pt-3">
-            <Button href={authRoutes.signIn} variant="secondary" block onClick={() => setOpen(false)}>
+            <Button
+              href={authRoutes.signIn}
+              variant="secondary"
+              block
+              onClick={() => setOpen(false)}
+            >
               Sign in
             </Button>
             <Button href={authRoutes.signUp} block onClick={() => setOpen(false)}>

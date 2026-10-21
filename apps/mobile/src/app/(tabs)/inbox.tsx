@@ -16,7 +16,11 @@ export default function InboxScreen() {
         title="No messages yet"
         message="Chat opens as soon as you send a request. Phone numbers and emails are shared once a booking is paid."
         action={
-          <Button label="Browse services" variant="secondary" onPress={() => router.navigate("/search")} />
+          <Button
+            label="Browse services"
+            variant="secondary"
+            onPress={() => router.navigate("/search")}
+          />
         }
       />
     </Screen>

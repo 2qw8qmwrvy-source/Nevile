@@ -42,7 +42,11 @@ export function SeasonHero({ season, featured, onSelectCategory }: SeasonHeroPro
           accessibilityLabel={`Popular in ${copy.label.toLowerCase()}`}
         >
           {featured.map((category) => (
-            <Chip key={category.slug} label={category.name} onPress={() => onSelectCategory(category)} />
+            <Chip
+              key={category.slug}
+              label={category.name}
+              onPress={() => onSelectCategory(category)}
+            />
           ))}
         </ScrollView>
         {lead ? (

@@ -30,7 +30,9 @@ export function Badge({
       accessible
       accessibilityLabel={label}
     >
-      {icon ? <Icon name={icon} size={size === "md" ? 16 : 13} color={iconColor ?? textColor} /> : null}
+      {icon ? (
+        <Icon name={icon} size={size === "md" ? 16 : 13} color={iconColor ?? textColor} />
+      ) : null}
       <Text variant="caption" style={{ color: textColor, fontSize: size === "md" ? 12.5 : 12 }}>
         {label}
       </Text>

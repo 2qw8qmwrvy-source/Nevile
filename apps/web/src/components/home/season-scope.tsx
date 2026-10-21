@@ -61,7 +61,9 @@ export function SeasonScope({
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--season-leaf", seasonLeaf[season]);
-    return () => root.style.removeProperty("--season-leaf");
+    return () => {
+      root.style.removeProperty("--season-leaf");
+    };
   }, [season]);
 
   return (

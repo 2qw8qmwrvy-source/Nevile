@@ -7,7 +7,14 @@ type LogoMarkProps = { size?: number; className?: string };
 /** House mark with a leaf. The leaf follows the current season when inside a season scope. */
 export function LogoMark({ size = 34, className }: LogoMarkProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 34 34" aria-hidden="true" focusable="false" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 34 34"
+      aria-hidden="true"
+      focusable="false"
+      className={className}
+    >
       <rect width="34" height="34" rx="11" fill={color.primary} />
       <path
         d="M9 17.5 17 10.5l8 7"
