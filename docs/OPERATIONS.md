@@ -38,6 +38,11 @@ the logs names the variable.
 | `SENTRY_DSN` | leave empty | optional | Server-side error reporting (below). |
 | `NEXT_PUBLIC_SENTRY_DSN` | leave empty | optional | Browser error reporting. Built into the site: rebuild after changing it. |
 | `NEVILE_NEIGHBOURS_ENABLED` | optional | **off** | Community program switch (below). |
+| `MEDIA_STORAGE` | `local` (default) | `s3` (default) | Where business photos and logos are stored (below). `local` is refused in production. |
+| `MEDIA_LOCAL_DIR` | optional | never | Folder for `local` media; defaults to `.media` in the web app's folder. |
+| `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | leave empty | **required** | The media bucket and a key that may only read, write and delete in it. |
+| `S3_ENDPOINT`, `S3_REGION` | leave empty | for R2 | Cloudflare R2: `https://<account-id>.r2.cloudflarestorage.com` and `auto`. Leave empty for AWS S3 and set the region. |
+| `MEDIA_PUBLIC_BASE_URL` | leave empty | recommended | The bucket's public custom domain (e.g. `https://media.<your-domain>`). Without it, photos are served through the website. Added to the page security policy automatically. |
 | `EXPO_PUBLIC_API_URL` | `apps/mobile/.env.local` | app build settings | The website's origin for the mobile app. Release builds must use the production `https://` origin. |
 
 Until real email and SMS providers are connected in `@nevile/auth`, sign-in does not work
@@ -97,6 +102,45 @@ Schema changes:
 - Before a risky migration, take a manual snapshot and note the time, so a point-in-time
   restore target is known.
 - `pnpm db:seed` (service categories) is safe to run again after each deploy.
+
+## Business photos (media storage)
+
+Logos and work photos (SPEC §18) are re-encoded on upload (WebP, metadata and location
+removed), then stored under random names like `businesses/<id>/photos/<uuid>.webp`. Files
+never change once written, so they can be cached for a year.
+
+Setting up Cloudflare R2 (AWS S3 works the same way):
+
+1. Create a bucket per environment (e.g. `nevile-media-staging`, `nevile-media-prod`).
+2. Create an API token limited to that bucket with **Object Read & Write**. Put its keys
+   in `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`, the bucket name in `S3_BUCKET`, the
+   account endpoint in `S3_ENDPOINT` and `auto` in `S3_REGION`.
+3. Recommended: connect a custom domain to the bucket for public reads (e.g.
+   `media.<your-domain>`) and set `MEDIA_PUBLIC_BASE_URL` to it. Keep bucket listing off.
+4. Redeploy, upload a photo on staging, and check it shows on the business's public page.
+
+Deleting a photo or replacing a logo deletes the file too. A failed delete only leaves an
+unused file behind (it is logged as "Could not delete stored media").
+
+## Maps and postal code areas
+
+- Maps use OpenStreetMap data styled by **OpenFreeMap** (`tiles.openfreemap.org`), which
+  needs no key or account. If it is ever unavailable, pages still work: the map shows a
+  short note and everything is also listed. To switch providers, change `MAP_STYLE_URL`
+  (`apps/web/src/components/map/load-maplibre.ts`) and `MAP_TILES_ORIGIN`
+  (`apps/web/src/lib/csp.ts`) together.
+- **Before launch, replace the starter postal areas.** `pnpm db:seed` adds an approximate
+  list of Nova Scotia postal code areas so search works in development. For production,
+  load official centres from Statistics Canada's Forward Sortation Area boundary file
+  (Open Government Licence – Canada):
+  1. Download the 2021 Census FSA boundary file and compute each Nova Scotia FSA's centre
+     (any GIS tool, e.g. QGIS "Centroids" or `ogr2ogr`), keeping the place name.
+  2. Save a CSV with the header `code,place_name,lat,lng` (optionally `province`).
+  3. Run `DATABASE_URL=… pnpm db:import-postal-areas /absolute/path/areas.csv
+     --source="Statistics Canada FSA boundary file 2021"`. Imported rows replace starter
+     rows and are no longer marked approximate; re-running the seed never overwrites them.
+  4. Check: `SELECT count(*) FROM postal_areas WHERE approximate;` should be 0 for areas
+     you imported.
 
 ## Nevile Neighbours switch
 

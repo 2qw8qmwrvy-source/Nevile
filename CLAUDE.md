@@ -15,6 +15,7 @@ pnpm + Turborepo monorepo, TypeScript 6, ESM everywhere.
 | `packages/db` | `@nevile/db` | Drizzle schema, migrations (`packages/db/drizzle`), client, seed. |
 | `packages/auth` | `@nevile/auth` | Better Auth server config (`.`) and client helpers (`./client`). |
 | `packages/api` | `@nevile/api` | tRPC router shared by web and mobile. |
+| `packages/storage` | `@nevile/storage` | Media storage (local / S3-compatible) and image re-encoding (sharp). |
 | `apps/web` | `@nevile/web` | Next.js 16 website; hosts `/api/auth/*` and `/api/trpc/*`. |
 | `apps/mobile` | `@nevile/mobile` | Expo (React Native) iOS/Android app. |
 
@@ -48,7 +49,7 @@ pnpm lint             # biome
 pnpm format           # biome autofix
 pnpm db:generate      # drizzle-kit generate migrations from schema
 pnpm db:migrate       # apply migrations to DATABASE_URL
-pnpm db:seed          # upsert service categories into DATABASE_URL
+pnpm db:seed          # upsert service categories and starter postal areas into DATABASE_URL
 pnpm --filter @nevile/web dev
 pnpm --filter @nevile/mobile start
 ```

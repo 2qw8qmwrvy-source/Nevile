@@ -82,7 +82,7 @@ EXPO_PUBLIC_API_URL=http://localhost:3000
 ```bash
 pnpm install
 pnpm db:migrate   # applies packages/db/drizzle to DATABASE_URL
-pnpm db:seed      # upserts the service categories (safe to re-run)
+pnpm db:seed      # service categories and starter postal areas (safe to re-run)
 ```
 
 Always apply the schema with `db:migrate`, not `drizzle-kit push`: the custom migrations
@@ -126,7 +126,8 @@ Run from the repository root.
 | `pnpm format` | Biome autofix (formatting, import order, safe fixes). |
 | `pnpm db:generate` | Generate a new SQL migration from the Drizzle schema. |
 | `pnpm db:migrate` | Apply migrations to `DATABASE_URL`. |
-| `pnpm db:seed` | Seed reference data (service categories) into `DATABASE_URL`. |
+| `pnpm db:seed` | Seed reference data (service categories, starter postal code areas) into `DATABASE_URL`. Safe to re-run. |
+| `pnpm db:import-postal-areas <file.csv>` | Load official postal code area centres (Statistics Canada) into `DATABASE_URL`; see [OPERATIONS.md](docs/OPERATIONS.md#maps-and-postal-code-areas). |
 | `pnpm test:e2e` | Playwright browser tests (desktop and phone sizes, with axe accessibility checks). Starts the website in development mode on port 3100 against a fresh `nevile_e2e` database (created and reset automatically; set `E2E_DATABASE_URL` to use another `*_e2e` database). Run `pnpm exec playwright install chromium` once first, or point `PLAYWRIGHT_CHROMIUM_EXECUTABLE` at an installed Chromium. |
 | `pnpm --filter @nevile/web start` | Serve the production build. |
 | `pnpm --filter @nevile/mobile ios` / `android` | Start Expo and open a simulator/emulator. |
@@ -136,6 +137,10 @@ Mobile bundle smoke test (no simulator needed):
 ```bash
 cd apps/mobile && npx expo export --platform ios --output-dir /tmp/nevile-export
 ```
+
+If pages keep reloading by themselves in development (or browser tests time out while
+pages flicker), stop the dev server and delete `apps/web/.next`: a stale Next.js dev cache
+can cause a reload loop.
 
 If mobile type-checking complains about routes after you add a screen, run
 `pnpm --filter @nevile/mobile start` once: Expo regenerates the typed-routes file
@@ -153,6 +158,7 @@ packages/
   db/         @nevile/db      Drizzle schema, migrations (drizzle/), client, seed, test helpers
   auth/       @nevile/auth    Better Auth server config (.) and client helpers (./client)
   api/        @nevile/api     tRPC router, context and procedures shared by web and mobile
+  storage/    @nevile/storage Photo storage (local folder or S3/R2) and safe image re-encoding
   tokens/     @nevile/tokens  Seasons design tokens shared by web and mobile
 SPEC.md       Product spec (source of truth)
 CLAUDE.md     Contributor guide and conventions

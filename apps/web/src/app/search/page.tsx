@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button.tsx";
 import { Container } from "@/components/ui/container.tsx";
 import { ArrowRightIcon, categoryIconName, Icon, InfoIcon } from "@/components/ui/icons.tsx";
-import { getSessionOrNull } from "@/lib/auth.ts";
+import { getSessionOrNull, hasSessionCookie } from "@/lib/auth.ts";
 import { parseSearchParams, type SearchParams, searchHref } from "@/lib/search-options.ts";
 import { getServerCaller } from "@/lib/trpc-server.ts";
 import { SearchBar } from "./search-bar.tsx";
@@ -63,7 +63,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   // Signed-in customers who saved a postal code start from it (SPEC §16).
   let fromAccount = false;
-  if (!params.postal && !params.near && (await getSessionOrNull())) {
+  if (!params.postal && !params.near && (await hasSessionCookie()) && (await getSessionOrNull())) {
     const saved = (await caller.me.get().catch(() => null))?.onboarding.postalCode;
     if (saved) {
       params = { ...params, postal: saved };
