@@ -39,6 +39,7 @@ export type NewService = InferInsertModel<typeof s.services>;
 
 export type AvailabilityRule = InferSelectModel<typeof s.availabilityRules>;
 export type NewAvailabilityRule = InferInsertModel<typeof s.availabilityRules>;
+export type ArrivalWindowRow = InferSelectModel<typeof s.arrivalWindows>;
 export type TimeOff = InferSelectModel<typeof s.timeOff>;
 export type NewTimeOff = InferInsertModel<typeof s.timeOff>;
 
@@ -53,6 +54,8 @@ export type RecurringSeries = InferSelectModel<typeof s.recurringSeries>;
 export type NewRecurringSeries = InferInsertModel<typeof s.recurringSeries>;
 export type SnowContract = InferSelectModel<typeof s.snowContracts>;
 export type NewSnowContract = InferInsertModel<typeof s.snowContracts>;
+export type BookingCheckout = InferSelectModel<typeof s.bookingCheckouts>;
+export type NewBookingCheckout = InferInsertModel<typeof s.bookingCheckouts>;
 export type Visit = InferSelectModel<typeof s.visits>;
 export type NewVisit = InferInsertModel<typeof s.visits>;
 export type VisitPhoto = InferSelectModel<typeof s.visitPhotos>;

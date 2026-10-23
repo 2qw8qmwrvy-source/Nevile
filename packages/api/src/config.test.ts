@@ -4,12 +4,16 @@ import { DEFAULT_API_CONFIG, parseBooleanEnv, readApiConfig } from "./config.ts"
 describe("api config", () => {
   it("keeps Nevile Neighbours off unless switched on", () => {
     expect(DEFAULT_API_CONFIG.neighboursEnabled).toBe(false);
-    expect(readApiConfig({})).toEqual({ neighboursEnabled: false });
-    expect(readApiConfig({ NEVILE_NEIGHBOURS_ENABLED: "" })).toEqual({ neighboursEnabled: false });
-    expect(readApiConfig({ NEVILE_NEIGHBOURS_ENABLED: " TRUE " })).toEqual({
+    expect(readApiConfig({})).toMatchObject({ neighboursEnabled: false });
+    expect(readApiConfig({ NEVILE_NEIGHBOURS_ENABLED: "" })).toMatchObject({
+      neighboursEnabled: false,
+    });
+    expect(readApiConfig({ NEVILE_NEIGHBOURS_ENABLED: " TRUE " })).toMatchObject({
       neighboursEnabled: true,
     });
-    expect(readApiConfig({ NEVILE_NEIGHBOURS_ENABLED: "0" })).toEqual({ neighboursEnabled: false });
+    expect(readApiConfig({ NEVILE_NEIGHBOURS_ENABLED: "0" })).toMatchObject({
+      neighboursEnabled: false,
+    });
   });
 
   it("refuses values that are not clearly true or false", () => {
@@ -19,5 +23,15 @@ describe("api config", () => {
     expect(parseBooleanEnv("X", "on", false)).toBe(true);
     expect(parseBooleanEnv("X", "no", true)).toBe(false);
     expect(parseBooleanEnv("X", undefined, true)).toBe(true);
+  });
+
+  it("reads the site URL for links in emails", () => {
+    expect(readApiConfig({})).toMatchObject({ siteUrl: "http://localhost:3000", opsEmail: null });
+    expect(
+      readApiConfig({
+        NEXT_PUBLIC_SITE_URL: "https://nevile.ca/",
+        NEVILE_OPS_EMAIL: "ops@nevile.ca",
+      }),
+    ).toMatchObject({ siteUrl: "https://nevile.ca", opsEmail: "ops@nevile.ca" });
   });
 });

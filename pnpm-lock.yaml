@@ -235,6 +235,9 @@ importers:
       '@nevile/db':
         specifier: workspace:*
         version: link:../db
+      '@nevile/payments':
+        specifier: workspace:*
+        version: link:../payments
       '@nevile/storage':
         specifier: workspace:*
         version: link:../storage

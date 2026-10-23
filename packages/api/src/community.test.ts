@@ -12,14 +12,14 @@ import {
   services,
 } from "@nevile/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ApiConfig } from "./config.ts";
+import { type ApiConfig, DEFAULT_API_CONFIG } from "./config.ts";
 import { createCaller } from "./root.ts";
 import { createHarness, type Harness, trpcError } from "./test/harness.ts";
 import { API_ERROR_REASONS, errorReasonOf } from "./trpc.ts";
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
-const ON: ApiConfig = { neighboursEnabled: true };
-const OFF: ApiConfig = { neighboursEnabled: false };
+const ON: ApiConfig = { ...DEFAULT_API_CONFIG, neighboursEnabled: true };
+const OFF: ApiConfig = { ...DEFAULT_API_CONFIG, neighboursEnabled: false };
 
 const referral = {
   homeownerFirstName: "Margaret",

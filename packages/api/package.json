@@ -14,6 +14,7 @@
     "@nevile/auth": "workspace:*",
     "@nevile/core": "workspace:*",
     "@nevile/db": "workspace:*",
+    "@nevile/payments": "workspace:*",
     "@nevile/storage": "workspace:*",
     "@trpc/server": "11.19.0",
     "superjson": "2.2.6",

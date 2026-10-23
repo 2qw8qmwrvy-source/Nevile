@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { type Auth, createAuth, type EmailMessage, type SmsMessage } from "@nevile/auth";
 import { createDb, type Database } from "@nevile/db";
 import { seedCategories, seedPostalAreas } from "@nevile/db/seed";
+import { FakePaymentProvider } from "@nevile/payments";
 import { createLocalStorage } from "@nevile/storage";
 import { TRPCError } from "@trpc/server";
 import { type ApiConfig, DEFAULT_API_CONFIG } from "../config.ts";
@@ -48,6 +49,16 @@ export async function createHarness(baseUrl: string) {
   const storage = createLocalStorage(mediaDir);
   const emails: EmailMessage[] = [];
   const sms: SmsMessage[] = [];
+  const payments = new FakePaymentProvider({ siteUrl: BASE_URL });
+  const email = { send: async (message: EmailMessage) => void emails.push(message) };
+  // Tests move time with `clock.set(...)`; null means the real time.
+  let fixedNow: Date | null = null;
+  const clock = {
+    set: (at: Date | null) => {
+      fixedNow = at;
+    },
+    now: () => fixedNow ?? new Date(),
+  };
   const auth: Auth = createAuth({
     db,
     secret: "api-test-secret-api-test-secret-0123456",
@@ -58,7 +69,16 @@ export async function createHarness(baseUrl: string) {
   });
 
   async function contextFor(cookie: string, config: ApiConfig = DEFAULT_API_CONFIG) {
-    return createContext({ headers: new Headers({ cookie }), db, auth, config, storage });
+    return createContext({
+      headers: new Headers({ cookie }),
+      db,
+      auth,
+      config,
+      storage,
+      payments,
+      email,
+      now: clock.now,
+    });
   }
 
   /** Confirms `email` with the link from its latest verification email. */
@@ -108,7 +128,16 @@ export async function createHarness(baseUrl: string) {
   }
 
   function anonymous(config: ApiConfig = DEFAULT_API_CONFIG): Context {
-    return { db, session: null, headers: new Headers(), config, storage };
+    return {
+      db,
+      session: null,
+      headers: new Headers(),
+      config,
+      storage,
+      payments,
+      email,
+      now: clock.now,
+    };
   }
 
   return {
@@ -116,6 +145,8 @@ export async function createHarness(baseUrl: string) {
     auth,
     storage,
     mediaDir,
+    payments,
+    clock,
     emails,
     sms,
     contextFor,

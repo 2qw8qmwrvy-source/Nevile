@@ -1,7 +1,9 @@
-import { type Auth, auth as defaultAuth, type Session } from "@nevile/auth";
+import { type Auth, auth as defaultAuth, type EmailSender, type Session } from "@nevile/auth";
 import { type Database, db as defaultDb } from "@nevile/db";
+import { lazyPaymentProvider, type PaymentProvider } from "@nevile/payments";
 import { lazyStorage, type MediaStorage } from "@nevile/storage";
 import { type ApiConfig, getApiConfig } from "./config.ts";
+import { defaultEmailSender } from "./notify.ts";
 
 export interface Context {
   db: Database;
@@ -13,6 +15,12 @@ export interface Context {
   config: ApiConfig;
   /** Business photos and logos (SPEC §18). */
   storage: MediaStorage;
+  /** Card payments, refunds and payouts (SPEC §19). */
+  payments: PaymentProvider;
+  /** Booking notifications. Sends never block or undo a booking change. */
+  email: EmailSender;
+  /** The current time; tests move it. */
+  now: () => Date;
 }
 
 export interface CreateContextOptions {
@@ -30,6 +38,10 @@ export interface CreateContextOptions {
   config?: ApiConfig;
   /** Defaults to the storage configured by MEDIA_STORAGE (`@nevile/storage`). */
   storage?: MediaStorage;
+  /** Defaults to the provider configured by PAYMENTS_PROVIDER (`@nevile/payments`). */
+  payments?: PaymentProvider;
+  email?: EmailSender;
+  now?: () => Date;
 }
 
 /** Resolves the session from the request cookies once per request. */
@@ -52,5 +64,8 @@ export async function createContext(options: CreateContextOptions): Promise<Cont
     headers,
     config: options.config ?? getApiConfig(),
     storage: options.storage ?? lazyStorage,
+    payments: options.payments ?? lazyPaymentProvider,
+    email: options.email ?? defaultEmailSender,
+    now: options.now ?? (() => new Date()),
   };
 }

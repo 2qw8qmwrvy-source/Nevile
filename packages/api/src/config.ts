@@ -8,9 +8,17 @@ export interface ApiConfig {
    * owner decides who legally holds donated money, referrals are not accepted.
    */
   readonly neighboursEnabled: boolean;
+  /** Public origin of the website, for links in emails and payment pages. */
+  readonly siteUrl: string;
+  /** Where Nevile staff are told about escalated problems (`NEVILE_OPS_EMAIL`), if set. */
+  readonly opsEmail: string | null;
 }
 
-export const DEFAULT_API_CONFIG: ApiConfig = Object.freeze({ neighboursEnabled: false });
+export const DEFAULT_API_CONFIG: ApiConfig = Object.freeze({
+  neighboursEnabled: false,
+  siteUrl: "http://localhost:3000",
+  opsEmail: null,
+});
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -31,12 +39,17 @@ export function parseBooleanEnv(
 }
 
 export function readApiConfig(env: Env = process.env): ApiConfig {
+  const siteUrl = (env.NEXT_PUBLIC_SITE_URL || env.BETTER_AUTH_URL || DEFAULT_API_CONFIG.siteUrl)
+    .trim()
+    .replace(/\/+$/, "");
   return Object.freeze({
     neighboursEnabled: parseBooleanEnv(
       "NEVILE_NEIGHBOURS_ENABLED",
       env.NEVILE_NEIGHBOURS_ENABLED,
       DEFAULT_API_CONFIG.neighboursEnabled,
     ),
+    siteUrl,
+    opsEmail: env.NEVILE_OPS_EMAIL?.trim() || null,
   });
 }
 

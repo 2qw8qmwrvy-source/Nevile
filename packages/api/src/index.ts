@@ -1,4 +1,7 @@
 export type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
+export { type BookingDeps, completeCheckout } from "./bookings/flows.ts";
+export { type JobsReport, runScheduledJobs } from "./bookings/jobs.ts";
+export { handlePaymentEvent } from "./bookings/payouts.ts";
 export {
   type ApiConfig,
   DEFAULT_API_CONFIG,
@@ -13,6 +16,7 @@ export {
   saveBusinessImage,
   type UploadResult,
 } from "./media.ts";
+export { defaultEmailSender } from "./notify.ts";
 export type {
   MarketingConsentState,
   OnboardingState,

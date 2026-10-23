@@ -23,6 +23,7 @@ import {
 } from "@nevile/db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { addDefaultHours } from "../bookings/schedule.ts";
 import { slugify } from "../slug.ts";
 import { businessMemberProcedure, router, verifiedProcedure } from "../trpc.ts";
 
@@ -121,9 +122,12 @@ export const businessRouter = router({
         province: input.province,
         timezone: PROVINCES[input.province].timeZone,
       });
-      await tx
+      const [owner] = await tx
         .insert(businessMembers)
-        .values({ businessId: business.id, userId: user.id, role: "owner" });
+        .values({ businessId: business.id, userId: user.id, role: "owner" })
+        .returning({ id: businessMembers.id });
+      // The owner starts with default working hours, so the business is bookable (SPEC §19).
+      if (owner) await addDefaultHours(tx, owner.id);
       await tx
         .insert(profiles)
         .values({ userId: user.id, displayName: user.name, activeMode: "business" })
