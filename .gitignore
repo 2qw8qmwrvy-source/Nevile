@@ -14,3 +14,8 @@ apps/mobile/.expo/
 apps/mobile/web-build/
 apps/mobile/ios/
 apps/mobile/android/
+
+# Playwright
+e2e/.outbox/
+playwright-report/
+test-results/

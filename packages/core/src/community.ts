@@ -169,14 +169,16 @@ export const LEDGER_ENTRY_KINDS = ["donation", "fee", "payout", "refund", "adjus
 export type LedgerEntryKind = (typeof LEDGER_ENTRY_KINDS)[number];
 
 /**
- * One append-only fund ledger row. `amountCents` is signed from the fund's point of view:
- * money in is positive (donations), money out is negative (card fees, payouts to pros,
- * donation refunds). A reversal is a row of the same kind with the opposite sign.
+ * One append-only fund ledger row. `amountCents` is signed from the fund's point of view
+ * and each kind has a fixed sign (the database enforces it): donations are positive; card
+ * fees, payouts to pros and donation refunds are negative; adjustments may be either and
+ * need a memo. Nothing is ever edited: a donation is reversed with a `refund` row, and money
+ * coming back from a cancelled referral job with a positive `adjustment` row.
  */
 export type LedgerEntry = { kind: LedgerEntryKind; amountCents: number };
 
 export type LedgerSummary = {
-  /** Donations received (net of reversals). */
+  /** Donations received (refunds are reported separately in `refundedCents`). */
   donatedCents: number;
   /** Card fees deducted from donations, as a positive amount. */
   feesCents: number;

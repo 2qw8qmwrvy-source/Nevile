@@ -72,6 +72,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html
       lang="en-CA"
       data-season={season}
+      // globals.css scrolls smoothly for in-page links; Next skips it during navigations.
+      data-scroll-behavior="smooth"
       className={`${display.variable} ${body.variable}`}
       style={{ ...tokenCssVars(), ...seasonCssVars(season) }}
     >

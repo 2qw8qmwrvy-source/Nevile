@@ -48,6 +48,15 @@ CREATE DATABASE nevile_test OWNER nevile;
 SQL
 ```
 
+Or with Docker (the `nevile` user is a superuser there):
+
+```bash
+docker run --name nevile-db -e POSTGRES_USER=nevile -e POSTGRES_PASSWORD=nevile \
+  -e POSTGRES_DB=nevile_dev -p 5432:5432 -d postgres:16
+docker exec nevile-db createdb -U nevile nevile_test
+# Later, after a restart: docker start nevile-db
+```
+
 ### 2. Configure the environment
 
 ```bash
@@ -77,9 +86,9 @@ pnpm db:seed      # upserts the service categories (safe to re-run)
 ```
 
 Always apply the schema with `db:migrate`, not `drizzle-kit push`: the custom migrations
-`0001` and `0004` add the crew double-booking exclusion constraint, the append-only
-audit-log triggers, the booking crew-member foreign key, and the payment charge-shape and
-refund-cap triggers, which `push` would skip.
+`0001`, `0004` and `0006` add the crew double-booking exclusion constraint, the append-only
+audit-log and community-fund-ledger triggers, the booking crew-member foreign key, and the
+payment charge-shape and refund-cap triggers, which `push` would skip.
 
 ### 4. Run the apps
 
@@ -92,8 +101,12 @@ pnpm --filter @nevile/mobile start # Expo dev server (press i / a, or scan with 
 The mobile app talks to the running website for `/api/auth` and `/api/trpc`, so start the
 web app first.
 
+Nevile launches in Nova Scotia only: sign-up needs a Nova Scotia postal code (it starts
+with **B**, e.g. `B3H 1A1`) and phone sign-in needs a Canadian mobile number (e.g. a `902`
+number).
+
 In development, verification emails and SMS sign-in codes are printed to the web server's
-console instead of being sent. Production refuses to start until real email and SMS
+console under `[dev email]` / `[dev sms]` instead of being sent. Production refuses to start until real email and SMS
 senders are configured in `@nevile/auth`, and until auth rate limiting has a trusted
 client IP source (`BETTER_AUTH_TRUSTED_PROXIES` or `BETTER_AUTH_CLIENT_IP_HEADER`, see
 `.env.example`).
@@ -114,6 +127,7 @@ Run from the repository root.
 | `pnpm db:generate` | Generate a new SQL migration from the Drizzle schema. |
 | `pnpm db:migrate` | Apply migrations to `DATABASE_URL`. |
 | `pnpm db:seed` | Seed reference data (service categories) into `DATABASE_URL`. |
+| `pnpm test:e2e` | Playwright browser tests (desktop and phone sizes, with axe accessibility checks). Starts the website in development mode on port 3100 against a fresh `nevile_e2e` database (created and reset automatically; set `E2E_DATABASE_URL` to use another `*_e2e` database). Run `pnpm exec playwright install chromium` once first, or point `PLAYWRIGHT_CHROMIUM_EXECUTABLE` at an installed Chromium. |
 | `pnpm --filter @nevile/web start` | Serve the production build. |
 | `pnpm --filter @nevile/mobile ios` / `android` | Start Expo and open a simulator/emulator. |
 
