@@ -271,8 +271,8 @@ cleanup; May: lawn-mowing season; August: book fall gutter and leaf cleanup).
 3. Smoother, safer, community (v1.1): Nova Scotia launch rules, onboarding, verification
    gate, motion & performance polish, Nevile Neighbours groundwork, CI, browser tests,
    monitoring, legal & accessibility drafts.
-4. Listings & search → quotes & booking → scheduling → payments (donations plug in here)
-   → ratings → subscription → admin.
+4. Listings & search (v1.2, §18) → quotes & booking → scheduling → payments (donations
+   plug in here) → ratings → subscription → admin.
 
 ## 15. Nevile Neighbours (community program)
 
@@ -328,3 +328,68 @@ separate Nevile account with legal/accounting sign-off). While off, program page
   text version and timestamp recorded).
 - **Accessibility:** WCAG 2.1 AA target, in line with the Nova Scotia Accessibility Act;
   an accessibility statement page with a way to report problems.
+
+## 18. Listings & search (v1.2)
+
+### Business listing
+
+- A business manages its listing from **business mode** on the website (the app links there
+  for now): profile (name, about, logo, up to **8 work photos**), tax registration (GST/HST
+  number), cancellation preset (§5), Instant Book (§4), service area and services.
+- **Services:** category (§3), title, description, pricing (**fixed** price per visit, or
+  **request a quote** with an optional "from $X"), typical duration, and whether it is
+  active. Instant Book applies to fixed-price services only.
+- **Service area:** a pin and a radius from **1 to 100 km**, set on a map (§2). The pin must be
+  in Nova Scotia.
+- **Publishing:** a business appears in search only when it is **published**, and it can only
+  be published when it is ready: verified contact (§1), a name and an "about" of at least
+  40 characters, a service area, and at least one active service. Unpublishing is instant.
+  Suspended businesses never appear.
+- Only the owner and managers can edit a listing; crew can view it.
+
+### Photos
+
+- Logo and work photos are uploaded through the website: JPEG, PNG, WebP or HEIC, up to
+  **10 MB** each. Every image is re-encoded on the server (WebP, at most 1600 px wide; logos
+  512 px square), which **removes all metadata including GPS location**. The original file
+  is never stored.
+- Storage is S3-compatible (e.g. Cloudflare R2) in production and a local folder in
+  development. Photos are public once the listing is published.
+
+### Search
+
+- Customers search by **service category** and **postal code**. Location is the **postal code
+  area** (the first three characters, e.g. `B3H`); the exact address is only needed at
+  booking. "Use my location" (with the browser's permission) gives a precise point instead
+  and is never stored.
+- A business matches when the customer's point is within its radius
+  (great-circle distance).
+- **Ordering — "Best match" (default):** a weighted score of distance (closer is better),
+  rating (a confidence-weighted average, so a few reviews don't dominate) and a **Pro
+  boost**; results that got the boost show the **Pro** badge. Customers can switch to
+  **Closest** or **Top rated**.
+- **Filters:** Instant Book, Verified, Pro, rating 4.5+.
+- Results show name, badges, rating (or "New on Nevile"), the service's price ("$60 / visit"
+  or "Quote · from $45"), approximate distance and the cancellation preset.
+- **Map:** OpenStreetMap data via MapLibre (free, no key). Business pins are shown at an
+  **approximate location** (rounded to about 1 km) so a sole operator's home address is
+  never revealed.
+
+### Postal code areas
+
+- Areas live in the `postal_areas` table (code, place name, centre point). Production data
+  must come from **Statistics Canada's Forward Sortation Area boundary file** (Open
+  Government Licence – Canada), loaded with `pnpm db:import-postal-areas`.
+- Until then the database is seeded with a **starter list of Nova Scotia areas** whose
+  centres are approximate (town and neighbourhood centres) and flagged `approximate`.
+  Replacing them is on the launch checklist (docs/OPERATIONS.md).
+- An unknown area falls back to the nearest known one with the same first two characters,
+  then to all of Nova Scotia (results sorted without distance).
+
+### Public business page
+
+- `/pros/<slug>`: name, badges, about, photos, services with prices, service area (as a
+  description, e.g. "Serves about 25 km around Bedford"), cancellation preset, rating and
+  reviews when they exist. Contact details stay hidden (§7). Booking and quote buttons are
+  shown as "coming soon" until booking ships.
+
