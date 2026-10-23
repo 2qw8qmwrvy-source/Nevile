@@ -355,14 +355,15 @@ separate Nevile account with legal/accounting sign-off). While off, program page
   512 px square), which **removes all metadata including GPS location**. The original file
   is never stored.
 - Storage is S3-compatible (e.g. Cloudflare R2) in production and a local folder in
-  development. Photos are public once the listing is published.
+  development. Photo addresses are random and unguessable; they are only shown publicly
+  once the listing is published.
 
 ### Search
 
 - Customers search by **service category** and **postal code**. Location is the **postal code
   area** (the first three characters, e.g. `B3H`); the exact address is only needed at
-  booking. "Use my location" (with the browser's permission) gives a precise point instead
-  and is never stored.
+  booking. "Use my location" (with the browser's permission) gives a point instead; it is
+  rounded to about 1 km on the device before it is sent, and it is never stored.
 - A business matches when the customer's point is within its radius
   (great-circle distance).
 - **Ordering — "Best match" (default):** a weighted score of distance (closer is better),

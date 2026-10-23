@@ -69,7 +69,7 @@ export default async function ProPage({ params }: ProPageProps) {
         className="rounded-panel bg-primary-soft px-4.5 py-7 sm:rounded-hero sm:px-10 sm:py-9"
       >
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-          <ProAvatar name={profile.name} logoUrl={profile.logoUrl} size="lg" />
+          <ProAvatar name={profile.name} logoUrl={profile.logoUrl} size="lg" tone="surface" />
           <div className="min-w-0">
             <h1
               id="pro-name"

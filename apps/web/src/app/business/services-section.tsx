@@ -124,7 +124,7 @@ export function ServicesSection({ listing, businessId, onUnpublished }: SectionP
                   }}
                 />
               ) : (
-                <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2">
                       <span className="text-[17px] font-semibold">{service.title}</span>
@@ -139,7 +139,7 @@ export function ServicesSection({ listing, businessId, onUnpublished }: SectionP
                     </p>
                   </div>
                   {canEdit ? (
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="-ml-2 flex flex-wrap gap-1.5 sm:ml-0">
                       <Button variant="ghost" size="sm" onClick={() => setEditing(service.id)}>
                         Edit
                       </Button>

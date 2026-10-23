@@ -13,11 +13,19 @@ type ProAvatarProps = {
   name: string;
   logoUrl: string | null;
   size?: "md" | "lg";
+  /** "surface" for avatars on the soft green header, where the default tile would vanish. */
+  tone?: "soft" | "surface";
   className?: string;
 };
 
 /** A business's logo, or its initials on a soft tile when it has none. */
-export function ProAvatar({ name, logoUrl, size = "md", className }: ProAvatarProps) {
+export function ProAvatar({
+  name,
+  logoUrl,
+  size = "md",
+  tone = "soft",
+  className,
+}: ProAvatarProps) {
   const box = size === "lg" ? "size-20 rounded-[22px] text-2xl" : "size-14 rounded-2xl text-lg";
   if (logoUrl) {
     return (
@@ -36,7 +44,8 @@ export function ProAvatar({ name, logoUrl, size = "md", className }: ProAvatarPr
       aria-hidden="true"
       className={cn(
         box,
-        "inline-flex flex-none items-center justify-center bg-primary-soft font-display font-bold text-primary",
+        "inline-flex flex-none items-center justify-center font-display font-bold text-primary",
+        tone === "surface" ? "border border-border bg-surface" : "bg-primary-soft",
         className,
       )}
     >
