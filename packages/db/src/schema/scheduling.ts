@@ -70,9 +70,6 @@ export const arrivalWindows = pgTable(
       "arrival_windows_range",
       sql`${t.startMinute} >= 360 AND ${t.endMinute} <= 1260 AND ${t.endMinute} - ${t.startMinute} BETWEEN 60 AND 360`,
     ),
-    check(
-      "arrival_windows_step",
-      sql`${t.startMinute} % 15 = 0 AND ${t.endMinute} % 15 = 0`,
-    ),
+    check("arrival_windows_step", sql`${t.startMinute} % 15 = 0 AND ${t.endMinute} % 15 = 0`),
   ],
 );

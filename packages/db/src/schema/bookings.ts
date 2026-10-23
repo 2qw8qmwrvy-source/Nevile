@@ -379,9 +379,7 @@ export const bookingCheckouts = pgTable(
     index("booking_checkouts_business_starts_idx")
       .on(t.businessId, t.startsAt)
       .where(sql`${t.status} = 'open'`),
-    index("booking_checkouts_open_expires_idx")
-      .on(t.expiresAt)
-      .where(sql`${t.status} = 'open'`),
+    index("booking_checkouts_open_expires_idx").on(t.expiresAt).where(sql`${t.status} = 'open'`),
     index("booking_checkouts_customer_created_idx").on(t.customerId, t.createdAt),
     check("booking_checkouts_range", sql`${t.endsAt} > ${t.startsAt}`),
     check("booking_checkouts_work_minutes_range", sql`${t.workMinutes} BETWEEN 1 AND 1440`),
