@@ -13,6 +13,7 @@ export * from "./onboarding.ts";
 export * from "./ratings.ts";
 export * from "./recurrence.ts";
 export * from "./region.ts";
+export * from "./scheduling.ts";
 export * from "./schemas.ts";
 export * from "./search.ts";
 export * from "./seasons.ts";

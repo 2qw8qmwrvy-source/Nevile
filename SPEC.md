@@ -271,8 +271,10 @@ cleanup; May: lawn-mowing season; August: book fall gutter and leaf cleanup).
 3. Smoother, safer, community (v1.1): Nova Scotia launch rules, onboarding, verification
    gate, motion & performance polish, Nevile Neighbours groundwork, CI, browser tests,
    monitoring, legal & accessibility drafts.
-4. Listings & search (v1.2, §18) → quotes & booking → scheduling → payments (donations
-   plug in here) → ratings → subscription → admin.
+4. ~~Listings & search (v1.2, §18).~~
+5. One-off booking, crew calendar & payments (v1.3, §19) → quotes & chat, recurring jobs,
+   snow contracts, tips, in-app payment (donations plug in here) → ratings →
+   subscription → admin.
 
 ## 15. Nevile Neighbours (community program)
 
@@ -399,3 +401,90 @@ separate Nevile account with legal/accounting sign-off). While off, program page
   reviews when they exist. Contact details stay hidden (§7). Booking and quote buttons are
   shown as "coming soon" until booking ships.
 
+
+## 19. Booking, crew calendar & payments (v1.3)
+
+First booking slice: **one-off, fixed-price jobs** booked and paid on the **website**. Quotes
+and chat, recurring jobs, snow contracts, tips, before/after photos, in-app card payment,
+push notifications and the admin panel come in later slices. The mobile app lists a
+customer's bookings (confirm, cancel, report a problem) and opens the website to book.
+
+### Arrival windows & working hours
+
+- Customers pick a **day** and an **arrival window**. Default windows (Nova Scotia time):
+  **8–11 am, 11 am–2 pm, 2–5 pm**. A business can set its own: 1 to 6 windows, each 1 to 6
+  hours, on 15-minute marks, between 6 am and 9 pm, not overlapping.
+- Every crew member (the owner included) has **weekly working hours**: one span per
+  weekday, default **Monday–Friday 8 am–5 pm**. Time off blocks those hours.
+- **How soon / how far ahead:** each business sets the earliest (0–14 days ahead; default
+  **tomorrow**; 0 means today, for windows starting at least 2 hours from now) and the
+  latest (7–180 days; default **60 days**).
+
+### Capacity (by time)
+
+- A window holds the **minutes of work** of the crew working then: each member adds the
+  part of the window inside their working hours, minus time off.
+- A booking uses its service's **typical duration**. It takes up to one window's length
+  from its own window; anything longer **spills into the next windows** of that day.
+  A window is offered only if the whole job fits that way.
+- Capacity counts **confirmed jobs** and **checkouts in progress** (held for 30 minutes).
+  Approval requests do not hold time (§4): accepting one re-checks capacity, and a
+  full window can only be declined.
+- Capacity is pooled for the business; the owner or a manager assigns the crew member.
+
+### Booking & paying
+
+1. The customer picks a fixed-price service, a day and window, and the job address (in
+   Nova Scotia). The address's **postal code area** must be inside the service radius,
+   measured from the area's centre (§18), so an address near the edge can be a few km off.
+   Optional notes for the business (up to 500 characters).
+2. They review the price, service fee, HST and total (§7) and the cancellation policy.
+3. They pay on **Stripe's secure checkout page**; card details never reach Nevile.
+   - **Instant Book:** the card is charged and the booking is confirmed.
+   - **Needs approval:** the card is **authorised, not charged**. The business accepts
+     (the card is charged then) or declines (the hold is released) within 24 hours, or
+     before the window starts; otherwise the request expires and the hold is released.
+4. A checkout that isn't paid within **30 minutes** expires and frees the time.
+5. The customer gets a confirmation and receipt by email; the business's owner and
+   managers get an email for every new booking or request.
+
+### Crew & calendar
+
+- Every booking arrives **unassigned**. The owner or a manager assigns a crew member;
+  unassigned jobs are highlighted. Crew members see the jobs assigned to them.
+- The business calendar (website) shows a week by day and window: each job's service,
+  address, customer first name and crew member, plus requests waiting for an answer.
+  Customers only ever see which windows are open.
+- Owners invite crew by email; the invite link (valid 7 days) adds them when they sign in
+  or create an account with that email.
+
+### Completion, cancellation, refunds
+
+- The business marks a job **done** once its window has started. The customer confirms
+  or reports a problem within 48 hours (silence confirms); a problem gives the business
+  3 days to fix it, then it goes to Nevile staff (§6). Until the admin panel exists, staff
+  handle escalations by hand (docs/OPERATIONS.md).
+- Cancellations follow §5, measured from the **start of the arrival window**; customers
+  can't cancel once it has started. Cancelling an approval request releases the hold.
+
+### Payout setup (Stripe Connect)
+
+- A business can take bookings **before** finishing Stripe's payout setup (identity and
+  bank account). Its **first paid booking starts a 7-day clock**; it is reminded by email.
+- If setup isn't finished in 7 days, Nevile **cancels its upcoming bookings with a full
+  refund** (service fee included; counted as business cancellations) and pauses new
+  bookings until setup is done. Money for finished jobs waits until then.
+
+### Payouts
+
+- A job's money is released when it is confirmed complete and paid out in the **Monday
+  batch** (§7): price + HST on the price − the 3% fee, less refunds.
+
+### Payment provider & scheduled jobs
+
+- **Stripe** in production (Checkout, Connect Express accounts, transfers). Development
+  and tests use a built-in **fake provider** with a test checkout page and no real money;
+  production refuses to start without Stripe keys.
+- A protected endpoint, called every 5 minutes by the host's scheduler, runs the timers:
+  expiring checkouts and requests, auto-confirming jobs, escalating disputes, payout-setup
+  reminders and deadlines, and the Monday payouts. Every step can safely run twice.

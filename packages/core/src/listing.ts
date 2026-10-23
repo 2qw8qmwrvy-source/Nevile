@@ -40,7 +40,7 @@ const trimmed = (min: number, max: number, label: string) =>
     .regex(/^[^\p{Cc}]*$/u, { message: `${label} can't contain control characters` });
 
 /** True when the text has control characters other than line breaks and tabs. */
-function hasDisallowedControlCharacters(text: string): boolean {
+export function hasDisallowedControlCharacters(text: string): boolean {
   for (const character of text) {
     const code = character.codePointAt(0) ?? 0;
     const isControl = code < 0x20 || (code >= 0x7f && code <= 0x9f);
