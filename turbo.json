@@ -7,7 +7,15 @@
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"],
       "env": ["NEXT_PUBLIC_*"],
-      "passThroughEnv": ["DATABASE_URL", "BETTER_AUTH_*", "NEVILE_*", "SENTRY_DSN", "APP_VERSION"]
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "BETTER_AUTH_*",
+        "NEVILE_*",
+        "MEDIA_*",
+        "S3_*",
+        "SENTRY_DSN",
+        "APP_VERSION"
+      ]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]
@@ -23,6 +31,8 @@
         "BETTER_AUTH_*",
         "NEXT_PUBLIC_*",
         "NEVILE_*",
+        "MEDIA_*",
+        "S3_*",
         "SENTRY_DSN",
         "APP_VERSION",
         "PORT"

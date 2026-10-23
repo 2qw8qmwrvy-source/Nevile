@@ -19,3 +19,6 @@ apps/mobile/android/
 e2e/.outbox/
 playwright-report/
 test-results/
+
+# Local media uploads (MEDIA_STORAGE=local)
+.media/
