@@ -6,7 +6,6 @@ import { router } from "expo-router";
 import { type ReactNode, type Ref, useEffect, useState } from "react";
 import {
   AccessibilityInfo,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   type StyleProp,
@@ -17,14 +16,18 @@ import {
   type TextStyle,
   View,
 } from "react-native";
+import Animated from "react-native-reanimated";
 
 import { Icon, type IconName, icons } from "@/components/icon.tsx";
+import { PressableScale } from "@/components/pressable-scale.tsx";
 import { Screen } from "@/components/screen.tsx";
 import { Text } from "@/components/text.tsx";
+import { IconButton, TopBar, topBarIcons } from "@/components/top-bar.tsx";
 import { colors, MIN_TOUCH, radius, space, typography } from "@/theme";
+import { enterFade, exitFade } from "@/theme/motion.ts";
 
 export const formIcons = {
-  close: { ios: "xmark", android: "close" },
+  close: topBarIcons.close,
   mail: { ios: "envelope", android: "mail" },
   phone: { ios: "iphone", android: "smartphone" },
   error: { ios: "exclamationmark.circle", android: "error" },
@@ -49,31 +52,17 @@ export function AuthScreen({
   children: ReactNode;
 }) {
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    <Screen
+      title={title}
+      subtitle={subtitle}
+      edges={["top", "bottom", "left", "right"]}
+      avoidKeyboard
+      header={
+        <TopBar trailing={<IconButton icon={topBarIcons.close} label="Close" onPress={closeAuthFlow} />} />
+      }
     >
-      <Screen
-        title={title}
-        subtitle={subtitle}
-        edges={["top", "bottom", "left", "right"]}
-        header={
-          <View style={styles.topBar}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              onPress={closeAuthFlow}
-              hitSlop={4}
-              style={({ pressed }) => [styles.closeButton, pressed && styles.closePressed]}
-            >
-              <Icon name={formIcons.close} size={18} color={colors.ink} />
-            </Pressable>
-          </View>
-        }
-      >
-        {children}
-      </Screen>
-    </KeyboardAvoidingView>
+      {children}
+    </Screen>
   );
 }
 
@@ -209,7 +198,9 @@ export function FormAlert({ tone, message }: { tone: FormAlertTone; message: str
     if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(message);
   }, [message]);
   return (
-    <View
+    <Animated.View
+      entering={enterFade}
+      exiting={exitFade}
       accessible
       accessibilityRole={tone === "error" ? "alert" : "text"}
       accessibilityLiveRegion={tone === "error" ? "assertive" : "polite"}
@@ -217,7 +208,7 @@ export function FormAlert({ tone, message }: { tone: FormAlertTone; message: str
     >
       <Icon name={palette.icon} size={20} color={palette.color} />
       <Text style={styles.alertText}>{message}</Text>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -295,25 +286,52 @@ export function SwitchPrompt({
   );
 }
 
+const checkIcon = { ios: "checkmark", android: "check" } as const satisfies IconName;
+
+/**
+ * Labelled checkbox; the whole row is the 44pt+ touch target. Starts unticked unless the
+ * caller says otherwise (CASL consent must never be pre-ticked).
+ */
+export function Checkbox({
+  checked,
+  onChange,
+  label,
+  description,
+  disabled = false,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  /** Secondary line under the label, e.g. who is asking. */
+  description?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <PressableScale
+      accessibilityRole="checkbox"
+      accessibilityLabel={description ? `${label} ${description}` : label}
+      accessibilityState={{ checked, disabled }}
+      disabled={disabled}
+      pressedScale={0.99}
+      onPress={() => onChange(!checked)}
+      style={({ pressed }) => [styles.checkRow, pressed && styles.checkRowPressed]}
+    >
+      <View style={[styles.box, checked && styles.boxChecked, disabled && styles.boxDisabled]}>
+        {checked ? <Icon name={checkIcon} size={14} color={colors.onPrimary} /> : null}
+      </View>
+      <View style={styles.checkText}>
+        <Text variant="small">{label}</Text>
+        {description ? (
+          <Text variant="small" tone="muted">
+            {description}
+          </Text>
+        ) : null}
+      </View>
+    </PressableScale>
+  );
+}
+
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.ground },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    paddingHorizontal: 12,
-    paddingTop: space.sm,
-  },
-  closeButton: {
-    width: MIN_TOUCH,
-    height: MIN_TOUCH,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  closePressed: { backgroundColor: colors.ghostPressed },
   field: { gap: 6 },
   label: { fontSize: 14 },
   inputWrap: {
@@ -389,4 +407,28 @@ const styles = StyleSheet.create({
   },
   switchAction: { minHeight: MIN_TOUCH, justifyContent: "center" },
   pressedText: { opacity: 0.7 },
+  checkRow: {
+    minHeight: MIN_TOUCH,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingVertical: space.sm,
+    paddingHorizontal: 4,
+    borderRadius: radius.input,
+  },
+  checkRowPressed: { backgroundColor: colors.ghostPressed },
+  box: {
+    width: 24,
+    height: 24,
+    marginTop: 1,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  boxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  boxDisabled: { opacity: 0.6 },
+  checkText: { flex: 1, gap: 2 },
 });

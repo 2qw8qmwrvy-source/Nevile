@@ -1,5 +1,12 @@
 import type { ReactNode } from "react";
-import { ScrollView, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
+import {
+  KeyboardAvoidingView,
+  ScrollView,
+  type StyleProp,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from "react-native";
 import { type Edge, SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, space } from "@/theme";
@@ -16,8 +23,12 @@ export type ScreenProps = {
   /** Safe-area edges to pad; the tab bar already handles the bottom inset. */
   edges?: readonly Edge[];
   contentStyle?: StyleProp<ViewStyle>;
-  /** Rendered above the scroll area, outside it (e.g. a sticky search field). */
+  /** Rendered above the scroll area, outside it (e.g. a top bar or sticky search field). */
   header?: ReactNode;
+  /** Rendered below the scroll area, outside it (e.g. a primary action pinned to the bottom). */
+  footer?: ReactNode;
+  /** Lift the content above the on-screen keyboard (forms). */
+  avoidKeyboard?: boolean;
 };
 
 const DEFAULT_EDGES: readonly Edge[] = ["top", "left", "right"];
@@ -31,6 +42,8 @@ export function Screen({
   edges = DEFAULT_EDGES,
   contentStyle,
   header,
+  footer,
+  avoidKeyboard = false,
 }: ScreenProps) {
   const heading = title ? (
     <View style={styles.heading}>
@@ -43,8 +56,8 @@ export function Screen({
     </View>
   ) : null;
 
-  return (
-    <SafeAreaView edges={edges} style={styles.root}>
+  const body = (
+    <>
       {header}
       {scroll ? (
         <ScrollView
@@ -62,6 +75,21 @@ export function Screen({
           {heading}
           {children}
         </View>
+      )}
+      {footer}
+    </>
+  );
+
+  return (
+    <SafeAreaView edges={edges} style={styles.root}>
+      {avoidKeyboard ? (
+        // "padding" on both platforms: it only pads by the part of the keyboard that
+        // overlaps this view, so it is a no-op wherever the window already resized.
+        <KeyboardAvoidingView behavior="padding" style={styles.root}>
+          {body}
+        </KeyboardAvoidingView>
+      ) : (
+        body
       )}
     </SafeAreaView>
   );

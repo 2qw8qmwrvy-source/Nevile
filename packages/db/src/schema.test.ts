@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { DEFAULT_CATEGORIES } from "@nevile/core";
 import { eq, getTableName, inArray, is, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, type Database } from "./client.ts";
+import { MIGRATIONS_FOLDER } from "./migrate.ts";
 import * as schema from "./schema/index.ts";
 import {
   addresses,
@@ -11,9 +14,15 @@ import {
   bookings,
   businesses,
   businessMembers,
+  communityFundLedger,
+  communityPartnerMembers,
+  communityPartners,
+  communityReferrals,
   disputes,
+  donations,
   payments,
   payouts,
+  profiles,
   quoteRequests,
   quotes,
   refunds,
@@ -27,7 +36,13 @@ import {
 } from "./schema/index.ts";
 import { seedCategories } from "./seed.ts";
 import { resetTestDatabase } from "./testing.ts";
-import type { NewVisit } from "./types.ts";
+import type {
+  NewCommunityFundLedgerEntry,
+  NewCommunityReferral,
+  NewDonation,
+  NewProfile,
+  NewVisit,
+} from "./types.ts";
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
@@ -315,7 +330,11 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
       const result = await db.execute<{ count: number }>(
         sql`SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations`,
       );
-      expect(result.rows[0]?.count).toBe(5);
+      const journal = JSON.parse(
+        readFileSync(join(MIGRATIONS_FOLDER, "meta", "_journal.json"), "utf8"),
+      ) as { entries: unknown[] };
+      expect(journal.entries.length).toBeGreaterThanOrEqual(7);
+      expect(result.rows[0]?.count).toBe(journal.entries.length);
       const extension = await db.execute<{ extname: string }>(
         sql`SELECT extname FROM pg_extension WHERE extname = 'btree_gist'`,
       );
@@ -1143,6 +1162,560 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
       });
       expect(await violation(db.execute(sql`TRUNCATE audit_log`))).toMatchObject({
         code: "42501",
+      });
+    });
+  });
+
+  describe("profiles: onboarding and marketing consent", () => {
+    let profileId = "";
+    const update = (values: Partial<NewProfile>) =>
+      db.update(profiles).set(values).where(eq(profiles.id, profileId));
+
+    beforeAll(async () => {
+      const [row] = await db
+        .insert(profiles)
+        .values({ userId: ids.customer, displayName: "Casey Customer" })
+        .returning();
+      if (!row) throw new Error("fixture profile not created");
+      profileId = row.id;
+      expect(row).toMatchObject({
+        postalCode: null,
+        onboardingIntent: null,
+        interests: [],
+        onboardedAt: null,
+        marketingConsentAt: null,
+        marketingConsentVersion: null,
+      });
+    });
+
+    it("stores the sign-up postal code in canonical A1A 1A1 form, for any province", async () => {
+      for (const postalCode of ["B3H 1A1", "M5E 1W7"]) {
+        await update({ postalCode });
+      }
+      for (const postalCode of ["b3h 1a1", "B3H1A1", "B3H  1A1", "D3H 1A1", "B3H 1A"]) {
+        expect(await violation(update({ postalCode }))).toEqual({
+          code: "23514",
+          constraint: "profiles_postal_code_format",
+        });
+      }
+      await update({ postalCode: null });
+    });
+
+    it("records the onboarding answers", async () => {
+      const onboardedAt = at("2026-10-21T12:00:00Z");
+      await update({
+        onboardingIntent: "both",
+        interests: ["lawn-mowing", "snow-ice-removal"],
+        onboardedAt,
+      });
+      const [row] = await db.select().from(profiles).where(eq(profiles.id, profileId));
+      expect(row).toMatchObject({
+        onboardingIntent: "both",
+        interests: ["lawn-mowing", "snow-ice-removal"],
+        onboardedAt,
+      });
+      expect(
+        await violation(
+          db.execute(sql`UPDATE profiles SET onboarding_intent = 'admin' WHERE id = ${profileId}`),
+        ),
+      ).toMatchObject({ code: "22P02" });
+    });
+
+    it("keeps interests to a short list of category slugs", async () => {
+      const rejected = [
+        update({ interests: ["Lawn Mowing"] }),
+        update({ interests: [""] }),
+        update({ interests: ["lawn-mowing,snow-ice-removal"] }),
+        update({ interests: ['"quoted"'] }),
+        update({ interests: Array.from({ length: 33 }, (_, i) => `service-${i}`) }),
+        db.execute(
+          sql`UPDATE profiles SET interests = ARRAY['lawn-mowing', NULL] WHERE id = ${profileId}`,
+        ),
+        db.execute(
+          sql`UPDATE profiles SET interests = '{{lawn-mowing},{snow-ice-removal}}' WHERE id = ${profileId}`,
+        ),
+      ];
+      for (const query of rejected) {
+        expect(await violation(query)).toEqual({
+          code: "23514",
+          constraint: "profiles_interests_format",
+        });
+      }
+      await update({ interests: Array.from({ length: 32 }, (_, i) => `service-${i}`) });
+      await update({ interests: [] });
+    });
+
+    it("records marketing consent as a timestamp and consent-text version pair (CASL)", async () => {
+      const consentAt = at("2026-10-21T12:00:00Z");
+      for (const values of [
+        { marketingConsentAt: consentAt, marketingConsentVersion: null },
+        { marketingConsentAt: null, marketingConsentVersion: "2026-10-casl-v1" },
+      ]) {
+        expect(await violation(update(values))).toEqual({
+          code: "23514",
+          constraint: "profiles_marketing_consent_pair",
+        });
+      }
+      expect(
+        await violation(update({ marketingConsentAt: consentAt, marketingConsentVersion: " " })),
+      ).toEqual({ code: "23514", constraint: "profiles_marketing_consent_version_not_blank" });
+      await update({ marketingConsentAt: consentAt, marketingConsentVersion: "2026-10-casl-v1" });
+      // Withdrawing consent clears both.
+      await update({ marketingConsentAt: null, marketingConsentVersion: null });
+    });
+  });
+
+  describe("community referrals", () => {
+    let partnerId = "";
+    let staffUserId = "";
+
+    const referral = (overrides: Partial<NewCommunityReferral> = {}) =>
+      db
+        .insert(communityReferrals)
+        .values({
+          partnerId,
+          submittedByUserId: staffUserId,
+          homeownerFirstName: "June",
+          contactRoute: "Call the Bayview Seniors' Centre front desk",
+          addressLine: "12 Main St",
+          city: "Halifax",
+          postalCode: "B3H 1A1",
+          regionId: "halifax-regional-municipality",
+          categoryId: ids.categoryId,
+          preferredTiming: "Weekday mornings",
+          consentConfirmedAt: at("2026-10-20T15:00:00Z"),
+          ...overrides,
+        })
+        .returning({ id: communityReferrals.id });
+
+    beforeAll(async () => {
+      const [staff] = await db
+        .insert(user)
+        .values({ id: randomUUID(), name: "Pat Partner", email: "pat@example.com" })
+        .returning({ id: user.id });
+      staffUserId = staff?.id ?? "";
+      const [partner] = await db
+        .insert(communityPartners)
+        .values({
+          name: "Bayview Seniors' Centre",
+          kind: "seniors_centre",
+          contactEmail: "hello@bayview.example",
+          regionId: "halifax-regional-municipality",
+          createdByUserId: ids.owner,
+        })
+        .returning({ id: communityPartners.id, active: communityPartners.active });
+      partnerId = partner?.id ?? "";
+      expect(partner?.active).toBe(true);
+      await db
+        .insert(communityPartnerMembers)
+        .values({ partnerId, userId: staffUserId, role: "coordinator" });
+    });
+
+    it("lets a person join a partner once, and keeps region ids as slugs", async () => {
+      expect(
+        await violation(
+          db.insert(communityPartnerMembers).values({ partnerId, userId: staffUserId }),
+        ),
+      ).toEqual({ code: "23505", constraint: "community_partner_members_partner_user_unique" });
+      expect(
+        await violation(
+          db.insert(communityPartners).values({
+            name: "Cape Breton Helpers",
+            kind: "support_agency",
+            contactEmail: "info@cbh.example",
+            regionId: "Cape Breton",
+          }),
+        ),
+      ).toEqual({ code: "23514", constraint: "community_partners_region_id_format" });
+    });
+
+    it("requires the partner's consent confirmation and a canonical address", async () => {
+      expect(await violation(referral({ postalCode: "B3H1A1" }))).toEqual({
+        code: "23514",
+        constraint: "community_referrals_postal_code_format",
+      });
+      expect(await violation(referral({ regionId: "Halifax" }))).toEqual({
+        code: "23514",
+        constraint: "community_referrals_region_id_format",
+      });
+      const [created] = await referral();
+      const referralId = created?.id ?? "";
+      const [row] = await db
+        .select()
+        .from(communityReferrals)
+        .where(eq(communityReferrals.id, referralId));
+      expect(row?.status).toBe("pending");
+      expect(
+        await violation(
+          db.execute(
+            sql`UPDATE community_referrals SET consent_confirmed_at = NULL WHERE id = ${referralId}`,
+          ),
+        ),
+      ).toMatchObject({ code: "23502" });
+    });
+
+    it("records the admin decision, and a reason for every decline", async () => {
+      const reviewedAt = at("2026-10-21T12:00:00Z");
+      expect(await violation(referral({ status: "approved" }))).toEqual({
+        code: "23514",
+        constraint: "community_referrals_reviewed",
+      });
+      expect(
+        await violation(referral({ status: "declined", reviewedAt, reviewedByUserId: ids.owner })),
+      ).toEqual({ code: "23514", constraint: "community_referrals_decline_reason" });
+      await expect(
+        referral({
+          status: "declined",
+          reviewedAt,
+          reviewedByUserId: ids.owner,
+          declineReason: "Outside the partner's area",
+        }),
+      ).resolves.toHaveLength(1);
+      // A partner may withdraw a referral before review.
+      await expect(referral({ status: "cancelled" })).resolves.toHaveLength(1);
+    });
+
+    it("ties booked and completed referrals to exactly one booking", async () => {
+      const reviewedAt = at("2026-10-21T12:00:00Z");
+      const jobId = await booking("one_off");
+      expect(await violation(referral({ status: "booked", reviewedAt }))).toEqual({
+        code: "23514",
+        constraint: "community_referrals_booking",
+      });
+      expect(
+        await violation(referral({ status: "approved", reviewedAt, bookingId: jobId })),
+      ).toEqual({ code: "23514", constraint: "community_referrals_booking" });
+      await expect(
+        referral({ status: "booked", reviewedAt, bookingId: jobId }),
+      ).resolves.toHaveLength(1);
+      expect(
+        await violation(referral({ status: "completed", reviewedAt, bookingId: jobId })),
+      ).toEqual({ code: "23505", constraint: "community_referrals_booking_id_unique" });
+      // Partners with referrals are deactivated, never deleted.
+      expect(
+        await violation(db.delete(communityPartners).where(eq(communityPartners.id, partnerId))),
+      ).toEqual({
+        code: "23503",
+        constraint: "community_referrals_partner_id_community_partners_id_fk",
+      });
+    });
+  });
+
+  describe("donations", () => {
+    let jobId = "";
+    let paymentId = "";
+
+    /** $2.00 preset: 6¢ card fee, $1.94 to the fund (SPEC §15). */
+    const donation = (overrides: Partial<NewDonation> = {}) =>
+      db
+        .insert(donations)
+        .values({
+          donorUserId: ids.customer,
+          bookingId: jobId,
+          kind: "preset",
+          amountCents: 200,
+          feeCents: 6,
+          netCents: 194,
+          ...overrides,
+        })
+        .returning({ id: donations.id });
+
+    beforeAll(async () => {
+      jobId = await booking("one_off");
+      const [paid] = await payment({ bookingId: jobId });
+      paymentId = paid?.id ?? "";
+    });
+
+    it("keeps net = amount − fee, with a positive amount and no negative fee", async () => {
+      expect(await violation(donation({ netCents: 200 }))).toEqual({
+        code: "23514",
+        constraint: "donations_net_is_amount_less_fee",
+      });
+      expect(await violation(donation({ amountCents: 0, feeCents: 0, netCents: 0 }))).toEqual({
+        code: "23514",
+        constraint: "donations_amount_cents_positive",
+      });
+      expect(await violation(donation({ feeCents: -1, netCents: 201 }))).toEqual({
+        code: "23514",
+        constraint: "donations_fee_cents_non_negative",
+      });
+      expect(
+        await violation(
+          donation({ kind: "round_up", amountCents: 101, feeCents: 3, netCents: 98 }),
+        ),
+      ).toEqual({ code: "23514", constraint: "donations_round_up_range" });
+      await expect(
+        donation({ kind: "round_up", amountCents: 100, feeCents: 3, netCents: 97 }),
+      ).resolves.toHaveLength(1);
+    });
+
+    it("comes from the booking's own customer, on the booking's own payment", async () => {
+      expect(await violation(donation({ donorUserId: ids.otherOwner }))).toEqual({
+        code: "23503",
+        constraint: "donations_booking_customer_fk",
+      });
+      const [otherPayment] = await payment({ bookingId: await booking("one_off") });
+      expect(await violation(donation({ paymentId: otherPayment?.id ?? "" }))).toEqual({
+        code: "23503",
+        constraint: "donations_payment_booking_fk",
+      });
+      expect(await violation(donation({ bookingId: null, paymentId }))).toEqual({
+        code: "23514",
+        constraint: "donations_payment_has_booking",
+      });
+      await expect(donation({ paymentId })).resolves.toHaveLength(1);
+      expect(await violation(donation({ paymentId }))).toEqual({
+        code: "23505",
+        constraint: "donations_payment_id_unique",
+      });
+    });
+
+    it("timestamps success and refund", async () => {
+      expect(await violation(donation({ status: "succeeded" }))).toEqual({
+        code: "23514",
+        constraint: "donations_status_fields",
+      });
+      const succeededAt = at("2026-10-21T12:00:00Z");
+      expect(await violation(donation({ status: "refunded", succeededAt }))).toEqual({
+        code: "23514",
+        constraint: "donations_status_fields",
+      });
+      await expect(
+        donation({ status: "refunded", succeededAt, refundedAt: at("2026-10-22T12:00:00Z") }),
+      ).resolves.toHaveLength(1);
+    });
+  });
+
+  describe("community_fund_ledger", () => {
+    let donationId = "";
+    let referralId = "";
+    let referralBookingId = "";
+    let otherBookingId = "";
+
+    const entry = (values: NewCommunityFundLedgerEntry) =>
+      db.insert(communityFundLedger).values(values).returning({ id: communityFundLedger.id });
+
+    /** The fund balance: always derived from the ledger, never stored. */
+    const balance = async () => {
+      const result = await db.execute<{ balance: number }>(
+        sql`SELECT coalesce(sum(amount_cents), 0)::int AS balance FROM community_fund_ledger`,
+      );
+      return result.rows[0]?.balance ?? Number.NaN;
+    };
+
+    beforeAll(async () => {
+      const jobId = await booking("one_off");
+      // $10.00 custom donation: 29¢ card fee, $9.71 to the fund.
+      const [given] = await db
+        .insert(donations)
+        .values({
+          donorUserId: ids.customer,
+          bookingId: jobId,
+          kind: "custom",
+          amountCents: 1_000,
+          feeCents: 29,
+          netCents: 971,
+          status: "succeeded",
+          succeededAt: at("2026-10-21T12:00:00Z"),
+        })
+        .returning({ id: donations.id });
+      donationId = given?.id ?? "";
+
+      referralBookingId = await booking("one_off");
+      otherBookingId = await booking("one_off");
+      const [partner] = await db
+        .insert(communityPartners)
+        .values({
+          name: "North End Community Supports",
+          kind: "support_agency",
+          contactEmail: "help@northend.example",
+          regionId: "halifax-regional-municipality",
+        })
+        .returning({ id: communityPartners.id });
+      const [referred] = await db
+        .insert(communityReferrals)
+        .values({
+          partnerId: partner?.id ?? "",
+          homeownerFirstName: "Ray",
+          contactRoute: "Through the North End front desk",
+          addressLine: "40 Agricola St",
+          city: "Halifax",
+          postalCode: "B3K 4H6",
+          regionId: "halifax-regional-municipality",
+          categoryId: ids.categoryId,
+          consentConfirmedAt: at("2026-10-20T15:00:00Z"),
+          status: "booked",
+          reviewedAt: at("2026-10-21T09:00:00Z"),
+          bookingId: referralBookingId,
+        })
+        .returning({ id: communityReferrals.id });
+      referralId = referred?.id ?? "";
+    });
+
+    it("checks the sign of every kind of entry", async () => {
+      // An unknown donation id passes the trigger, so the CHECK is what rejects these.
+      const unknownDonation = randomUUID();
+      const payout = { referralId, bookingId: referralBookingId };
+      for (const values of [
+        { kind: "donation", amountCents: -100, donationId: unknownDonation },
+        { kind: "donation", amountCents: 0, donationId: unknownDonation },
+        { kind: "fee", amountCents: 29, donationId: unknownDonation },
+        { kind: "refund", amountCents: 100, donationId: donationId },
+        { kind: "payout", amountCents: 100, ...payout },
+        { kind: "payout", amountCents: 0, ...payout },
+        { kind: "adjustment", amountCents: 0, memo: "Nothing" },
+      ] satisfies NewCommunityFundLedgerEntry[]) {
+        expect(await violation(entry(values)), values.kind).toEqual({
+          code: "23514",
+          constraint: "community_fund_ledger_amount_sign",
+        });
+      }
+    });
+
+    it("links each entry to what it accounts for, and explains adjustments", async () => {
+      expect(await violation(entry({ kind: "donation", amountCents: 1_000 }))).toEqual({
+        code: "23514",
+        constraint: "community_fund_ledger_links",
+      });
+      expect(
+        await violation(entry({ kind: "donation", amountCents: 1_000, donationId, referralId })),
+      ).toEqual({ code: "23514", constraint: "community_fund_ledger_links" });
+      for (const memo of [undefined, "  "]) {
+        expect(await violation(entry({ kind: "adjustment", amountCents: 500, memo }))).toEqual({
+          code: "23514",
+          constraint: "community_fund_ledger_adjustment_memo",
+        });
+      }
+    });
+
+    it("credits a donation, its card fee and its refund once each, at the donation's amounts", async () => {
+      const before = await balance();
+      expect(await violation(entry({ kind: "donation", amountCents: 999, donationId }))).toEqual({
+        code: "23514",
+        constraint: "community_fund_ledger_matches_donation",
+      });
+      expect(
+        await violation(
+          entry({ kind: "donation", amountCents: 1_000, donationId, bookingId: otherBookingId }),
+        ),
+      ).toEqual({ code: "23514", constraint: "community_fund_ledger_matches_donation" });
+      await entry({ kind: "donation", amountCents: 1_000, donationId });
+      expect(await violation(entry({ kind: "donation", amountCents: 1_000, donationId }))).toEqual({
+        code: "23505",
+        constraint: "community_fund_ledger_one_per_donation_kind_uidx",
+      });
+      expect(await violation(entry({ kind: "fee", amountCents: -30, donationId }))).toEqual({
+        code: "23514",
+        constraint: "community_fund_ledger_matches_donation",
+      });
+      await entry({ kind: "fee", amountCents: -29, donationId });
+      expect(await violation(entry({ kind: "refund", amountCents: -1_001, donationId }))).toEqual({
+        code: "23514",
+        constraint: "community_fund_ledger_matches_donation",
+      });
+      // Only the net reaches the fund.
+      expect((await balance()) - before).toBe(971);
+    });
+
+    it("pays out only for the referral's booking, and never more than the fund holds", async () => {
+      const held = await balance();
+      expect(held).toBeGreaterThan(0);
+      const payout = (amountCents: number, bookingId = referralBookingId) =>
+        entry({ kind: "payout", amountCents, referralId, bookingId, memo: "Lawn mow for Ray" });
+
+      expect(await violation(payout(-1, otherBookingId))).toEqual({
+        code: "23514",
+        constraint: "community_fund_ledger_payout_booking",
+      });
+      expect(
+        await violation(
+          entry({
+            kind: "payout",
+            amountCents: -1,
+            referralId,
+            bookingId: referralBookingId,
+            donationId,
+          }),
+        ),
+      ).toEqual({ code: "23514", constraint: "community_fund_ledger_links" });
+      expect(await violation(payout(-(held + 1)))).toEqual({
+        code: "23514",
+        constraint: "community_fund_ledger_balance",
+      });
+      await payout(-held);
+      expect(await balance()).toBe(0);
+
+      // A donation refund is never blocked, even after the money was spent: the fund goes
+      // negative until an adjustment covers it.
+      await entry({ kind: "refund", amountCents: -1_000, donationId });
+      expect(await balance()).toBe(-1_000);
+      await entry({ kind: "adjustment", amountCents: 1_000, memo: "Nevile covers refund" });
+      expect(await balance()).toBe(0);
+    });
+
+    it("serializes concurrent payouts so they cannot spend the same money", async () => {
+      await entry({ kind: "adjustment", amountCents: 5_000, memo: "Opening grant" });
+      const url = TEST_DATABASE_URL as string;
+      const first = createDb(url, { max: 1 });
+      const second = createDb(url, { max: 1 });
+      try {
+        const insertPayout = sql`INSERT INTO community_fund_ledger (kind, amount_cents, referral_id, booking_id)
+          VALUES ('payout', -5000, ${referralId}, ${referralBookingId})`;
+        await first.execute(sql`BEGIN`);
+        await first.execute(insertPayout);
+        await second.execute(sql`BEGIN`);
+        const racing = violation(second.execute(insertPayout));
+        // Wait until the second payout is queued behind the first one's lock.
+        for (let attempt = 0; ; attempt++) {
+          const result = await db.execute<{ waiting: number }>(
+            sql`SELECT count(*)::int AS waiting FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`,
+          );
+          if ((result.rows[0]?.waiting ?? 0) > 0) break;
+          if (attempt === 300) throw new Error("the second payout never waited for the first");
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        await first.execute(sql`COMMIT`);
+        expect(await racing).toEqual({
+          code: "23514",
+          constraint: "community_fund_ledger_balance",
+        });
+        await second.execute(sql`ROLLBACK`);
+      } finally {
+        await first.$client.end();
+        await second.$client.end();
+      }
+      expect(await balance()).toBe(0);
+    });
+
+    it("is append-only, and keeps what it references", async () => {
+      const [kept] = await entry({ kind: "adjustment", amountCents: 1, memo: "Rounding" });
+      const entryId = kept?.id ?? "";
+      expect(
+        await violation(
+          db
+            .update(communityFundLedger)
+            .set({ amountCents: 1_000_000 })
+            .where(eq(communityFundLedger.id, entryId)),
+        ),
+      ).toMatchObject({ code: "42501" });
+      expect(
+        await violation(db.delete(communityFundLedger).where(eq(communityFundLedger.id, entryId))),
+      ).toMatchObject({ code: "42501" });
+      expect(await violation(db.execute(sql`TRUNCATE community_fund_ledger`))).toMatchObject({
+        code: "42501",
+      });
+      expect(await violation(db.execute(sql`TRUNCATE donations CASCADE`))).toMatchObject({
+        code: "42501",
+      });
+      expect(await violation(db.delete(donations).where(eq(donations.id, donationId)))).toEqual({
+        code: "23503",
+        constraint: "community_fund_ledger_donation_id_donations_id_fk",
+      });
+      expect(
+        await violation(db.delete(communityReferrals).where(eq(communityReferrals.id, referralId))),
+      ).toEqual({
+        code: "23503",
+        constraint: "community_fund_ledger_referral_id_community_referrals_id_fk",
       });
     });
   });

@@ -1,4 +1,5 @@
-import { createDb, type Database, eq, profiles, sql, user } from "@nevile/db";
+import { MARKETING_CONSENT_VERSION, OUTSIDE_LAUNCH_REGION_MESSAGE } from "@nevile/core";
+import { auditLog, createDb, type Database, eq, profiles, sql, user } from "@nevile/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { isPlaceholderEmail, placeholderEmailForPhone } from "./identity.ts";
 import type { EmailMessage, SmsMessage } from "./senders.ts";
@@ -16,9 +17,20 @@ import { freshTestDatabase } from "./test/database.ts";
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const BASE_URL = "http://localhost:3000";
 const PASSWORD = "correct horse battery";
+/** Halifax: a Nova Scotia postal code. */
+const NS_POSTAL = "B3H 1A1";
 
 if (!TEST_DATABASE_URL) {
   console.warn("TEST_DATABASE_URL is not set; skipping @nevile/auth database tests.");
+}
+
+type SignUpBody = NonNullable<Parameters<Auth["api"]["signUpEmail"]>[0]>["body"];
+
+/** Better Auth's typed sign-up body lacks Nevile's own fields (checked by our hook). */
+function signUpBody(
+  body: SignUpBody & { postalCode?: unknown; marketingConsent?: unknown },
+): SignUpBody {
+  return body;
 }
 
 /** Status and Better Auth error code of a rejected `auth.api` call. */
@@ -87,70 +99,169 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
     await db.execute(sql`DELETE FROM rate_limit`);
   });
 
+  async function profileOf(userId: string) {
+    const [profile] = await db.select().from(profiles).where(eq(profiles.userId, userId));
+    return profile;
+  }
+
   describe("email and password", () => {
-    it("requires a verified email before sign-in, then signs in", async () => {
+    it("signs new users in immediately and still sends the confirmation email", async () => {
       const email = "maya@example.com";
       const signUp = await auth.api.signUpEmail({
-        body: { name: "Maya Tremblay", email, password: PASSWORD },
-      });
-      expect(signUp.token).toBeNull();
-      expect(signUp.user.emailVerified).toBe(false);
-
-      expect(emails).toHaveLength(1);
-      expect(emails[0]?.to).toBe(email);
-      expect(emails[0]?.text).toContain(`${BASE_URL}/verify-email?token=`);
-      const token = tokenFrom(emails[0]);
-
-      // Unverified: refused, and a fresh link is sent because the password was right.
-      expect(
-        await rejection(auth.api.signInEmail({ body: { email, password: PASSWORD } })),
-      ).toEqual({ status: 403, code: "EMAIL_NOT_VERIFIED" });
-      expect(emails).toHaveLength(2);
-
-      await auth.api.verifyEmail({ query: { token } });
-
-      const signedIn = await auth.api.signInEmail({
-        body: { email, password: PASSWORD },
+        body: signUpBody({
+          name: "Maya Tremblay",
+          email,
+          password: PASSWORD,
+          postalCode: "b3h1a1",
+        }),
         returnHeaders: true,
       });
-      expect(signedIn.response.token).toEqual(expect.any(String));
-      const setCookie = signedIn.headers.getSetCookie().join("\n");
+      expect(signUp.response.token).toEqual(expect.any(String));
+      expect(signUp.response.user.emailVerified).toBe(false);
+      const setCookie = signUp.headers.getSetCookie().join("\n");
       expect(setCookie).toContain("nevile.session_token=");
       expect(setCookie).toMatch(/Max-Age=2592000/i);
       expect(setCookie).toMatch(/HttpOnly/i);
 
-      const session = await auth.api.getSession({
-        headers: new Headers({ cookie: cookieHeader(signedIn.headers) }),
-      });
-      expect(session?.user.email).toBe(email);
-      expect(session?.user.emailVerified).toBe(true);
+      const headers = new Headers({ cookie: cookieHeader(signUp.headers) });
+      const unverified = await auth.api.getSession({ headers });
+      expect(unverified?.user).toMatchObject({ email, emailVerified: false });
 
-      const [profile] = await db.select().from(profiles).where(eq(profiles.userId, signUp.user.id));
-      expect(profile?.displayName).toBe("Maya Tremblay");
+      expect(emails).toHaveLength(1);
+      expect(emails[0]?.to).toBe(email);
+      expect(emails[0]?.text).toContain(`${BASE_URL}/verify-email?token=`);
+
+      // The postal code is stored canonically; no consent unless the box was ticked.
+      const profile = await profileOf(signUp.response.user.id);
+      expect(profile).toMatchObject({
+        displayName: "Maya Tremblay",
+        postalCode: NS_POSTAL,
+        marketingConsentAt: null,
+        marketingConsentVersion: null,
+      });
+
+      // Password sign-in works before the address is confirmed.
+      const signedIn = await auth.api.signInEmail({ body: { email, password: PASSWORD } });
+      expect(signedIn.token).toEqual(expect.any(String));
+
+      // The link confirms the address on the existing session; it signs nobody in.
+      const verified = await auth.api.verifyEmail({
+        query: { token: tokenFrom(emails[0]) },
+        returnHeaders: true,
+      });
+      expect(verified.headers.getSetCookie().join("\n")).not.toContain("nevile.session_token=");
+      expect((await auth.api.getSession({ headers }))?.user.emailVerified).toBe(true);
     });
 
-    it("answers a duplicate sign-up exactly like a new one", async () => {
-      const first = await auth.api.signUpEmail({
-        body: { name: "Sam", email: "sam@example.com", password: PASSWORD },
+    it("refuses sign-up outside Nova Scotia, and without a valid postal code", async () => {
+      const body = { name: "Owen", email: "owen@example.com", password: PASSWORD };
+      const cases: Array<[unknown, string]> = [
+        ["M5V 2T6", "NOT_IN_SERVICE_AREA"], // Toronto
+        ["E1C 4M3", "NOT_IN_SERVICE_AREA"], // Moncton, New Brunswick
+        ["h2x1y4", "NOT_IN_SERVICE_AREA"], // Montréal
+        ["B3H", "INVALID_POSTAL_CODE"],
+        ["D3H 1A1", "INVALID_POSTAL_CODE"],
+        [12345, "INVALID_POSTAL_CODE"],
+        ["B3H 1A1".repeat(10), "INVALID_POSTAL_CODE"],
+        ["  ", "POSTAL_CODE_REQUIRED"],
+        [undefined, "POSTAL_CODE_REQUIRED"],
+      ];
+      for (const [postalCode, code] of cases) {
+        expect(
+          await rejection(auth.api.signUpEmail({ body: { ...body, postalCode } as never })),
+        ).toEqual({ status: 400, code });
+      }
+      try {
+        await auth.api.signUpEmail({ body: signUpBody({ ...body, postalCode: "K1A 0B1" }) });
+        throw new Error("expected a rejection");
+      } catch (error) {
+        expect((error as { body?: { message?: string } }).body?.message).toBe(
+          OUTSIDE_LAUNCH_REGION_MESSAGE,
+        );
+      }
+      expect(await db.select().from(user).where(eq(user.email, body.email))).toHaveLength(0);
+      expect(emails).toHaveLength(0);
+    });
+
+    it("records marketing consent with its wording version only when ticked", async () => {
+      const before = new Date();
+      const consented = await auth.api.signUpEmail({
+        body: signUpBody({
+          name: "Cass",
+          email: "cass@example.com",
+          password: PASSWORD,
+          postalCode: "B4N 1A1",
+          marketingConsent: true,
+        }),
       });
-      const fresh = await auth.api.signUpEmail({
-        body: { name: "Sam", email: "sam2@example.com", password: PASSWORD },
+      const profile = await profileOf(consented.user.id);
+      expect(profile?.marketingConsentVersion).toBe(MARKETING_CONSENT_VERSION);
+      expect(profile?.marketingConsentAt?.getTime()).toBeGreaterThanOrEqual(
+        before.getTime() - 1000,
+      );
+      const audit = await db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.entityId, consented.user.id));
+      expect(audit).toEqual([
+        expect.objectContaining({
+          actorUserId: consented.user.id,
+          action: "marketing_consent.granted",
+          entity: "user",
+          data: { version: MARKETING_CONSENT_VERSION, source: "sign_up" },
+        }),
+      ]);
+
+      const declined = await auth.api.signUpEmail({
+        body: signUpBody({
+          name: "Dee",
+          email: "dee@example.com",
+          password: PASSWORD,
+          postalCode: NS_POSTAL,
+          marketingConsent: false,
+        }),
       });
-      emails.length = 0;
-      const duplicate = await auth.api.signUpEmail({
-        body: { name: "Sam", email: "sam@example.com", password: "another password" },
+      expect(await profileOf(declined.user.id)).toMatchObject({
+        marketingConsentAt: null,
+        marketingConsentVersion: null,
       });
 
-      const shape = (value: typeof fresh) => {
-        const { id: _id, email: _email, createdAt: _c, updatedAt: _u, ...rest } = value.user;
-        return { token: value.token, user: rest, keys: Object.keys(value.user).sort() };
-      };
-      expect(shape(duplicate)).toEqual(shape(fresh));
-      expect(duplicate.user.id).not.toBe(first.user.id);
+      expect(
+        await rejection(
+          auth.api.signUpEmail({
+            body: {
+              name: "Eve",
+              email: "eve@example.com",
+              password: PASSWORD,
+              postalCode: NS_POSTAL,
+              marketingConsent: "yes",
+            } as never,
+          }),
+        ),
+      ).toEqual({ status: 400, code: "INVALID_MARKETING_CONSENT" });
+    });
 
-      // The real owner hears about it; no second account exists.
-      expect(emails).toHaveLength(1);
-      expect(emails[0]?.subject).toMatch(/already have a Nevile account/);
+    it("refuses a second account for a registered email", async () => {
+      await auth.api.signUpEmail({
+        body: signUpBody({
+          name: "Sam",
+          email: "sam@example.com",
+          password: PASSWORD,
+          postalCode: NS_POSTAL,
+        }),
+      });
+      expect(
+        await rejection(
+          auth.api.signUpEmail({
+            body: signUpBody({
+              name: "Sam",
+              email: "SAM@example.com",
+              password: "another password",
+              postalCode: NS_POSTAL,
+            }),
+          }),
+        ),
+      ).toEqual({ status: 422, code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" });
       const rows = await db.select().from(user).where(eq(user.email, "sam@example.com"));
       expect(rows).toHaveLength(1);
     });
@@ -158,7 +269,14 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
     it("rejects weak passwords, extra fields and phone placeholder emails", async () => {
       expect(
         await rejection(
-          auth.api.signUpEmail({ body: { name: "A", email: "a@example.com", password: "short" } }),
+          auth.api.signUpEmail({
+            body: signUpBody({
+              name: "A",
+              email: "a@example.com",
+              password: "short",
+              postalCode: NS_POSTAL,
+            }),
+          }),
         ),
       ).toMatchObject({ status: 400, code: "PASSWORD_TOO_SHORT" });
 
@@ -169,6 +287,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
               name: "Mallory",
               email: "mallory@example.com",
               password: PASSWORD,
+              postalCode: NS_POSTAL,
               phoneNumber: "+14165550199",
             } as never,
           }),
@@ -178,11 +297,12 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       expect(
         await rejection(
           auth.api.signUpEmail({
-            body: {
+            body: signUpBody({
               name: "Mallory",
               email: placeholderEmailForPhone("+14165550199"),
               password: PASSWORD,
-            },
+              postalCode: NS_POSTAL,
+            }),
           }),
         ),
       ).toMatchObject({ status: 400, code: "INVALID_EMAIL" });
@@ -190,12 +310,34 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       expect(
         await rejection(
           auth.api.signUpEmail({
-            body: { name: "  ", email: "blank@example.com", password: PASSWORD },
+            body: signUpBody({
+              name: "  ",
+              email: "blank@example.com",
+              password: PASSWORD,
+              postalCode: NS_POSTAL,
+            }),
           }),
         ),
       ).toMatchObject({ status: 400, code: "INVALID_NAME" });
 
       expect(emails).toHaveLength(0);
+    });
+
+    it("never creates a user outside the sign-up endpoints", async () => {
+      const context = await auth.$context;
+      await expect(
+        context.internalAdapter.createUser(
+          {
+            name: "Backdoor",
+            email: "backdoor@example.com",
+            emailVerified: true,
+          },
+          { method: "email-password" },
+        ),
+      ).rejects.toMatchObject({ statusCode: 403, body: { code: "SIGN_UP_NOT_ALLOWED" } });
+      expect(await db.select().from(user).where(eq(user.email, "backdoor@example.com"))).toEqual(
+        [],
+      );
     });
 
     it("limits password sign-in attempts per account, whatever the IP", async () => {
@@ -215,7 +357,9 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
 
     it("caps auth emails per recipient without changing the response", async () => {
       const email = "flood@example.com";
-      await auth.api.signUpEmail({ body: { name: "Flo", email, password: PASSWORD } });
+      await auth.api.signUpEmail({
+        body: signUpBody({ name: "Flo", email, password: PASSWORD, postalCode: NS_POSTAL }),
+      });
       for (let send = 0; send < AUTH_EMAILS_PER_RECIPIENT.max + 2; send += 1) {
         await expect(auth.api.sendVerificationEmail({ body: { email } })).resolves.toEqual({
           status: true,
@@ -229,9 +373,8 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
     it("refuses sessions to suspended users and revokes the ones they had", async () => {
       const email = "suspended@example.com";
       const signUp = await auth.api.signUpEmail({
-        body: { name: "Sue", email, password: PASSWORD },
+        body: signUpBody({ name: "Sue", email, password: PASSWORD, postalCode: NS_POSTAL }),
       });
-      await db.update(user).set({ emailVerified: true }).where(eq(user.id, signUp.user.id));
       const signedIn = await auth.api.signInEmail({
         body: { email, password: PASSWORD },
         returnHeaders: true,
@@ -266,8 +409,22 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       expect(sms[0]?.to).toBe(phone);
       const code = codeFrom(sms[0]);
 
+      // A new number needs a Nova Scotia postal code. The right code without one is
+      // refused but not used up, so the app can ask for the postal code and retry.
+      expect(
+        await rejection(auth.api.verifyPhoneNumber({ body: { phoneNumber: phone, code } })),
+      ).toEqual({ status: 400, code: "POSTAL_CODE_REQUIRED" });
+      expect(
+        await rejection(
+          auth.api.verifyPhoneNumber({
+            body: { phoneNumber: phone, code, postalCode: "V6B 1A1" },
+          }),
+        ),
+      ).toEqual({ status: 400, code: "NOT_IN_SERVICE_AREA" });
+      expect(await db.select().from(user).where(eq(user.phoneNumber, phone))).toEqual([]);
+
       const first = await auth.api.verifyPhoneNumber({
-        body: { phoneNumber: phone, code },
+        body: { phoneNumber: phone, code, postalCode: "b2n 5e3", marketingConsent: true },
         returnHeaders: true,
       });
       expect(first.response.token).toEqual(expect.any(String));
@@ -277,13 +434,24 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       expect(created?.phoneNumberVerified).toBe(true);
       expect(isPlaceholderEmail(created?.email)).toBe(true);
       expect(created?.name).toBe("");
+      expect(await profileOf(created?.id ?? "")).toMatchObject({
+        displayName: "",
+        postalCode: "B2N 5E3",
+        marketingConsentVersion: MARKETING_CONSENT_VERSION,
+      });
 
       // A used code cannot be replayed.
       expect(
-        (await rejection(auth.api.verifyPhoneNumber({ body: { phoneNumber: phone, code } })))
-          .status,
+        (
+          await rejection(
+            auth.api.verifyPhoneNumber({
+              body: { phoneNumber: phone, code, postalCode: NS_POSTAL },
+            }),
+          )
+        ).status,
       ).toBe(400);
 
+      // An existing account signs in without a postal code.
       await auth.api.sendPhoneNumberOTP({ body: { phoneNumber: phone } });
       const again = await auth.api.verifyPhoneNumber({
         body: { phoneNumber: phone, code: codeFrom(sms[1]) },
@@ -293,6 +461,31 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
       // The placeholder address is never mailed.
       await auth.api.sendVerificationEmail({ body: { email: created?.email ?? "" } });
       expect(emails).toHaveLength(0);
+    });
+
+    it("answers a wrong code the same way whether or not the number has an account", async () => {
+      const fresh = "+19025550161";
+      await auth.api.sendPhoneNumberOTP({ body: { phoneNumber: fresh } });
+      const code = codeFrom(sms[0]);
+      const wrong = code === "000000" ? "111111" : "000000";
+      expect(
+        await rejection(auth.api.verifyPhoneNumber({ body: { phoneNumber: fresh, code: wrong } })),
+      ).toEqual({ status: 400, code: "INVALID_OTP" });
+      // An out-of-area postal code is refused before the code is even looked at.
+      expect(
+        await rejection(
+          auth.api.verifyPhoneNumber({
+            body: { phoneNumber: phone, code: wrong, postalCode: "M5V 2T6" },
+          }),
+        ),
+      ).toEqual({ status: 400, code: "NOT_IN_SERVICE_AREA" });
+      expect(
+        await rejection(
+          auth.api.verifyPhoneNumber({
+            body: { phoneNumber: fresh, code, postalCode: NS_POSTAL, name: "Hacker" } as never,
+          }),
+        ),
+      ).toEqual({ status: 400, code: "FIELD_NOT_ALLOWED" });
     });
 
     it("locks a code after three wrong attempts", async () => {
@@ -452,6 +645,43 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/auth", () => {
 
       const stored = await db.execute(sql`SELECT key FROM rate_limit WHERE key LIKE '%sign-in%'`);
       expect(stored.rows.length).toBeGreaterThan(0);
+    });
+
+    it("signs up over HTTP only with a Nova Scotia postal code", async () => {
+      const body = { name: "Hal", email: "hal@example.com", password: PASSWORD };
+      const outside = await post(
+        "/sign-up/email",
+        { ...body, postalCode: "T2P 1J9" },
+        "198.51.100.40",
+      );
+      expect(outside.status).toBe(400);
+      expect(await outside.json()).toMatchObject({
+        code: "NOT_IN_SERVICE_AREA",
+        message: OUTSIDE_LAUNCH_REGION_MESSAGE,
+      });
+      expect(outside.headers.getSetCookie()).toEqual([]);
+
+      const inside = await post(
+        "/sign-up/email",
+        { ...body, postalCode: "B3K 5X5" },
+        "198.51.100.40",
+      );
+      expect(inside.status).toBe(200);
+      expect(inside.headers.getSetCookie().join("\n")).toContain("nevile.session_token=");
+      const created = (await inside.json()) as { user: { id: string } };
+      expect((await profileOf(created.user.id))?.postalCode).toBe("B3K 5X5");
+    });
+
+    it("does not offer social sign-in or account linking", async () => {
+      for (const path of ["/sign-in/social", "/link-social"]) {
+        const response = await post(path, { provider: "google", callbackURL: "/" });
+        expect(response.status).toBe(404);
+      }
+      const callback = await auth.handler(
+        new Request(`${BASE_URL}/api/auth/callback/google?code=x&state=y`),
+      );
+      expect(callback.headers.getSetCookie().join("\n")).not.toContain("session_token=");
+      expect(await db.select().from(user).where(sql`${user.email} LIKE '%google%'`)).toEqual([]);
     });
 
     it("does not offer phone + password sign-in", async () => {

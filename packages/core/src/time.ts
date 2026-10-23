@@ -4,7 +4,8 @@
  */
 import { TZDate, tzOffset } from "@date-fns/tz";
 
-export const DEFAULT_TIME_ZONE = "America/Toronto";
+/** SPEC §2: local-day logic uses the job's zone, defaulting to Nova Scotia (Atlantic). */
+export const DEFAULT_TIME_ZONE = "America/Halifax";
 
 export const MS_PER_MINUTE = 60_000;
 export const MS_PER_HOUR = 60 * MS_PER_MINUTE;

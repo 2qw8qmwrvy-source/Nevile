@@ -36,6 +36,20 @@
       "when": 1792597948452,
       "tag": "0004_money_and_slot_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792621003929,
+      "tag": "0005_community_and_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792621017118,
+      "tag": "0006_community_fund_ledger_guards",
+      "breakpoints": true
     }
   ]
 }

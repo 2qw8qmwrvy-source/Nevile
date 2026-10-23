@@ -153,3 +153,37 @@ the web browser bundle and the mobile app import; everything else in `@nevile/au
 Key conventions (details in [CLAUDE.md](CLAUDE.md)): money is integer cents in CAD,
 timestamps are stored in UTC with local-day logic in the job's IANA time zone, every API
 procedure validates input with Zod and authorizes on the server.
+
+## Contributing & CI
+
+Work on a branch and open a pull request into `main`. `main` is protected
+([docs/BRANCH_PROTECTION.md](docs/BRANCH_PROTECTION.md)): a pull request can only be merged
+once all three CI checks pass, and force pushes are blocked. If a change alters a product
+rule, update [SPEC.md](SPEC.md) in the same pull request.
+
+[CI](.github/workflows/ci.yml) runs on every push and pull request (a newer push cancels
+the run it replaces):
+
+| Check | What it runs |
+|---|---|
+| `checks` | `pnpm lint`, `pnpm typecheck`, `pnpm test` against Postgres 16, then `pnpm --filter @nevile/web build` |
+| `mobile-bundle` | `expo export` for iOS and Android in `apps/mobile` |
+| `e2e` | `pnpm db:migrate` and `pnpm db:seed` into a fresh database, then the Playwright browser tests (`pnpm test:e2e`); on failure the HTML report is uploaded as the `playwright-report` artifact |
+
+Before pushing, run the same checks locally:
+
+```bash
+pnpm lint && pnpm typecheck && pnpm test
+pnpm --filter @nevile/web build
+pnpm test:e2e   # once: pnpm exec playwright install chromium
+```
+
+Dependabot ([.github/dependabot.yml](.github/dependabot.yml)) opens update pull requests
+every Monday: one grouped pull request for minor and patch npm updates, one per major
+update, and one for GitHub Actions. Expo, React and React Native versions are tied to the
+Expo SDK, so only their patch updates are proposed; upgrade them together with
+`npx expo install --fix` in `apps/mobile` when moving to a new SDK.
+
+Running the service (environments, configuration, health check, Sentry, backups, the Nevile
+Neighbours switch and the incident checklist) is covered in
+[docs/OPERATIONS.md](docs/OPERATIONS.md).

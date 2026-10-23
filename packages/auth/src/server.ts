@@ -10,6 +10,7 @@ import {
   profiles,
   rateLimit as rateLimitTable,
   sql,
+  user as userTable,
 } from "@nevile/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -23,13 +24,23 @@ import {
   OTP_EXPIRES_IN_SECONDS,
   OTP_LENGTH,
 } from "./constants.ts";
-import { existingAccountEmail, otpSms, verificationEmail } from "./emails.ts";
+import { otpSms, verificationEmail } from "./emails.ts";
 import {
   isNormalizedCanadianPhone,
   isPlaceholderEmail,
   placeholderEmailForPhone,
 } from "./identity.ts";
 import type { EmailMessage, EmailSender, SmsSender } from "./senders.ts";
+import {
+  createSignUpProfile,
+  POSTAL_CODE_REQUIRED_MESSAGE,
+  parseMarketingConsent,
+  parseSignUpPostalCode,
+  SIGN_UP_ERROR_CODES,
+  sameCode,
+  signUpDetailsFrom,
+  USER_CREATING_PATHS,
+} from "./sign-up.ts";
 import { isUserSuspended } from "./suspension.ts";
 
 const MINUTE = 60;
@@ -78,7 +89,25 @@ export const AUTH_RATE_LIMIT_RULES = {
 } as const;
 
 /** Only these fields may be sent to /sign-up/email; anything else (e.g. `phoneNumber`) is refused. */
-const SIGN_UP_EMAIL_FIELDS = new Set(["name", "email", "password", "callbackURL", "rememberMe"]);
+const SIGN_UP_EMAIL_FIELDS = new Set([
+  "name",
+  "email",
+  "password",
+  "callbackURL",
+  "rememberMe",
+  "postalCode",
+  "marketingConsent",
+]);
+
+/** Only these fields may be sent to /phone-number/verify. */
+const PHONE_VERIFY_FIELDS = new Set([
+  "phoneNumber",
+  "code",
+  "disableSession",
+  "updatePhoneNumber",
+  "postalCode",
+  "marketingConsent",
+]);
 
 export interface CreateAuthOptions {
   db: Database;
@@ -92,7 +121,6 @@ export interface CreateAuthOptions {
   trustedOrigins?: string[];
   /** Web page that receives `?token=` from verification emails and confirms it. */
   emailVerificationPath?: string;
-  signInPath?: string;
   /**
    * The one header the client IP for rate limiting is read from (SPEC §12); there is no
    * fallback to other headers, because a client can set any header the edge does not
@@ -113,6 +141,13 @@ export interface CreateAuthOptions {
 }
 
 type JsonBody = Record<string, unknown> | undefined;
+
+/** The part of Better Auth's internal adapter that reads stored one-time codes. */
+type VerificationStore = {
+  findVerificationValue(
+    identifier: string,
+  ): Promise<{ value: string; expiresAt: Date } | null | undefined>;
+};
 
 function bodyOf(value: unknown): JsonBody {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -145,6 +180,13 @@ async function consumeQuota(
     .returning({ count: rateLimitTable.count, lastRequest: rateLimitTable.lastRequest });
   if (!row || row.count <= quota.max) return { allowed: true, retryAfter: 0 };
   return { allowed: false, retryAfter: Math.ceil((row.lastRequest + windowMs - now) / 1000) };
+}
+
+function fieldNotAllowed(field: string): APIError {
+  return new APIError("BAD_REQUEST", {
+    code: "FIELD_NOT_ALLOWED",
+    message: `${field} cannot be set here`,
+  });
 }
 
 function tooManyRequests(code: string, message: string, retryAfter: number): APIError {
@@ -185,7 +227,6 @@ export function createAuth(options: CreateAuthOptions) {
   const ipAddress = clientIpSettings(options, production);
   const smsBudget = options.smsBudget ?? DEFAULT_SMS_BUDGET;
   const appOrigin = new URL(options.baseURL).origin;
-  const signInUrl = new URL(options.signInPath ?? "/sign-in", appOrigin).toString();
   const verificationPath = options.emailVerificationPath ?? "/verify-email";
 
   /** Sends an auth email unless the recipient's per-address cap is used up. */
@@ -201,6 +242,29 @@ export function createAuth(options: CreateAuthOptions) {
       await options.emailSender.send(message);
     },
   };
+
+  /**
+   * Whether `code` is the live, unlocked code for a number that has no account yet. Reads
+   * the stored code without consuming it or counting an attempt; a wrong code is left to
+   * the endpoint, which counts it as usual.
+   */
+  async function isCorrectCodeForNewNumber(
+    verifications: VerificationStore,
+    phone: string,
+    code: string,
+  ): Promise<boolean> {
+    const [existing] = await db
+      .select({ id: userTable.id })
+      .from(userTable)
+      .where(eq(userTable.phoneNumber, phone))
+      .limit(1);
+    if (existing) return false;
+    const stored = await verifications.findVerificationValue(phone);
+    if (!stored || stored.expiresAt < new Date()) return false;
+    const [storedCode = "", attempts = "0"] = stored.value.split(":");
+    if (!(Number(attempts) < OTP_ALLOWED_ATTEMPTS)) return false;
+    return sameCode(storedCode, code);
+  }
 
   function verificationLink(token: string): string {
     const url = new URL(verificationPath, appOrigin);
@@ -224,34 +288,23 @@ export function createAuth(options: CreateAuthOptions) {
 
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      // SPEC §1: new users are signed in straight away; booking, paying, messaging and
+      // business tools stay locked until a contact is verified (the API's
+      // `verifiedProcedure`). Because sign-up starts a session, it necessarily tells the
+      // caller whether an address is already registered (422); the per-IP sign-up rate
+      // limit bounds how fast that can be probed.
+      requireEmailVerification: false,
+      autoSignIn: true,
       minPasswordLength: PASSWORD_MIN_LENGTH,
       maxPasswordLength: PASSWORD_MAX_LENGTH,
-      // No session until the address is verified; this also makes sign-up answer the
-      // same way for new and already-registered emails (no account enumeration).
-      autoSignIn: false,
-      async onExistingUserSignUp({ user }) {
-        await emailSender.send(
-          existingAccountEmail({ to: user.email, name: user.name, signInUrl }),
-        );
-      },
-      // The synthetic "duplicate email" response must match a real new user field for
-      // field, including the phone-number plugin's columns.
-      customSyntheticUser: ({ coreFields, additionalFields, id }) => ({
-        ...coreFields,
-        phoneNumber: null,
-        phoneNumberVerified: false,
-        ...additionalFields,
-        id,
-      }),
     },
 
     emailVerification: {
+      // The confirmation email still goes out at sign-up; the app shows a banner until
+      // the address is confirmed and offers to resend it.
       sendOnSignUp: true,
-      // Only reached after a correct password, so it reveals nothing to a guesser.
-      sendOnSignIn: true,
-      // The user signs in with their password after verifying. A verification link that
-      // also signed people in would hand a session to whoever registered the address.
+      // A verification link that also signed people in would hand a session to whoever
+      // registered the address; the link only confirms it.
       autoSignInAfterVerification: false,
       expiresIn: EMAIL_VERIFICATION_EXPIRES_IN_SECONDS,
       async sendVerificationEmail({ user, token }) {
@@ -292,12 +345,16 @@ export function createAuth(options: CreateAuthOptions) {
 
     // SPEC §1 sign-in is email + password or phone + one-time code; phone + password and
     // the SMS password-reset flow are not offered. There is no social / OAuth sign-in, so
-    // the Expo plugin's OAuth proxy (an open redirect on this origin) is switched off too;
-    // the rest of the plugin (the mobile app's origin for CSRF checks) keeps working.
+    // its entry points and the Expo plugin's OAuth proxy (an open redirect on this origin)
+    // are switched off too; the rest of the Expo plugin (the mobile app's origin for CSRF
+    // checks) keeps working. Whatever stays reachable, `databaseHooks.user.create.before`
+    // refuses to create a user outside the two sign-up paths.
     disabledPaths: [
       "/sign-in/phone-number",
       "/phone-number/request-password-reset",
       "/phone-number/reset-password",
+      "/sign-in/social",
+      "/link-social",
       "/expo-authorization-proxy",
     ],
 
@@ -346,6 +403,36 @@ export function createAuth(options: CreateAuthOptions) {
             throw new APIError("BAD_REQUEST", {
               code: "INVALID_EMAIL",
               message: "Enter your own email address",
+            });
+          }
+          // SPEC §2: Nova Scotia postal code required, checked before anything is created.
+          signUpDetailsFrom(body);
+        }
+
+        if (ctx.path === "/phone-number/verify") {
+          const body = bodyOf(ctx.body) ?? {};
+          const unknownField = Object.keys(body).find((key) => !PHONE_VERIFY_FIELDS.has(key));
+          if (unknownField) throw fieldNotAllowed(unknownField);
+          parseMarketingConsent(body.marketingConsent);
+          // A code sent with a postal code is checked whether or not the number has an
+          // account, so the answer never reveals which numbers are registered.
+          if (body.postalCode !== undefined) {
+            parseSignUpPostalCode(body.postalCode);
+          } else if (
+            body.updatePhoneNumber !== true &&
+            typeof body.phoneNumber === "string" &&
+            typeof body.code === "string" &&
+            (await isCorrectCodeForNewNumber(
+              ctx.context.internalAdapter,
+              body.phoneNumber,
+              body.code,
+            ))
+          ) {
+            // Only someone holding the right code learns the number is new, and the code
+            // is not used up, so the app can ask for the postal code and send it again.
+            throw new APIError("BAD_REQUEST", {
+              code: SIGN_UP_ERROR_CODES.POSTAL_CODE_REQUIRED,
+              message: POSTAL_CODE_REQUIRED_MESSAGE,
             });
           }
         }
@@ -422,16 +509,29 @@ export function createAuth(options: CreateAuthOptions) {
       },
       user: {
         create: {
+          // Deny by default (SPEC §2): a user is created only by email sign-up or a first
+          // phone verification, and only with a valid Nova Scotia postal code. The
+          // endpoint hooks above give the friendly errors; this catches any other path.
+          async before(_newUser, context) {
+            if (!context || !USER_CREATING_PATHS.includes(context.path)) {
+              throw new APIError("FORBIDDEN", {
+                code: SIGN_UP_ERROR_CODES.SIGN_UP_NOT_ALLOWED,
+                message: "Accounts can only be created by signing up.",
+              });
+            }
+            signUpDetailsFrom(bodyOf(context.body));
+          },
           // Runs after the sign-up transaction commits. A failure here must not fail the
           // sign-up; the API creates a missing profile on demand.
-          async after(user) {
+          async after(newUser, context) {
             try {
-              await db
-                .insert(profiles)
-                .values({ userId: user.id, displayName: user.name })
-                .onConflictDoNothing({ target: profiles.userId });
+              await createSignUpProfile(db, newUser, signUpDetailsFrom(bodyOf(context?.body)));
             } catch (error) {
-              console.error("[auth] could not create profile for new user", user.id, error);
+              // Driver errors quote the inserted values; log only the database error code.
+              const cause = (error as { cause?: { code?: unknown } } | null)?.cause;
+              console.error("[auth] could not create profile for new user", newUser.id, {
+                code: typeof cause?.code === "string" ? cause.code : undefined,
+              });
             }
           },
         },

@@ -31,3 +31,28 @@ export function contactEmail(email: string | null | undefined): string | null {
 export function isNormalizedCanadianPhone(phoneNumber: string): boolean {
   return normalizeCanadianPhone(phoneNumber) === phoneNumber;
 }
+
+export type VerificationMethod = "email" | "phone";
+
+/** The contact fields of a Better Auth user (session user or row). */
+export interface ContactFields {
+  email?: string | null;
+  emailVerified?: boolean | null;
+  phoneNumber?: string | null;
+  phoneNumberVerified?: boolean | null;
+}
+
+/**
+ * How the user proved a contact (SPEC §1 verification gate): a confirmed real email
+ * address first, else a phone number verified by SMS code, else null (unverified).
+ */
+export function verificationMethodOf(user: ContactFields): VerificationMethod | null {
+  if (contactEmail(user.email) && user.emailVerified === true) return "email";
+  if (user.phoneNumber && user.phoneNumberVerified === true) return "phone";
+  return null;
+}
+
+/** Whether the user may book, pay, message or use business tools. */
+export function hasVerifiedContact(user: ContactFields): boolean {
+  return verificationMethodOf(user) !== null;
+}

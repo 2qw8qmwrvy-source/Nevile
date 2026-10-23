@@ -4,6 +4,7 @@
  * attaches them to every auth request; `getAuthCookie` exposes them for the tRPC client.
  */
 import { expoClient } from "@better-auth/expo/client";
+import { OUTSIDE_LAUNCH_REGION_MESSAGE, POSTAL_CODE_INVALID_MESSAGE } from "@nevile/core";
 import {
   AUTH_COOKIE_PREFIX,
   createNevileAuthClient,
@@ -79,6 +80,38 @@ export async function getAuthCookie(): Promise<string> {
 export type AuthError = { status?: number; code?: string; message?: string };
 
 /**
+ * `code`s of the server's sign-up errors (SPEC §2). Mirrors `SIGN_UP_ERROR_CODES` in
+ * `@nevile/auth`, which lives in the server entry point the app cannot import.
+ */
+export const SIGN_UP_ERROR_CODES = {
+  POSTAL_CODE_REQUIRED: "POSTAL_CODE_REQUIRED",
+  INVALID_POSTAL_CODE: "INVALID_POSTAL_CODE",
+  NOT_IN_SERVICE_AREA: "NOT_IN_SERVICE_AREA",
+  INVALID_MARKETING_CONSENT: "INVALID_MARKETING_CONSENT",
+  SIGN_UP_NOT_ALLOWED: "SIGN_UP_NOT_ALLOWED",
+} as const;
+
+const POSTAL_CODE_ERROR_CODES: ReadonlySet<string | undefined> = new Set([
+  SIGN_UP_ERROR_CODES.POSTAL_CODE_REQUIRED,
+  SIGN_UP_ERROR_CODES.INVALID_POSTAL_CODE,
+  SIGN_UP_ERROR_CODES.NOT_IN_SERVICE_AREA,
+]);
+
+/** Errors that belong next to the postal code field rather than above the form. */
+export function isPostalCodeError(error: AuthError | null | undefined): boolean {
+  return POSTAL_CODE_ERROR_CODES.has(error?.code);
+}
+
+const EMAIL_TAKEN_CODES: ReadonlySet<string | undefined> = new Set([
+  "USER_ALREADY_EXISTS",
+  "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL",
+]);
+
+export function isEmailTakenError(error: AuthError | null | undefined): boolean {
+  return EMAIL_TAKEN_CODES.has(error?.code);
+}
+
+/**
  * Runs a Better Auth client call and folds thrown network failures into its `{ error }`
  * result, so screens handle one shape.
  */
@@ -105,8 +138,21 @@ export function authErrorMessage(
   switch (error.code) {
     case "INVALID_EMAIL_OR_PASSWORD":
       return "That email and password don't match. Check them and try again.";
-    case "EMAIL_NOT_VERIFIED":
-      return "Confirm your email first. We've sent you a new link.";
+    case "USER_ALREADY_EXISTS":
+    case "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL":
+      return "There's already an account with this email. Sign in instead, or use another email.";
+    case "EMAIL_ALREADY_VERIFIED":
+      return "Your email is already confirmed.";
+    case SIGN_UP_ERROR_CODES.POSTAL_CODE_REQUIRED:
+      return "Enter your postal code.";
+    case SIGN_UP_ERROR_CODES.INVALID_POSTAL_CODE:
+      return POSTAL_CODE_INVALID_MESSAGE;
+    case SIGN_UP_ERROR_CODES.NOT_IN_SERVICE_AREA:
+      return OUTSIDE_LAUNCH_REGION_MESSAGE;
+    case SIGN_UP_ERROR_CODES.SIGN_UP_NOT_ALLOWED:
+      return "Create your account with your email or a text code.";
+    case "ACCOUNT_SUSPENDED":
+      return "This account is suspended. Contact Nevile support.";
     case "PASSWORD_TOO_SHORT":
       return "Use at least 10 characters for your password.";
     case "PASSWORD_TOO_LONG":
@@ -126,6 +172,8 @@ export function authErrorMessage(
       return "Too many wrong codes. Send yourself a new one.";
     case "TOO_MANY_CODES":
       return "We've sent several codes to this number. Wait a few minutes before asking for another.";
+    case "SMS_BUDGET_EXCEEDED":
+      return "We can't send codes right now. Try again later, or use your email.";
     default:
       if (error.status === 429) return "Too many attempts. Please wait a minute and try again.";
       return fallback;

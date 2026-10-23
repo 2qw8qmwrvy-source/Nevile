@@ -6,11 +6,17 @@ import { createDb } from "./client.ts";
 /** Absolute path of the generated SQL migrations (`packages/db/drizzle`). */
 export const MIGRATIONS_FOLDER = join(dirname(fileURLToPath(import.meta.url)), "..", "drizzle");
 
-/** Applies all pending migrations (journal in the `drizzle` schema) in one transaction. */
-export async function runMigrations(url: string): Promise<void> {
+/**
+ * Applies all pending migrations (journal in the `drizzle` schema) in one transaction.
+ * `migrationsFolder` is for tests that replay an older journal.
+ */
+export async function runMigrations(
+  url: string,
+  migrationsFolder: string = MIGRATIONS_FOLDER,
+): Promise<void> {
   const db = createDb(url, { max: 1 });
   try {
-    await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+    await migrate(db, { migrationsFolder });
   } finally {
     await db.$client.end();
   }

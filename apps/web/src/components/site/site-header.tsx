@@ -1,14 +1,16 @@
-import { Button } from "@/components/ui/button.tsx";
 import { Container } from "@/components/ui/container.tsx";
 import { Logo } from "@/components/ui/logo.tsx";
-import { getSessionOrNull } from "@/lib/auth.ts";
-import { authRoutes } from "@/lib/routes.ts";
-import { DesktopNav, MobileMenu } from "./header-nav.tsx";
+import { hasSessionCookie } from "@/lib/auth.ts";
+import { DesktopNav, HeaderAccount, MobileMenu } from "./header-nav.tsx";
 
+/**
+ * Site header. The signed-in state comes from the browser (see `useAuthState`), so pages
+ * never wait on a session lookup; the cookie check below reads no database.
+ */
 export async function SiteHeader() {
-  const signedIn = (await getSessionOrNull()) !== null;
+  const sessionCookie = await hasSessionCookie();
   return (
-    <header className="relative z-30 w-full">
+    <header className="nv-site-header relative z-30 w-full">
       <a
         href="#main"
         className="sr-only rounded-full bg-primary px-5 py-3 font-semibold text-on-primary focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50"
@@ -19,19 +21,8 @@ export async function SiteHeader() {
         <Logo />
         <DesktopNav />
         <div className="ml-auto flex items-center gap-1.5">
-          {signedIn ? (
-            <Button href="/account" variant="secondary">
-              Account
-            </Button>
-          ) : (
-            <>
-              <Button href={authRoutes.signIn} variant="ghost" className="hidden sm:inline-flex">
-                Sign in
-              </Button>
-              <Button href={authRoutes.signUp}>Sign up</Button>
-            </>
-          )}
-          <MobileMenu signedIn={signedIn} />
+          <HeaderAccount hasSessionCookie={sessionCookie} />
+          <MobileMenu hasSessionCookie={sessionCookie} />
         </div>
       </Container>
     </header>

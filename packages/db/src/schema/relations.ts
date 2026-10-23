@@ -17,6 +17,13 @@ import {
   serviceAreas,
 } from "./businesses.ts";
 import { categoryRequests, serviceCategories, services } from "./catalog.ts";
+import {
+  communityFundLedger,
+  communityPartnerMembers,
+  communityPartners,
+  communityReferrals,
+  donations,
+} from "./community.ts";
 import { addresses, profiles } from "./customers.ts";
 import { disputes } from "./disputes.ts";
 import { conversations, messages } from "./messaging.ts";
@@ -47,6 +54,8 @@ export const userRelations = relations(user, ({ one, many }) => ({
   pushTokens: many(pushTokens),
   reviewsGiven: many(reviews, { relationName: "reviewRater" }),
   reviewsReceived: many(reviews, { relationName: "reviewRatee" }),
+  communityPartnerMemberships: many(communityPartnerMembers),
+  donations: many(donations),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -135,6 +144,7 @@ export const serviceAreaRelations = relations(serviceAreas, ({ one }) => ({
 export const serviceCategoryRelations = relations(serviceCategories, ({ many }) => ({
   services: many(services),
   categoryRequests: many(categoryRequests),
+  communityReferrals: many(communityReferrals),
 }));
 
 export const categoryRequestRelations = relations(categoryRequests, ({ one }) => ({
@@ -215,6 +225,9 @@ export const bookingRelations = relations(bookings, ({ one, many }) => ({
   agreements: many(agreements),
   reviews: many(reviews),
   conversation: one(conversations),
+  donations: many(donations),
+  communityReferral: one(communityReferrals),
+  communityFundEntries: many(communityFundLedger),
 }));
 
 export const recurringSeriesRelations = relations(recurringSeries, ({ one }) => ({
@@ -282,6 +295,7 @@ export const paymentRelations = relations(payments, ({ one, many }) => ({
   visit: one(visits, { fields: [payments.visitId], references: [visits.id] }),
   payout: one(payouts, { fields: [payments.payoutId], references: [payouts.id] }),
   refunds: many(refunds),
+  donation: one(donations),
 }));
 
 export const refundRelations = relations(refunds, ({ one }) => ({
@@ -295,6 +309,59 @@ export const tipRelations = relations(tips, ({ one }) => ({
   customer: one(user, { fields: [tips.customerId], references: [user.id] }),
   business: one(businesses, { fields: [tips.businessId], references: [businesses.id] }),
   payout: one(payouts, { fields: [tips.payoutId], references: [payouts.id] }),
+}));
+
+// ── Community (Nevile Neighbours) ────────────────────────────────────────────
+
+export const communityPartnerRelations = relations(communityPartners, ({ one, many }) => ({
+  createdBy: one(user, { fields: [communityPartners.createdByUserId], references: [user.id] }),
+  members: many(communityPartnerMembers),
+  referrals: many(communityReferrals),
+}));
+
+export const communityPartnerMemberRelations = relations(communityPartnerMembers, ({ one }) => ({
+  partner: one(communityPartners, {
+    fields: [communityPartnerMembers.partnerId],
+    references: [communityPartners.id],
+  }),
+  user: one(user, { fields: [communityPartnerMembers.userId], references: [user.id] }),
+}));
+
+export const communityReferralRelations = relations(communityReferrals, ({ one, many }) => ({
+  partner: one(communityPartners, {
+    fields: [communityReferrals.partnerId],
+    references: [communityPartners.id],
+  }),
+  submittedBy: one(user, {
+    fields: [communityReferrals.submittedByUserId],
+    references: [user.id],
+  }),
+  reviewedBy: one(user, { fields: [communityReferrals.reviewedByUserId], references: [user.id] }),
+  category: one(serviceCategories, {
+    fields: [communityReferrals.categoryId],
+    references: [serviceCategories.id],
+  }),
+  booking: one(bookings, { fields: [communityReferrals.bookingId], references: [bookings.id] }),
+  fundEntries: many(communityFundLedger),
+}));
+
+export const donationRelations = relations(donations, ({ one, many }) => ({
+  donor: one(user, { fields: [donations.donorUserId], references: [user.id] }),
+  booking: one(bookings, { fields: [donations.bookingId], references: [bookings.id] }),
+  payment: one(payments, { fields: [donations.paymentId], references: [payments.id] }),
+  fundEntries: many(communityFundLedger),
+}));
+
+export const communityFundLedgerRelations = relations(communityFundLedger, ({ one }) => ({
+  donation: one(donations, {
+    fields: [communityFundLedger.donationId],
+    references: [donations.id],
+  }),
+  referral: one(communityReferrals, {
+    fields: [communityFundLedger.referralId],
+    references: [communityReferrals.id],
+  }),
+  booking: one(bookings, { fields: [communityFundLedger.bookingId], references: [bookings.id] }),
 }));
 
 // ── Reviews ────────────────────────────────────────────────────────────────────

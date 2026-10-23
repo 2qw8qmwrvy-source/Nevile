@@ -46,29 +46,6 @@ export function verificationEmail(input: {
   };
 }
 
-/**
- * Sent instead of a second verification email when someone signs up with an address that
- * already has an account. The sign-up response itself is identical either way, so the
- * form never reveals whether an address is registered.
- */
-export function existingAccountEmail(input: {
-  to: string;
-  name: string;
-  signInUrl: string;
-}): EmailMessage {
-  const lines = [
-    greeting(input.name),
-    "Someone tried to create a Nevile account with this email address, but you already have one.",
-    "If that was you, sign in instead. If it wasn't, no action is needed: your account hasn't changed.",
-  ];
-  return {
-    to: input.to,
-    subject: "You already have a Nevile account",
-    text: [...lines, "", `Sign in: ${input.signInUrl}`].join("\n"),
-    html: layout(lines, { label: "Sign in", url: input.signInUrl }),
-  };
-}
-
 export function otpSms(code: string, expiresInMinutes: number): string {
   return `${code} is your Nevile sign-in code. It expires in ${expiresInMinutes} minutes. Never share it with anyone.`;
 }

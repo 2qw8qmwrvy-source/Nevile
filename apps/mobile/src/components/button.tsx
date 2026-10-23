@@ -1,15 +1,16 @@
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, type PressableProps, StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { colors, MIN_TOUCH, radius } from "@/theme";
 
 import { Icon, type IconName } from "./icon.tsx";
+import { PressableScale, type PressableScaleProps } from "./pressable-scale.tsx";
 import { Text } from "./text.tsx";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost";
 export type ButtonSize = "md" | "sm";
 
-export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
+export type ButtonProps = Omit<PressableScaleProps, "children" | "style" | "pressedScale"> & {
   label: string;
   variant?: ButtonVariant;
   size?: ButtonSize;
@@ -66,12 +67,13 @@ export function Button({
   const slop = Math.max(0, (MIN_TOUCH - height) / 2);
 
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       hitSlop={slop}
+      pressedScale={inactive ? 1 : 0.97}
       style={({ pressed }) => [
         styles.base,
         {
@@ -101,7 +103,7 @@ export function Button({
           {trailing}
         </View>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 

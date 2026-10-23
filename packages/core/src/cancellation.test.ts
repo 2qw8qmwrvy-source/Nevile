@@ -14,12 +14,12 @@ const HOUR = 3_600_000;
 const START = new Date("2026-11-20T14:00:00Z");
 const before = (ms: number) => new Date(START.getTime() - ms);
 
-/** $100 job in Ontario, registered business (see fees tests). */
+/** $100 job in Nova Scotia (HST 14%), registered business (see fees tests). */
 const PAID: PaidAmounts = {
   priceCents: 10000,
-  serviceFeeCents: 639,
-  taxOnPriceCents: 1300,
-  taxOnFeeCents: 83,
+  serviceFeeCents: 683,
+  taxOnPriceCents: 1400,
+  taxOnFeeCents: 96,
 };
 
 describe("policy presets", () => {
@@ -27,7 +27,8 @@ describe("policy presets", () => {
     expect(CANCELLATION_POLICY_IDS).toEqual(["flexible", "moderate", "strict"]);
     expect(CANCELLATION_POLICIES.flexible).toMatchObject({
       freeWindow: { amount: 24, unit: "hours" },
-      lateRefundBps: 0,
+      lateRefundBps: 5000,
+      description: "Free cancellation until 24 hours before the job; after that, 50% refund.",
     });
     expect(CANCELLATION_POLICIES.moderate).toMatchObject({
       freeWindow: { amount: 48, unit: "hours" },
@@ -57,23 +58,46 @@ describe("policy presets", () => {
     );
   });
 
-  it("keeps the job's wall-clock time for 'strict' across DST (7 calendar days)", () => {
-    // 09:00 EST on 2026-11-04 → 09:00 EDT on 2026-10-28 (169 elapsed hours).
-    const fall = new Date("2026-11-04T14:00:00Z");
-    expect(freeCancellationDeadline("strict", fall).toISOString()).toBe("2026-10-28T13:00:00.000Z");
-    // 09:00 EDT on Sat 2026-03-14 → 09:00 EST on Sat 2026-03-07 (167 elapsed hours).
-    const spring = new Date("2026-03-14T13:00:00Z");
+  it("keeps the job's wall-clock time for 'strict' across DST (7 calendar days, Halifax)", () => {
+    // 09:00 AST on 2026-11-04 → 09:00 ADT on 2026-10-28 (169 elapsed hours).
+    const fall = new Date("2026-11-04T13:00:00Z");
+    expect(freeCancellationDeadline("strict", fall).toISOString()).toBe("2026-10-28T12:00:00.000Z");
+    // 09:00 ADT on Sat 2026-03-14 → 09:00 AST on Sat 2026-03-07 (167 elapsed hours).
+    const spring = new Date("2026-03-14T12:00:00Z");
     expect(freeCancellationDeadline("strict", spring).toISOString()).toBe(
-      "2026-03-07T14:00:00.000Z",
+      "2026-03-07T13:00:00.000Z",
     );
-    // A customer cancelling at 08:30 local on 03-07 is still inside the free window.
+    expect(freeCancellationDeadline("strict", spring, "America/Halifax")).toEqual(
+      freeCancellationDeadline("strict", spring),
+    );
+    // A customer cancelling at 08:30 local on 03-07 is still inside the free window…
     const refund = refundForCustomerCancellation({
       ...PAID,
       policy: "strict",
       jobStartsAt: spring,
-      cancelledAt: new Date("2026-03-07T13:30:00Z"),
+      cancelledAt: new Date("2026-03-07T12:30:00Z"),
     });
     expect(refund.isFreeCancellation).toBe(true);
+    // …and at 09:00:00.001 local it is not.
+    const late = refundForCustomerCancellation({
+      ...PAID,
+      policy: "strict",
+      jobStartsAt: spring,
+      cancelledAt: new Date("2026-03-07T13:00:00.001Z"),
+    });
+    expect(late.isFreeCancellation).toBe(false);
+  });
+
+  it("uses Halifax by default for 'strict', not Toronto", () => {
+    // 03:30 ADT on 2026-03-15 in Halifax (02:30 EDT in Toronto). Seven days earlier,
+    // 03:30 exists in Halifax just after its 02:00 jump; Toronto's 02:30 is in its gap.
+    const start = new Date("2026-03-15T06:30:00Z");
+    expect(freeCancellationDeadline("strict", start).toISOString()).toBe(
+      "2026-03-08T06:30:00.000Z",
+    );
+    expect(freeCancellationDeadline("strict", start, "America/Toronto").toISOString()).toBe(
+      "2026-03-08T07:30:00.000Z",
+    );
   });
 
   it("uses the job's zone for 'strict'", () => {
@@ -102,7 +126,7 @@ describe("refundForCustomerCancellation", () => {
     expect(refund.isFreeCancellation).toBe(true);
     expect(refund.priceRefundBps).toBe(10_000);
     expect(refund.priceRefundCents).toBe(10000);
-    expect(refund.taxOnPriceRefundCents).toBe(1300);
+    expect(refund.taxOnPriceRefundCents).toBe(1400);
   });
 
   it("keeps the service fee and its tax on a free cancellation", () => {
@@ -111,10 +135,10 @@ describe("refundForCustomerCancellation", () => {
       priceRefundBps: 10_000,
       isFreeCancellation: true,
       priceRefundCents: 10000,
-      taxOnPriceRefundCents: 1300,
+      taxOnPriceRefundCents: 1400,
       serviceFeeRefundCents: 0,
       taxOnFeeRefundCents: 0,
-      totalRefundCents: 11300,
+      totalRefundCents: 11400,
       retainedPriceCents: 0,
       businessFeeCents: 0,
       businessPayoutCents: 0,
@@ -122,15 +146,27 @@ describe("refundForCustomerCancellation", () => {
     });
   });
 
-  it("flexible: one millisecond past the deadline refunds nothing", () => {
+  it("flexible: one millisecond past the deadline refunds 50% (SPEC §5)", () => {
     const refund = cancel("flexible", before(24 * HOUR - 1));
-    expect(refund.isFreeCancellation).toBe(false);
-    expect(refund.priceRefundBps).toBe(0);
-    expect(refund.totalRefundCents).toBe(0);
-    expect(refund.retainedPriceCents).toBe(10000);
-    expect(refund.businessFeeCents).toBe(300);
-    expect(refund.businessPayoutCents).toBe(9700);
-    expect(refund.retainedTaxOnPriceCents).toBe(1300);
+    expect(refund).toEqual({
+      priceRefundBps: 5000,
+      isFreeCancellation: false,
+      priceRefundCents: 5000,
+      taxOnPriceRefundCents: 700,
+      serviceFeeRefundCents: 0,
+      taxOnFeeRefundCents: 0,
+      totalRefundCents: 5700,
+      retainedPriceCents: 5000,
+      businessFeeCents: 150,
+      businessPayoutCents: 4850,
+      retainedTaxOnPriceCents: 700,
+    });
+  });
+
+  it("flexible: still 50% an hour before the start", () => {
+    const refund = cancel("flexible", before(HOUR));
+    expect(refund.priceRefundBps).toBe(5000);
+    expect(refund.totalRefundCents).toBe(5700);
   });
 
   it("moderate: inside 48h refunds 50% of the price and its tax", () => {
@@ -139,34 +175,44 @@ describe("refundForCustomerCancellation", () => {
       priceRefundBps: 5000,
       isFreeCancellation: false,
       priceRefundCents: 5000,
-      taxOnPriceRefundCents: 650,
+      taxOnPriceRefundCents: 700,
       serviceFeeRefundCents: 0,
       taxOnFeeRefundCents: 0,
-      totalRefundCents: 5650,
+      totalRefundCents: 5700,
       retainedPriceCents: 5000,
       businessFeeCents: 150,
       businessPayoutCents: 4850,
-      retainedTaxOnPriceCents: 650,
+      retainedTaxOnPriceCents: 700,
     });
   });
 
-  it("moderate: rounds the half refund and proportional tax half-up", () => {
-    const paid = {
-      priceCents: 6001,
-      serviceFeeCents: 395,
-      taxOnPriceCents: 780,
-      taxOnFeeCents: 51,
-    };
-    const refund = cancel("moderate", before(HOUR), paid);
-    expect(refund.priceRefundCents).toBe(3001); // 3000.5 -> 3001
-    expect(refund.taxOnPriceRefundCents).toBe(390); // 780 × 3001 / 6001 = 390.06
-    expect(refund.retainedPriceCents).toBe(3000);
-    expect(refund.retainedTaxOnPriceCents).toBe(390);
-    expect(refund.businessFeeCents).toBe(90);
+  it("flexible and moderate differ only in the window", () => {
+    // 30h before: inside moderate's 48h window, outside flexible's 24h one.
+    expect(cancel("flexible", before(30 * HOUR)).isFreeCancellation).toBe(true);
+    expect(cancel("moderate", before(30 * HOUR)).priceRefundBps).toBe(5000);
+    expect(cancel("flexible", before(2 * HOUR))).toEqual(cancel("moderate", before(2 * HOUR)));
   });
 
+  it.each(["flexible", "moderate"] as const)(
+    "%s: rounds the half refund and proportional tax half-up",
+    (policy) => {
+      const paid = {
+        priceCents: 6001,
+        serviceFeeCents: 422,
+        taxOnPriceCents: 840, // 840.14
+        taxOnFeeCents: 59,
+      };
+      const refund = cancel(policy, before(HOUR), paid);
+      expect(refund.priceRefundCents).toBe(3001); // 3000.5 -> 3001
+      expect(refund.taxOnPriceRefundCents).toBe(420); // 840 × 3001 / 6001 = 420.07
+      expect(refund.retainedPriceCents).toBe(3000);
+      expect(refund.retainedTaxOnPriceCents).toBe(420);
+      expect(refund.businessFeeCents).toBe(90);
+    },
+  );
+
   it("strict: inside 7 days refunds nothing", () => {
-    // START is 09:00 EST on 2026-11-20; no DST change in the week before it.
+    // START is 10:00 AST on 2026-11-20; no DST change in the week before it.
     expect(cancel("strict", before(168 * HOUR)).isFreeCancellation).toBe(true);
     const refund = cancel("strict", before(168 * HOUR - 1));
     expect(refund.totalRefundCents).toBe(0);
@@ -178,11 +224,12 @@ describe("refundForCustomerCancellation", () => {
       /already started/,
     );
     expect(() => cancel("flexible", START)).toThrow(RangeError);
-    expect(cancel("flexible", before(1)).priceRefundCents).toBe(0);
+    expect(cancel("flexible", before(1)).priceRefundCents).toBe(5000);
+    expect(cancel("strict", before(1)).priceRefundCents).toBe(0);
   });
 
   it("refunds no tax when the business charged none", () => {
-    const paid = { priceCents: 10000, serviceFeeCents: 639, taxOnPriceCents: 0, taxOnFeeCents: 83 };
+    const paid = { priceCents: 10000, serviceFeeCents: 641, taxOnPriceCents: 0, taxOnFeeCents: 90 };
     const refund = cancel("moderate", before(HOUR), paid);
     expect(refund.taxOnPriceRefundCents).toBe(0);
     expect(refund.totalRefundCents).toBe(5000);
@@ -191,19 +238,19 @@ describe("refundForCustomerCancellation", () => {
   it("accepts a ChargeBreakdown directly", () => {
     const charge = calculateCharge({
       priceCents: 18000,
-      province: "ON",
+      province: "NS",
       businessTaxRegistered: true,
       at: "2026-10-21",
     });
     const refund = refundForCustomerCancellation({
       ...charge,
-      policy: "moderate",
+      policy: "flexible",
       jobStartsAt: START,
       cancelledAt: before(HOUR),
     });
     expect(refund.priceRefundCents).toBe(9000);
-    expect(refund.taxOnPriceRefundCents).toBe(1170);
-    expect(refund.totalRefundCents).toBe(10170);
+    expect(refund.taxOnPriceRefundCents).toBe(1260);
+    expect(refund.totalRefundCents).toBe(10260);
   });
 
   it("totals always add up", () => {
@@ -211,10 +258,10 @@ describe("refundForCustomerCancellation", () => {
       const paid = {
         priceCents,
         serviceFeeCents: 77,
-        taxOnPriceCents: Math.round(priceCents * 0.13),
+        taxOnPriceCents: Math.round(priceCents * 0.14),
         taxOnFeeCents: 10,
       };
-      const refund = cancel("moderate", before(HOUR), paid);
+      const refund = cancel(priceCents % 2 === 0 ? "moderate" : "flexible", before(HOUR), paid);
       expect(refund.totalRefundCents).toBe(
         refund.priceRefundCents +
           refund.taxOnPriceRefundCents +
@@ -257,10 +304,10 @@ describe("refundForBusinessCancellation", () => {
       priceRefundBps: 10_000,
       isFreeCancellation: true,
       priceRefundCents: 10000,
-      taxOnPriceRefundCents: 1300,
-      serviceFeeRefundCents: 639,
-      taxOnFeeRefundCents: 83,
-      totalRefundCents: 12022,
+      taxOnPriceRefundCents: 1400,
+      serviceFeeRefundCents: 683,
+      taxOnFeeRefundCents: 96,
+      totalRefundCents: 12179,
       retainedPriceCents: 0,
       businessFeeCents: 0,
       businessPayoutCents: 0,

@@ -3,7 +3,7 @@
  *
  * | Preset   | Free until            | After that       |
  * |----------|-----------------------|------------------|
- * | flexible | 24 hours before start | no refund        |
+ * | flexible | 24 hours before start | 50% refund       |
  * | moderate | 48 hours before start | 50% refund       |
  * | strict   | 7 days before start   | no refund        |
  *
@@ -45,9 +45,9 @@ export const CANCELLATION_POLICIES: Readonly<Record<CancellationPolicyId, Cancel
   flexible: {
     id: "flexible",
     label: "Flexible",
-    description: "Free cancellation until 24 hours before the job.",
+    description: "Free cancellation until 24 hours before the job; after that, 50% refund.",
     freeWindow: { amount: 24, unit: "hours" },
-    lateRefundBps: 0,
+    lateRefundBps: 5000,
   },
   moderate: {
     id: "moderate",
@@ -161,7 +161,7 @@ function breakdown(
 export type CustomerCancellationInput = PaidAmounts & {
   policy: CancellationPolicyId;
   jobStartsAt: Date;
-  /** IANA zone of the job address (bookings.timezone); defaults to America/Toronto. */
+  /** IANA zone of the job address (bookings.timezone); defaults to America/Halifax. */
   jobTimeZone?: string;
   cancelledAt: Date;
 };

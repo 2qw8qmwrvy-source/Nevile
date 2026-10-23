@@ -1,39 +1,22 @@
-import { type Auth, createAuth } from "@nevile/auth";
 import { DEFAULT_CATEGORIES } from "@nevile/core";
-import {
-  businesses,
-  businessMembers,
-  createDb,
-  type Database,
-  eq,
-  profiles,
-  serviceCategories,
-} from "@nevile/db";
-import { seedCategories } from "@nevile/db/seed";
-import { TRPCError } from "@trpc/server";
+import { businesses, businessMembers, eq, profiles, serviceCategories } from "@nevile/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type Context, createContext } from "./context.ts";
 import { appRouter, createCaller } from "./root.ts";
 import { slugify } from "./slug.ts";
-import { freshTestDatabase } from "./test/database.ts";
-import { businessMemberProcedure, createCallerFactory, router } from "./trpc.ts";
+import { createHarness, type Harness, trpcError } from "./test/harness.ts";
+import {
+  API_ERROR_REASONS,
+  businessMemberProcedure,
+  createCallerFactory,
+  errorReasonOf,
+  router,
+} from "./trpc.ts";
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
-const BASE_URL = "http://localhost:3000";
-const PASSWORD = "a long enough password";
 
 if (!TEST_DATABASE_URL) {
   console.warn("TEST_DATABASE_URL is not set; skipping @nevile/api database tests.");
-}
-
-async function trpcError(promise: Promise<unknown>): Promise<TRPCError> {
-  try {
-    await promise;
-  } catch (error) {
-    if (error instanceof TRPCError) return error;
-    throw error;
-  }
-  throw new Error("Expected a TRPCError");
 }
 
 describe("slugify", () => {
@@ -46,55 +29,32 @@ describe("slugify", () => {
 });
 
 describe.skipIf(!TEST_DATABASE_URL)("@nevile/api", () => {
-  let db: Database;
-  let auth: Auth;
-  const outbox: string[] = [];
+  let harness: Harness;
+  let db: Harness["db"];
+  let auth: Harness["auth"];
 
-  /** Signs up, verifies and signs in through Better Auth; returns a request context. */
+  /** Signs up and confirms the email; returns a request context. */
   async function signedInContext(email: string, name: string): Promise<Context> {
-    await auth.api.signUpEmail({ body: { email, name, password: PASSWORD } });
-    const link = outbox.findLast((text) => text.includes(email));
-    const token = link?.match(/verify-email\?token=([^\s]+)/)?.[1];
-    if (!token) throw new Error(`No verification email for ${email}`);
-    await auth.api.verifyEmail({ query: { token: decodeURIComponent(token) } });
-    const signIn = await auth.api.signInEmail({
-      body: { email, password: PASSWORD },
-      returnHeaders: true,
-    });
-    const cookie = signIn.headers
-      .getSetCookie()
-      .map((value) => value.split(";")[0])
-      .join("; ");
-    return createContext({ headers: new Headers({ cookie }), db, auth });
+    return (await harness.signUp(email, name)).ctx;
   }
 
   function anonymous(): Context {
-    return { db, session: null, headers: new Headers() };
+    return harness.anonymous();
   }
 
   let maya: Context;
   let leo: Context;
 
   beforeAll(async () => {
-    const url = await freshTestDatabase(TEST_DATABASE_URL as string, "api");
-    db = createDb(url, { max: 4 });
-    await seedCategories(db);
-    auth = createAuth({
-      db,
-      secret: "api-test-secret-api-test-secret-0123456",
-      baseURL: BASE_URL,
-      emailSender: {
-        send: async (message) => void outbox.push(`${message.to}\n${message.text}`),
-      },
-      smsSender: { send: async () => {} },
-      production: false,
-    });
+    harness = await createHarness(TEST_DATABASE_URL as string);
+    db = harness.db;
+    auth = harness.auth;
     maya = await signedInContext("maya@example.com", "Maya Tremblay");
     leo = await signedInContext("leo@example.com", "Léo Gagnon");
   });
 
   afterAll(async () => {
-    await db?.$client.end();
+    await harness?.close();
   });
 
   it("resolves the session from the cookie, and null without one", async () => {
@@ -123,6 +83,10 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/api", () => {
       caller.business.mine(),
       caller.business.create({ name: "Sneaky Snow", province: "ON" }),
       caller.business.get({ businessId: "00000000-0000-4000-8000-000000000000" }),
+      caller.onboarding.save({ intent: "customer", postalCode: "B3H 1A1" }),
+      caller.onboarding.skip(),
+      caller.profile.setMarketingConsent({ consent: true }),
+      caller.community.myPartners(),
     ];
     for (const call of calls) {
       expect((await trpcError(call)).code).toBe("UNAUTHORIZED");
@@ -279,6 +243,75 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/api", () => {
     expect((await trpcError(createTestCaller(leo).anyMember({ businessId }))).code).toBe(
       "NOT_FOUND",
     );
+  });
+
+  describe("verification gate", () => {
+    it("lets unverified users in, but not into business tools, until they verify", async () => {
+      const email = "unverified@example.com";
+      const { ctx, cookie } = await harness.signUp(email, "Uma Verdi", { verify: false });
+      expect(ctx.session?.user.emailVerified).toBe(false);
+      const caller = createCaller(ctx);
+
+      expect(await caller.me.get()).toMatchObject({
+        verified: false,
+        verificationMethod: null,
+        user: { email, emailVerified: false },
+      });
+
+      const blocked = await trpcError(
+        caller.business.create({ name: "Uma's Yards", province: "NS" }),
+      );
+      expect(blocked.code).toBe("FORBIDDEN");
+      expect(errorReasonOf(blocked)).toBe(API_ERROR_REASONS.VERIFICATION_REQUIRED);
+      expect((await trpcError(caller.business.mine())).code).toBe("FORBIDDEN");
+      const [mayaBusiness] = await createCaller(maya).business.mine();
+      expect(
+        (await trpcError(caller.business.get({ businessId: mayaBusiness?.id ?? "" }))).code,
+      ).toBe("FORBIDDEN");
+      expect(
+        await db
+          .select()
+          .from(businesses)
+          .where(eq(businesses.ownerUserId, ctx.session?.user.id ?? "")),
+      ).toEqual([]);
+
+      // Clients get the reason in the error data.
+      const shape = appRouter._def._config.errorFormatter({
+        error: blocked,
+        type: "mutation",
+        path: "business.create",
+        input: undefined,
+        ctx: undefined,
+        shape: {
+          message: blocked.message,
+          code: -32603,
+          data: { code: "FORBIDDEN", httpStatus: 403 },
+        },
+      }) as { data: { reason: string | null; zodError: unknown } };
+      expect(shape.data).toMatchObject({ reason: "VERIFICATION_REQUIRED", zodError: null });
+
+      // Confirming the email opens the gate on the same session.
+      await harness.verifyEmail(email);
+      const verified = createCaller(await harness.contextFor(cookie));
+      expect(await verified.me.get()).toMatchObject({
+        verified: true,
+        verificationMethod: "email",
+      });
+      const created = await verified.business.create({ name: "Uma's Yards", province: "NS" });
+      expect(created).toMatchObject({ role: "owner", province: "NS", timezone: "America/Halifax" });
+    });
+
+    it("counts an SMS-verified phone number as a verified contact", async () => {
+      const { ctx } = await harness.phoneSignUp("+19025550142");
+      const caller = createCaller(ctx);
+      const me = await caller.me.get();
+      expect(me).toMatchObject({
+        verified: true,
+        verificationMethod: "phone",
+        user: { email: null, emailVerified: false, phoneNumber: "+19025550142" },
+      });
+      expect(await caller.business.mine()).toEqual([]);
+    });
   });
 
   it("formats validation errors for clients", async () => {

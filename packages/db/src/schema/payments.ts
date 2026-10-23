@@ -91,6 +91,8 @@ export const payments = pgTable(
     ...timestamps(),
   },
   (t) => [
+    // Target of the composite FK that ties a donation's payment to its booking.
+    unique("payments_id_booking_unique").on(t.id, t.bookingId),
     foreignKey({
       name: "payments_booking_business_fk",
       columns: [t.bookingId, t.businessId],

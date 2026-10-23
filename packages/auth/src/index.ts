@@ -1,5 +1,9 @@
 import { getDb } from "@nevile/db";
-import { createConsoleEmailSender, createConsoleSmsSender } from "./senders.ts";
+import {
+  createConsoleEmailSender,
+  createConsoleSmsSender,
+  devOutboxDirFromEnv,
+} from "./senders.ts";
 import { type Auth, createAuth } from "./server.ts";
 
 export {
@@ -11,16 +15,23 @@ export {
   OTP_LENGTH,
 } from "./constants.ts";
 export {
+  type ContactFields,
   contactEmail,
+  hasVerifiedContact,
   isNormalizedCanadianPhone,
   isPlaceholderEmail,
   PHONE_PLACEHOLDER_EMAIL_DOMAIN,
   placeholderEmailForPhone,
+  type VerificationMethod,
+  verificationMethodOf,
 } from "./identity.ts";
 export { safeRedirectPath } from "./redirect.ts";
 export {
+  type ConsoleSenderOptions,
   createConsoleEmailSender,
   createConsoleSmsSender,
+  type DevOutboxMessage,
+  devOutboxDirFromEnv,
   type EmailMessage,
   type EmailSender,
   type SmsMessage,
@@ -43,6 +54,13 @@ export {
   SIGN_IN_ATTEMPTS_PER_EMAIL,
   type User,
 } from "./server.ts";
+export {
+  MARKETING_CONSENT_AUDIT_ACTIONS,
+  POSTAL_CODE_REQUIRED_MESSAGE,
+  SIGN_UP_ERROR_CODES,
+  type SignUpDetails,
+  USER_CREATING_PATHS,
+} from "./sign-up.ts";
 export { isUserSuspended, suspendUser, unsuspendUser } from "./suspension.ts";
 
 /** Used only outside production when BETTER_AUTH_SECRET is unset. Never deploy it. */
@@ -63,6 +81,8 @@ function listFromEnv(value: string | undefined): string[] {
  * - BETTER_AUTH_TRUSTED_ORIGINS, BETTER_AUTH_TRUSTED_PROXIES (optional, comma-separated)
  * - BETTER_AUTH_CLIENT_IP_HEADER (optional; default x-forwarded-for, see `clientIpHeader`)
  * - DATABASE_URL (via @nevile/db)
+ * - NEVILE_DEV_OUTBOX_DIR (optional, never in production): also write each email and SMS
+ *   as a JSON file there, for browser tests
  *
  * Outside production, emails and SMS codes are printed to the console. Production has no
  * provider wired yet, so it refuses to start rather than silently drop verification
@@ -82,12 +102,13 @@ function createAuthFromEnv(): Auth {
   if (!secret) {
     console.warn("[auth] BETTER_AUTH_SECRET is not set; using an insecure development secret.");
   }
+  const outboxDir = devOutboxDirFromEnv();
   return createAuth({
     db: getDb(),
     secret: secret ?? DEV_ONLY_SECRET,
     baseURL: baseURL ?? DEV_BASE_URL,
-    emailSender: createConsoleEmailSender(),
-    smsSender: createConsoleSmsSender(),
+    emailSender: createConsoleEmailSender(undefined, { outboxDir }),
+    smsSender: createConsoleSmsSender(undefined, { outboxDir }),
     trustedOrigins: listFromEnv(process.env.BETTER_AUTH_TRUSTED_ORIGINS),
     trustedProxies: listFromEnv(process.env.BETTER_AUTH_TRUSTED_PROXIES),
     clientIpHeader: process.env.BETTER_AUTH_CLIENT_IP_HEADER?.trim() || undefined,

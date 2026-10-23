@@ -92,10 +92,12 @@ export function normalizePostalCode(input: string): string | null {
   return `${compact.slice(0, 3)} ${compact.slice(3)}`;
 }
 
+export const POSTAL_CODE_INVALID_MESSAGE = "Enter a valid Canadian postal code (e.g. A1A 1A1)";
+
 export const postalCodeSchema = z
   .string()
   .refine((value) => normalizePostalCode(value) !== null, {
-    message: "Enter a valid Canadian postal code (e.g. A1A 1A1)",
+    message: POSTAL_CODE_INVALID_MESSAGE,
   })
   .transform((value) => normalizePostalCode(value) as string);
 

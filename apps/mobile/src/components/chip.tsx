@@ -1,11 +1,12 @@
-import { Pressable, type PressableProps, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 
 import { colors, MIN_TOUCH, radius } from "@/theme";
 
 import { Icon, type IconName } from "./icon.tsx";
+import { PressableScale, type PressableScaleProps } from "./pressable-scale.tsx";
 import { Text } from "./text.tsx";
 
-export type ChipProps = Omit<PressableProps, "children" | "style"> & {
+export type ChipProps = Omit<PressableScaleProps, "children" | "style"> & {
   label: string;
   selected?: boolean;
   icon?: IconName;
@@ -15,7 +16,7 @@ export type ChipProps = Omit<PressableProps, "children" | "style"> & {
 export function Chip({ label, selected = false, icon, accessibilityLabel, ...rest }: ChipProps) {
   const fg = selected ? colors.onPrimary : colors.ink;
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ selected }}
@@ -32,7 +33,7 @@ export function Chip({ label, selected = false, icon, accessibilityLabel, ...res
       <Text variant="bodyStrong" style={[styles.label, { color: fg }]} numberOfLines={1}>
         {label}
       </Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 

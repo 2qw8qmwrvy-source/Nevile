@@ -4,6 +4,7 @@ export * from "./billing.ts";
 export * from "./bookings.ts";
 export * from "./businesses.ts";
 export * from "./catalog.ts";
+export * from "./community.ts";
 export * from "./customers.ts";
 export * from "./disputes.ts";
 export * from "./enums.ts";

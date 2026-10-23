@@ -22,7 +22,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { slugify } from "../slug.ts";
-import { businessMemberProcedure, protectedProcedure, router } from "../trpc.ts";
+import { businessMemberProcedure, router, verifiedProcedure } from "../trpc.ts";
 
 export { BUSINESS_NAME_MAX_LENGTH, BUSINESS_NAME_MIN_LENGTH };
 
@@ -91,9 +91,10 @@ async function insertWithUniqueSlug(
 export const businessRouter = router({
   /**
    * "Switch to business mode" (SPEC §1): creates the caller's business with them as owner
-   * and switches their profile to business mode. One owned business per account.
+   * and switches their profile to business mode. One owned business per account. Business
+   * tools need a verified contact.
    */
-  create: protectedProcedure.input(createBusinessInput).mutation(async ({ ctx, input }) => {
+  create: verifiedProcedure.input(createBusinessInput).mutation(async ({ ctx, input }) => {
     const { user } = ctx;
     const created = await ctx.db.transaction(async (tx) => {
       // Serializes concurrent requests from the same user (double-clicks, retries).
@@ -128,7 +129,7 @@ export const businessRouter = router({
   }),
 
   /** Businesses the caller belongs to, with their role in each. */
-  mine: protectedProcedure.query(async ({ ctx }) => {
+  mine: verifiedProcedure.query(async ({ ctx }) => {
     const rows = await ctx.db
       .select({ business: businesses, role: businessMembers.role })
       .from(businessMembers)

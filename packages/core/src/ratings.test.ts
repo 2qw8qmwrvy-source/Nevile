@@ -85,10 +85,15 @@ describe("canRate", () => {
 
 describe("ratingMonthKey", () => {
   it("uses the local month of the visit", () => {
-    // 2026-11-01T03:30Z is still 23:30 on Oct 31 in Toronto.
-    const at = new Date("2026-11-01T03:30:00Z");
+    // 2026-11-01T02:30Z is still 23:30 ADT on Oct 31 in Halifax (the default zone).
+    const at = new Date("2026-11-01T02:30:00Z");
     expect(ratingMonthKey(at)).toBe("2026-10");
+    expect(ratingMonthKey(at, "America/Halifax")).toBe("2026-10");
     expect(ratingMonthKey(at, "UTC")).toBe("2026-11");
+    // 03:30Z is already November in Halifax but still October in Toronto.
+    const later = new Date("2026-11-01T03:30:00Z");
+    expect(ratingMonthKey(later)).toBe("2026-11");
+    expect(ratingMonthKey(later, "America/Toronto")).toBe("2026-10");
     expect(ratingMonthKey(new Date("2027-01-15T12:00:00Z"))).toBe("2027-01");
   });
 });

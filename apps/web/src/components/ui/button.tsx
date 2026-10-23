@@ -21,13 +21,19 @@ type AsButton = CommonProps &
   Omit<ButtonHTMLAttributes<HTMLButtonElement>, keyof CommonProps> & { href?: undefined };
 
 type AsLink = CommonProps &
-  Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof CommonProps | "href"> & { href: Route };
+  Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof CommonProps | "href"> & {
+    href: Route;
+    /** Passed to next/link; `true` prefetches the whole page, not just its loading state. */
+    prefetch?: boolean | null;
+  };
 
 export type ButtonProps = AsButton | AsLink;
 
+// Press feedback: a slight scale-down while pressed (no motion when reduced motion is on).
 const base =
   "inline-flex items-center justify-center gap-2 font-semibold whitespace-nowrap no-underline select-none " +
-  "transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-55 " +
+  "transition duration-150 ease-out cursor-pointer active:scale-[0.97] motion-reduce:active:scale-100 " +
+  "disabled:cursor-not-allowed disabled:opacity-55 disabled:active:scale-100 " +
   "aria-disabled:pointer-events-none aria-disabled:opacity-55";
 
 const variants: Record<ButtonVariant, string> = {

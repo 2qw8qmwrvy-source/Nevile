@@ -88,5 +88,16 @@ export type NewSubscription = InferInsertModel<typeof s.subscriptions>;
 export type PlanPrice = InferSelectModel<typeof s.planPrices>;
 export type NewPlanPrice = InferInsertModel<typeof s.planPrices>;
 
+export type CommunityPartner = InferSelectModel<typeof s.communityPartners>;
+export type NewCommunityPartner = InferInsertModel<typeof s.communityPartners>;
+export type CommunityPartnerMember = InferSelectModel<typeof s.communityPartnerMembers>;
+export type NewCommunityPartnerMember = InferInsertModel<typeof s.communityPartnerMembers>;
+export type CommunityReferral = InferSelectModel<typeof s.communityReferrals>;
+export type NewCommunityReferral = InferInsertModel<typeof s.communityReferrals>;
+export type Donation = InferSelectModel<typeof s.donations>;
+export type NewDonation = InferInsertModel<typeof s.donations>;
+export type CommunityFundLedgerEntry = InferSelectModel<typeof s.communityFundLedger>;
+export type NewCommunityFundLedgerEntry = InferInsertModel<typeof s.communityFundLedger>;
+
 export type AuditLogEntry = InferSelectModel<typeof s.auditLog>;
 export type NewAuditLogEntry = InferInsertModel<typeof s.auditLog>;

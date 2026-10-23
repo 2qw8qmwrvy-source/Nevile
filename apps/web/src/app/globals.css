@@ -94,6 +94,7 @@
     scroll-margin-top: 24px;
   }
 
+  /* SPEC §16: motion is switched off whenever the device asks for reduced motion. */
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
@@ -106,15 +107,121 @@
       transition-duration: 0.01ms !important;
       /* biome-ignore lint/complexity/noImportantStyles: must beat component animations. */
       animation-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: stops looping animations (e.g. pulses). */
+      animation-iteration-count: 1 !important;
     }
   }
 }
 
 @layer components {
-  /* Smoothly re-colour the seasonal illustration when the season changes. */
+  /* Re-colour the seasonal illustration gently if the season changes while it is shown. */
   .season-art * {
     transition:
-      fill 0.35s ease,
-      opacity 0.35s ease;
+      fill 0.25s ease,
+      opacity 0.25s ease;
+  }
+
+  /* Subtle entrances (SPEC §16: 150–250 ms). Reduced motion turns them off (above). */
+  .nv-pop-in {
+    animation: nv-pop-in 180ms ease-out both;
+  }
+
+  .nv-rise {
+    animation: nv-rise 220ms ease-out both;
+  }
+
+  .nv-slide-up {
+    animation: nv-slide-up 220ms ease-out both;
+  }
+
+  .nv-fade-in {
+    animation: nv-fade-in 200ms ease-out both;
+  }
+
+  /* The header stays put while page content crossfades during navigation. */
+  .nv-site-header {
+    view-transition-name: site-header;
+  }
+}
+
+@keyframes nv-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes nv-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes nv-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+@keyframes nv-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes nv-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * Page navigations (React <ViewTransition default="nv-page"> in the root layout): a quick
+ * crossfade of the main content. Browsers without view transitions just swap instantly.
+ */
+::view-transition {
+  /* Clicks during the short animation reach the new page instead of the overlay. */
+  pointer-events: none;
+}
+
+::view-transition-group(site-header) {
+  animation: none;
+  z-index: 100;
+}
+
+::view-transition-old(site-header) {
+  display: none;
+}
+
+::view-transition-new(site-header) {
+  animation: none;
+}
+
+::view-transition-group(.nv-page) {
+  animation-duration: 200ms;
+  animation-timing-function: ease-out;
+}
+
+::view-transition-old(.nv-page) {
+  animation: nv-fade-out 120ms ease-out both;
+}
+
+::view-transition-new(.nv-page) {
+  animation: nv-fade-in 200ms ease-out 40ms both;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    /* biome-ignore lint/complexity/noImportantStyles: no navigation motion at all. */
+    animation: none !important;
   }
 }

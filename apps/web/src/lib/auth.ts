@@ -1,6 +1,6 @@
 import "server-only";
-import { auth, type Session, safeRedirectPath } from "@nevile/auth";
-import { headers } from "next/headers";
+import { AUTH_COOKIE_PREFIX, auth, type Session, safeRedirectPath } from "@nevile/auth";
+import { cookies, headers } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
 import { cache } from "react";
 
@@ -25,6 +25,18 @@ export async function getSessionOrNull(): Promise<Session | null> {
     console.error("[auth] could not read the session", error);
     return null;
   }
+}
+
+const SESSION_COOKIE = `${AUTH_COOKIE_PREFIX}.session_token`;
+
+/**
+ * Whether the request carries a session cookie at all. No database read, so page chrome
+ * can use it as a hint (render "signed out" straight away when there is no cookie) while
+ * the browser confirms the real session. Never use it for authorization.
+ */
+export async function hasSessionCookie(): Promise<boolean> {
+  const jar = await cookies();
+  return jar.has(SESSION_COOKIE) || jar.has(`__Secure-${SESSION_COOKIE}`);
 }
 
 /**

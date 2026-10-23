@@ -11,40 +11,43 @@ export type SeasonCopy = {
   tilesTitle: string;
 };
 
-/** Hero copy per season (SPEC §13: the hero re-themes by season). */
+/**
+ * Hero copy per season (SPEC §13). The season is picked automatically from the current
+ * month in Nova Scotia, so the copy speaks to Nova Scotia weather and places.
+ */
 export const SEASON_COPY: Record<Season, SeasonCopy> = {
   winter: {
     label: "Winter",
-    eyebrow: "Winter in Canada",
-    headline: "Snow's coming. Book your driveway before the first storm.",
-    sub: "Sign a seasonal contract with a local crew: cleared whenever more than 5 cm falls, November to March. Or book a one-off clear when you need it.",
+    eyebrow: "Winter in Nova Scotia",
+    headline: "Nor'easter on the way? Get on a local crew's list.",
+    sub: "Sign a seasonal contract with a crew near you in Halifax, Truro or Sydney: cleared whenever more than 5 cm falls, November to March. Or book a one-off clear after the storm.",
     note: "Seasonal contracts: cleared at 5 cm+, pay per visit",
     noteIcon: "contract",
     tilesTitle: "Popular this winter",
   },
   spring: {
     label: "Spring",
-    eyebrow: "Spring in Canada",
-    headline: "The snow's gone. Time to get the yard back.",
-    sub: "Book a spring cleanup, the first mow of the year or a pressure wash for the winter grime, from local businesses with real reviews and clear prices.",
+    eyebrow: "Spring in Nova Scotia",
+    headline: "The snowbanks are gone. Time to get the yard back.",
+    sub: "Book a spring cleanup, the first mow of the year or a pressure wash for the road salt and winter grime, from local pros in Dartmouth, Bedford, Wolfville and beyond.",
     note: "Repeat visits: weekly, every 2 weeks or monthly",
     noteIcon: "repeat",
     tilesTitle: "Popular this spring",
   },
   summer: {
     label: "Summer",
-    eyebrow: "Summer in Canada",
-    headline: "Spend summer at the cottage, not behind the mower.",
-    sub: "Put your lawn on a weekly or every-two-weeks schedule, and get the windows, deck and gutters done while you're away.",
+    eyebrow: "Summer in Nova Scotia",
+    headline: "Spend summer on the South Shore, not behind the mower.",
+    sub: "Put your lawn on a weekly or every-two-weeks schedule, and get the windows, deck and gutters done while you're at the beach or the cottage.",
     note: "Instant Book: confirmed the moment you pay",
     noteIcon: "bolt",
     tilesTitle: "Popular this summer",
   },
   fall: {
     label: "Fall",
-    eyebrow: "Fall in Canada",
+    eyebrow: "Fall in Nova Scotia",
     headline: "Leaves down, gutters clear, before the snow flies.",
-    sub: "Get leaf cleanup and gutter cleaning done in one weekend, and line up a seasonal snow contract while crews still have room.",
+    sub: "Get leaf cleanup and gutter cleaning done in one weekend, and line up a seasonal snow contract while crews from Halifax to Lunenburg still have room.",
     note: "No Instant Book? Businesses reply within 24 hours",
     noteIcon: "clock",
     tilesTitle: "Popular this fall",

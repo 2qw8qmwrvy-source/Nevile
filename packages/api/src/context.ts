@@ -1,5 +1,6 @@
 import { type Auth, auth as defaultAuth, type Session } from "@nevile/auth";
 import { type Database, db as defaultDb } from "@nevile/db";
+import { type ApiConfig, getApiConfig } from "./config.ts";
 
 export interface Context {
   db: Database;
@@ -7,6 +8,8 @@ export interface Context {
   session: Session | null;
   /** Request headers, for procedures that need the client IP or user agent. */
   headers: Headers;
+  /** Feature switches (`NEVILE_NEIGHBOURS_ENABLED`, ...). */
+  config: ApiConfig;
 }
 
 export interface CreateContextOptions {
@@ -20,6 +23,8 @@ export interface CreateContextOptions {
   auth?: Pick<Auth, "api">;
   /** A session already read for this request (skips the lookup). */
   session?: Session | null;
+  /** Defaults to the environment (`getApiConfig()`). */
+  config?: ApiConfig;
 }
 
 /** Resolves the session from the request cookies once per request. */
@@ -36,5 +41,10 @@ export async function createContext(options: CreateContextOptions): Promise<Cont
   } else {
     session = await auth.api.getSession({ headers });
   }
-  return { db: options.db ?? defaultDb, session, headers };
+  return {
+    db: options.db ?? defaultDb,
+    session,
+    headers,
+    config: options.config ?? getApiConfig(),
+  };
 }

@@ -93,10 +93,11 @@ export const bookings = pgTable(
     ...timestamps(),
   },
   (t) => [
-    // Targets of composite FKs that tie visits, payments, tips and reviews to the
-    // booking's own business and customer.
+    // Targets of composite FKs that tie visits, payments, tips, reviews and donations to
+    // the booking's own business and customer.
     unique("bookings_id_business_unique").on(t.id, t.businessId),
     unique("bookings_id_business_customer_unique").on(t.id, t.businessId, t.customerId),
+    unique("bookings_id_customer_unique").on(t.id, t.customerId),
     index("bookings_customer_created_idx").on(t.customerId, t.createdAt),
     index("bookings_business_status_created_idx").on(t.businessId, t.status, t.createdAt),
     index("bookings_service_id_idx").on(t.serviceId),

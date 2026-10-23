@@ -11,7 +11,7 @@
  *   fixed visit restarts the clock). A disputed visit, or one with a fix scheduled, is
  *   not charged until it is resolved.
  *
- * Payouts run as a weekly batch every Monday (America/Toronto). The cut-off is the end of
+ * Payouts run as a weekly batch every Monday (America/Halifax). The cut-off is the end of
  * Sunday local time: a visit confirmed complete at any time up to Sunday 23:59:59.999 is
  * paid the following Monday; one confirmed on Monday itself waits for the next Monday.
  */
@@ -30,7 +30,7 @@ import {
 } from "./time.ts";
 
 export const RECURRING_CHARGE_DAYS_BEFORE = 3;
-export const PAYOUT_TIME_ZONE = "America/Toronto";
+export const PAYOUT_TIME_ZONE = DEFAULT_TIME_ZONE;
 /** Day of week the payout batch runs (0 = Sunday, 1 = Monday). */
 export const PAYOUT_WEEKDAY = 1;
 

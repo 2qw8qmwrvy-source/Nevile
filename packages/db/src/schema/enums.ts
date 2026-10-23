@@ -1,9 +1,13 @@
 import type {
   BookingState,
   CancellationPolicyId,
+  DonationKind,
+  LedgerEntryKind,
+  OnboardingIntent,
   PricingType,
   ProvinceCode,
   RecurrenceFrequency,
+  ReferralStatus,
 } from "@nevile/core";
 import { pgEnum } from "drizzle-orm/pg-core";
 
@@ -95,6 +99,45 @@ export const VISIT_STATUSES = [
 ] as const satisfies readonly BookingState[];
 export type VisitStatus = (typeof VISIT_STATUSES)[number];
 export const visitStatus = pgEnum("visit_status", VISIT_STATUSES);
+
+/** Welcome step 1: "I need help at home" / "I run a business" / both (SPEC §16). */
+const onboardingIntents = ["customer", "business", "both"] as const;
+type _OnboardingIntentAligned = Assert<
+  SameMembers<(typeof onboardingIntents)[number], OnboardingIntent>
+>;
+export const onboardingIntent = pgEnum("onboarding_intent", onboardingIntents);
+
+/** Nevile Neighbours referral lifecycle; transitions are core's `REFERRAL_TRANSITIONS`. */
+const referralStatuses = [
+  "pending",
+  "approved",
+  "declined",
+  "booked",
+  "completed",
+  "cancelled",
+] as const;
+type _ReferralStatusAligned = Assert<
+  SameMembers<(typeof referralStatuses)[number], ReferralStatus>
+>;
+export const communityReferralStatus = pgEnum("community_referral_status", referralStatuses);
+
+/** Checkout donation options; core's `"none"` choice stores no donation row. */
+const donationKinds = ["round_up", "preset", "custom"] as const;
+type _DonationKindAligned = Assert<
+  SameMembers<(typeof donationKinds)[number], Exclude<DonationKind, "none">>
+>;
+export const donationKind = pgEnum("donation_kind", donationKinds);
+
+/**
+ * Community fund ledger entry kinds. The database fixes each kind's sign: donation (+),
+ * card fee on a donation (−), payout for a referral job (−), donation refund (−),
+ * admin adjustment (±, never 0).
+ */
+const ledgerEntryKinds = ["donation", "fee", "payout", "refund", "adjustment"] as const;
+type _LedgerEntryKindAligned = Assert<
+  SameMembers<(typeof ledgerEntryKinds)[number], LedgerEntryKind>
+>;
+export const communityFundEntryKind = pgEnum("community_fund_entry_kind", ledgerEntryKinds);
 
 // ── DB-only ───────────────────────────────────────────────────────────────────
 
@@ -216,3 +259,12 @@ export const subscriptionStatus = pgEnum("subscription_status", SUBSCRIPTION_STA
 export const PUSH_PLATFORMS = ["ios", "android", "web"] as const;
 export type PushPlatform = (typeof PUSH_PLATFORMS)[number];
 export const pushPlatform = pgEnum("push_platform", PUSH_PLATFORMS);
+
+/** Staff of a Nevile Neighbours partner organization; coordinators manage the team. */
+export const COMMUNITY_PARTNER_ROLES = ["coordinator", "staff"] as const;
+export type CommunityPartnerRole = (typeof COMMUNITY_PARTNER_ROLES)[number];
+export const communityPartnerRole = pgEnum("community_partner_role", COMMUNITY_PARTNER_ROLES);
+
+export const DONATION_STATUSES = ["pending", "succeeded", "refunded"] as const;
+export type DonationStatus = (typeof DONATION_STATUSES)[number];
+export const donationStatus = pgEnum("donation_status", DONATION_STATUSES);

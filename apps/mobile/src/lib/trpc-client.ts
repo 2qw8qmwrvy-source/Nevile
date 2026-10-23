@@ -21,6 +21,14 @@ export function apiErrorCode(error: unknown): string | undefined {
   return isApiError(error) ? error.data?.code : undefined;
 }
 
+/**
+ * The server's machine-readable reason (e.g. "VERIFICATION_REQUIRED", "NEIGHBOURS_DISABLED"),
+ * sent as `error.data.reason` alongside the tRPC code.
+ */
+export function apiErrorReason(error: unknown): string | null {
+  return isApiError(error) ? (error.data?.reason ?? null) : null;
+}
+
 /** First Zod message per input field, for showing errors next to form fields. */
 export function apiFieldErrors(error: unknown): Record<string, string | undefined> {
   if (!isApiError(error)) return {};
