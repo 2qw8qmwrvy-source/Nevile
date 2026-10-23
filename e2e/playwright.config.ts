@@ -8,6 +8,7 @@ const DATABASE_URL =
   process.env.DATABASE_URL ??
   "postgresql://nevile:nevile@localhost:5432/nevile_e2e";
 export const OUTBOX_DIR = resolve(import.meta.dirname, ".outbox");
+const MEDIA_DIR = resolve(import.meta.dirname, ".media");
 
 // Locally, an already-installed Chromium can be used instead of downloading one.
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
@@ -63,6 +64,8 @@ export default defineConfig({
       BETTER_AUTH_URL: BASE_URL,
       NEXT_PUBLIC_SITE_URL: BASE_URL,
       NEVILE_DEV_OUTBOX_DIR: OUTBOX_DIR,
+      MEDIA_STORAGE: "local",
+      MEDIA_LOCAL_DIR: MEDIA_DIR,
       NEVILE_NEIGHBOURS_ENABLED: "false",
       NEXT_TELEMETRY_DISABLED: "1",
     },

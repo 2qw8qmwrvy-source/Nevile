@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 import { test as base, expect, type Page, type TestInfo } from "@playwright/test";
 
 export { expect };
@@ -98,4 +99,19 @@ export function expectedSeason(now = new Date()): "winter" | "spring" | "summer"
   if (month <= 5) return "spring";
   if (month <= 8) return "summer";
   return "fall";
+}
+
+/** WCAG 2.1 A/AA problems axe rates serious or critical, as readable strings. */
+export async function seriousViolations(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    // The Next.js dev overlay is not part of the site.
+    .exclude("nextjs-portal")
+    .analyze();
+  return results.violations
+    .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
+    .map(
+      (violation) =>
+        `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`,
+    );
 }

@@ -18,6 +18,13 @@ const productionSchema = z.object({
   NEVILE_NEIGHBOURS_ENABLED: booleanFlag,
   SENTRY_DSN: optionalUrl,
   NEXT_PUBLIC_SENTRY_DSN: optionalUrl,
+  // Business photos (SPEC §18): an S3-compatible bucket in production.
+  MEDIA_STORAGE: z.enum(["s3", ""], { message: 'must be "s3" in production' }).optional(),
+  S3_BUCKET: z.string({ message: "is required (media bucket name)" }).min(1),
+  S3_ACCESS_KEY_ID: z.string({ message: "is required" }).min(1),
+  S3_SECRET_ACCESS_KEY: z.string({ message: "is required" }).min(1),
+  S3_ENDPOINT: optionalUrl,
+  MEDIA_PUBLIC_BASE_URL: optionalUrl,
 });
 
 /** Same shape outside production, but only formats are checked; missing values are fine. */
@@ -26,6 +33,7 @@ const developmentSchema = productionSchema.partial().extend({
   BETTER_AUTH_SECRET: z.string().optional(),
   BETTER_AUTH_URL: z.url().optional(),
   NEXT_PUBLIC_SITE_URL: z.url().optional(),
+  MEDIA_STORAGE: z.enum(["local", "s3", ""]).optional(),
 });
 
 export type EnvProblem = { name: string; message: string };

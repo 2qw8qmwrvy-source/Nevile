@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   businessProfileSchema,
+  formatDurationMinutes,
   LISTING_ABOUT_MIN_LENGTH,
   listingReadiness,
   normalizeGstHstNumber,
+  SERVICE_DURATION_CHOICES,
+  SERVICE_DURATION_MAX_MINUTES,
+  SERVICE_DURATION_MIN_MINUTES,
   serviceAreaInputSchema,
   serviceInputSchema,
 } from "./listing.ts";
@@ -139,5 +143,21 @@ describe("serviceInputSchema", () => {
     expect(serviceInputSchema.safeParse({ ...fixed, priceCents: 60.5 }).success).toBe(false);
     expect(serviceInputSchema.safeParse({ ...fixed, durationMinutes: 10 }).success).toBe(false);
     expect(serviceInputSchema.safeParse({ ...fixed, durationMinutes: 2000 }).success).toBe(false);
+  });
+});
+
+describe("formatDurationMinutes", () => {
+  it("reads like a person would say it", () => {
+    expect(formatDurationMinutes(45)).toBe("45 min");
+    expect(formatDurationMinutes(60)).toBe("1 hr");
+    expect(formatDurationMinutes(90)).toBe("1 hr 30 min");
+    expect(formatDurationMinutes(1440)).toBe("24 hr");
+  });
+
+  it("offers only valid choices", () => {
+    for (const minutes of SERVICE_DURATION_CHOICES) {
+      expect(minutes).toBeGreaterThanOrEqual(SERVICE_DURATION_MIN_MINUTES);
+      expect(minutes).toBeLessThanOrEqual(SERVICE_DURATION_MAX_MINUTES);
+    }
   });
 });

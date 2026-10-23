@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
-/** Fresh database and an empty outbox before every run. */
+/** Fresh database, an empty outbox and no uploaded media before every run. */
 export default function globalSetup() {
   const databaseUrl =
     process.env.E2E_DATABASE_URL ??
@@ -16,4 +16,5 @@ export default function globalSetup() {
   const outbox = resolve(import.meta.dirname, ".outbox");
   rmSync(outbox, { recursive: true, force: true });
   mkdirSync(outbox, { recursive: true });
+  rmSync(resolve(import.meta.dirname, ".media"), { recursive: true, force: true });
 }

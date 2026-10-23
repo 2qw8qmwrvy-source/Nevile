@@ -135,7 +135,7 @@ export function ReferralForm({ partners, regions, categories }: ReferralFormProp
 
   return (
     <Card>
-      <form ref={formRef} onSubmit={onSubmit} noValidate className="grid gap-4">
+      <form ref={formRef} method="post" onSubmit={onSubmit} noValidate className="grid gap-4">
         <FormAlert tone="info">
           Share only what&apos;s needed to do the job. Please don&apos;t include health, disability,
           age or income details.

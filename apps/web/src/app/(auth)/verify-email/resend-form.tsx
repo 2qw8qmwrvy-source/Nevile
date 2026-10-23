@@ -33,7 +33,7 @@ export function ResendVerificationForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="grid gap-4">
+    <form method="post" onSubmit={onSubmit} noValidate className="grid gap-4">
       {error ? <FormAlert tone="error">{error}</FormAlert> : null}
       {sentTo ? (
         <FormAlert tone="success">

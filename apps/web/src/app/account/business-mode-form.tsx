@@ -60,7 +60,7 @@ export function BusinessModeForm({ defaultOpen = false }: { defaultOpen?: boolea
   }
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} noValidate className="mt-4 grid gap-4">
+    <form ref={formRef} method="post" onSubmit={onSubmit} noValidate className="mt-4 grid gap-4">
       <p className="text-[15px] leading-relaxed text-muted">
         Tell us about your business. You can add services, your team and payout details next.
       </p>

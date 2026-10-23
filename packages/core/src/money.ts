@@ -71,6 +71,27 @@ export function formatCad(amount: number): string {
   return `${sign}$${dollars}.${remainder}`;
 }
 
+/**
+ * A price typed by a person ("60", "$1,250.5", "45.00") as cents, without floating point;
+ * null when it isn't a plain dollar amount with at most two decimals.
+ */
+export function parseDollarsToCents(input: string): Cents | null {
+  const compact = input.trim().replace(/^\$/, "").replace(/,/g, "");
+  const match = /^(\d{1,9})(?:\.(\d{1,2}))?$/.exec(compact);
+  if (!match) return null;
+  const whole = Number(match[1]);
+  const fraction = Number((match[2] ?? "").padEnd(2, "0"));
+  return cents(whole * 100 + fraction);
+}
+
+/** Cents as an editable dollar amount: 6000 → "60", 6050 → "60.50". */
+export function centsToDollarInput(amount: number): string {
+  assertCents(amount);
+  const whole = Math.floor(amount / 100);
+  const fraction = amount % 100;
+  return fraction === 0 ? String(whole) : `${whole}.${String(fraction).padStart(2, "0")}`;
+}
+
 /** Sums amounts of cents, validating each one and the result. */
 export function sumCents(amounts: readonly number[]): Cents {
   let total = 0;

@@ -188,3 +188,16 @@ export function listingReadiness(facts: ListingFacts): {
   if (facts.activeServices < 1) missing.push("services");
   return { ready: missing.length === 0, missing };
 }
+
+/** "45 min", "1 hr", "1 hr 30 min", "8 hr" — a service's typical duration. */
+export function formatDurationMinutes(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min`;
+  return rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`;
+}
+
+/** Durations offered in the service form, in minutes. */
+export const SERVICE_DURATION_CHOICES = [
+  15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720, 1440,
+] as const;

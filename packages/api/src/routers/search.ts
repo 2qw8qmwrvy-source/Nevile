@@ -322,6 +322,8 @@ export const searchRouter = router({
         code: area.code,
         placeName: area.placeName,
         approximate: area.approximate,
+        // The area's centre (public data), e.g. to start a service-area pin from.
+        center: area.point,
       };
     }),
 

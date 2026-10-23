@@ -119,18 +119,18 @@ export function createS3Storage(options: S3StorageOptions): MediaStorage {
 
 /**
  * Storage from the environment:
- * - MEDIA_STORAGE=local (default outside production): MEDIA_LOCAL_DIR, default `<repo>/.media`
+ * - MEDIA_STORAGE=local (default outside production): MEDIA_LOCAL_DIR, default `./.media`
  * - MEDIA_STORAGE=s3 (required in production): S3_BUCKET, S3_ENDPOINT, S3_REGION,
  *   S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, optional MEDIA_PUBLIC_BASE_URL
  */
 export function createStorageFromEnv(env: NodeJS.ProcessEnv = process.env): MediaStorage {
-  const mode = env.MEDIA_STORAGE ?? (env.NODE_ENV === "production" ? "s3" : "local");
+  const mode = env.MEDIA_STORAGE || (env.NODE_ENV === "production" ? "s3" : "local");
   if (mode === "local") {
     if (env.NODE_ENV === "production") {
       throw new Error("MEDIA_STORAGE=local is for development only; use s3 in production.");
     }
-    const fallback = new URL("../../../.media", import.meta.url).pathname;
-    return createLocalStorage(env.MEDIA_LOCAL_DIR || fallback);
+    // Default: `.media` in the working directory (apps/web when running the site).
+    return createLocalStorage(env.MEDIA_LOCAL_DIR || resolve(process.cwd(), ".media"));
   }
   if (mode !== "s3") throw new Error(`MEDIA_STORAGE must be "local" or "s3", got "${mode}".`);
   const missing = ["S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"].filter(

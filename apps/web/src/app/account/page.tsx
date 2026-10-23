@@ -5,6 +5,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
+import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Container } from "@/components/ui/container.tsx";
 import { VerificationRequired } from "@/components/verification/verification-required.tsx";
@@ -170,8 +171,11 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
                   </li>
                 ))}
               </ul>
-              <p className="mt-4 text-sm leading-relaxed text-muted">
-                Managing your services, calendar and crew from the website is coming soon.
+              <Button href="/business" size="lg" block className="mt-5">
+                Manage your listing
+              </Button>
+              <p className="mt-3 text-sm leading-relaxed text-muted">
+                Your calendar, crew and bookings are coming next.
               </p>
             </>
           ) : verified ? (

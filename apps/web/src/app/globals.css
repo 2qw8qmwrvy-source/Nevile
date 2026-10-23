@@ -138,6 +138,29 @@
     animation: nv-fade-in 200ms ease-out both;
   }
 
+  /* Map pins (src/components/map/map-view.tsx); approximate business locations. */
+  .nv-map-pin {
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    border: 3px solid var(--nv-surface);
+    background: var(--nv-primary);
+    box-shadow: 0 1px 4px rgb(24 33 29 / 0.35);
+    cursor: pointer;
+    transition: transform 150ms ease-out;
+  }
+
+  .nv-map-pin[data-selected="true"] {
+    transform: scale(1.45);
+    background: var(--nv-ink);
+  }
+
+  .nv-map-pin-base {
+    width: 26px;
+    height: 26px;
+    cursor: grab;
+  }
+
   /* The header stays put while page content crossfades during navigation. */
   .nv-site-header {
     view-transition-name: site-header;

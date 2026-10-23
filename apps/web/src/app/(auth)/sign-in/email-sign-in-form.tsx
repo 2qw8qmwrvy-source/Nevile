@@ -38,7 +38,8 @@ export function EmailSignInForm({ next }: { next: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="grid gap-4">
+    // POST: a submit before the page is interactive must never put the password in the URL.
+    <form method="post" onSubmit={onSubmit} noValidate className="grid gap-4">
       {message ? <FormAlert tone={message.tone}>{message.text}</FormAlert> : null}
       <Field label="Email">
         <Input

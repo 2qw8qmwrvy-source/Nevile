@@ -1,5 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
-import { expect, signUpWithEmail, test } from "../fixtures.ts";
+import { expect, seriousViolations, signUpWithEmail, test } from "../fixtures.ts";
 
 const PUBLIC_PAGES = [
   "/",
@@ -10,21 +9,9 @@ const PUBLIC_PAGES = [
   "/privacy",
   "/accessibility",
   "/for-businesses",
+  "/search",
+  "/search?service=lawn-mowing&postal=B3H%201A1",
 ];
-
-async function seriousViolations(page: import("@playwright/test").Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    // The Next.js dev overlay is not part of the site.
-    .exclude("nextjs-portal")
-    .analyze();
-  return results.violations
-    .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
-    .map(
-      (violation) =>
-        `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`,
-    );
-}
 
 for (const path of PUBLIC_PAGES) {
   test(`no serious accessibility problems on ${path}`, async ({ page }) => {

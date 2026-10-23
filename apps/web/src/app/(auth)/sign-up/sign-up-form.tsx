@@ -133,7 +133,8 @@ export function SignUpForm({ signInHref, next }: SignUpFormProps) {
   }
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} noValidate className="grid gap-4">
+    // POST: a submit before the page is interactive must never put the password in the URL.
+    <form ref={formRef} method="post" onSubmit={onSubmit} noValidate className="grid gap-4">
       {formError ? (
         <FormAlert tone="error">
           {formError.text}{" "}

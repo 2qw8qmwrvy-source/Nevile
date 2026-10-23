@@ -4,10 +4,12 @@ import {
   basisPointsToPpm,
   bigintToCents,
   cents,
+  centsToDollarInput,
   divideRoundHalfUp,
   formatBasisPoints,
   formatCad,
   isCents,
+  parseDollarsToCents,
   percentOf,
   roundHalfUpToCents,
   subtractCents,
@@ -180,5 +182,27 @@ describe("basis-point helpers", () => {
     expect(bigintToCents(42n)).toBe(42);
     expect(() => bigintToCents(-1n)).toThrow(RangeError);
     expect(() => bigintToCents(BigInt(Number.MAX_SAFE_INTEGER) + 1n)).toThrow(RangeError);
+  });
+});
+
+describe("parseDollarsToCents / centsToDollarInput", () => {
+  it("reads typed prices without floating point", () => {
+    expect(parseDollarsToCents("60")).toBe(6000);
+    expect(parseDollarsToCents(" $1,250.5 ")).toBe(125050);
+    expect(parseDollarsToCents("45.00")).toBe(4500);
+    expect(parseDollarsToCents("0.07")).toBe(7);
+    expect(parseDollarsToCents("19.99")).toBe(1999);
+  });
+
+  it("rejects anything else", () => {
+    for (const input of ["", "abc", "1.234", "-5", "1e3", "12.", ".5", "1 000"]) {
+      expect(parseDollarsToCents(input), input).toBeNull();
+    }
+  });
+
+  it("formats cents for editing", () => {
+    expect(centsToDollarInput(6000)).toBe("60");
+    expect(centsToDollarInput(6050)).toBe("60.50");
+    expect(centsToDollarInput(7)).toBe("0.07");
   });
 });

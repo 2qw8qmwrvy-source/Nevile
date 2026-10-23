@@ -146,7 +146,7 @@ export function PhoneSignInForm({ next }: { next: string }) {
 
   if (!phone) {
     return (
-      <form onSubmit={onRequestCode} noValidate className="grid gap-4">
+      <form method="post" onSubmit={onRequestCode} noValidate className="grid gap-4">
         {error ? <FormAlert tone="error">{error}</FormAlert> : null}
         <Field
           label="Mobile number"
@@ -174,7 +174,7 @@ export function PhoneSignInForm({ next }: { next: string }) {
   }
 
   return (
-    <form onSubmit={onVerify} noValidate className="grid gap-4">
+    <form method="post" onSubmit={onVerify} noValidate className="grid gap-4">
       {error ? (
         <FormAlert tone="error">{error}</FormAlert>
       ) : notice ? (

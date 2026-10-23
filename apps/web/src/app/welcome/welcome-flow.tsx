@@ -164,7 +164,7 @@ export function WelcomeFlow({ firstName, categories, initial }: WelcomeFlowProps
         ))}
       </div>
 
-      <form key={step} onSubmit={goNext} noValidate className="nv-rise mt-6">
+      <form key={step} method="post" onSubmit={goNext} noValidate className="nv-rise mt-6">
         <p className="text-sm font-medium text-muted">
           Step {step + 1} of {STEP_COUNT}
         </p>

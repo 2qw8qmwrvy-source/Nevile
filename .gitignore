@@ -22,3 +22,6 @@ test-results/
 
 # Local media uploads (MEDIA_STORAGE=local)
 .media/
+
+# MapLibre worker copied by apps/web/next.config.ts
+apps/web/public/maplibre/

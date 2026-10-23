@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
@@ -9,6 +11,22 @@ const rootEnvFile = fileURLToPath(new URL("../../.env", import.meta.url));
 if (existsSync(rootEnvFile)) process.loadEnvFile(rootEnvFile);
 
 const isProd = process.env.NODE_ENV === "production";
+
+// MapLibre runs its renderer in a web worker it loads by URL, which bundlers can't follow.
+// Copy the (self-contained) worker into public/ under its version, where the map loads it
+// (src/components/map/load-maplibre.ts). The copy is ignored by git.
+const require = createRequire(import.meta.url);
+const maplibreDir = dirname(require.resolve("maplibre-gl/package.json"));
+const maplibreVersion: string = JSON.parse(
+  readFileSync(join(maplibreDir, "package.json"), "utf8"),
+).version;
+const workerTarget = fileURLToPath(
+  new URL(`./public/maplibre/worker-${maplibreVersion}.mjs`, import.meta.url),
+);
+if (!existsSync(workerTarget)) {
+  mkdirSync(dirname(workerTarget), { recursive: true });
+  copyFileSync(join(maplibreDir, "dist/maplibre-gl-worker.mjs"), workerTarget);
+}
 
 // The page Content Security Policy is per request (nonce): see src/proxy.ts and
 // src/lib/csp.ts. API responses are never rendered as pages, so nothing may load there.
@@ -29,6 +47,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_MAPLIBRE_VERSION: maplibreVersion },
   poweredByHeader: false,
   reactStrictMode: true,
   typedRoutes: true,
@@ -40,8 +59,11 @@ const nextConfig: NextConfig = {
     "@nevile/auth",
     "@nevile/core",
     "@nevile/db",
+    "@nevile/storage",
     "@nevile/tokens",
   ],
+  // Native image library: loaded from node_modules at run time, never bundled.
+  serverExternalPackages: ["sharp"],
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
