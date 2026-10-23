@@ -16,6 +16,7 @@ import { Screen } from "@/components/screen.tsx";
 import { Text } from "@/components/text.tsx";
 import { IconButton, TopBar, topBarIcons } from "@/components/top-bar.tsx";
 import { FormAlert } from "@/lib/auth-ui.tsx";
+import { openWebsitePage } from "@/lib/links.ts";
 import { mediaUrl } from "@/lib/media.ts";
 import { useTRPC } from "@/lib/trpc.tsx";
 import { colors, radius, space } from "@/theme";
@@ -33,6 +34,11 @@ export default function ProRoute() {
     enabled: Boolean(slug),
   });
   const back = () => (router.canGoBack() ? router.back() : router.replace("/search"));
+  const canBook = Boolean(profile.data?.bookingOpen && !profile.data.preview);
+  const firstBookable = profile.data?.services.find((service) => service.bookable);
+  // Booking and payment happen on the website for now (SPEC §19).
+  const openBooking = (serviceId: string) =>
+    openWebsitePage(`/pros/${encodeURIComponent(slug ?? "")}/book?service=${serviceId}`);
 
   return (
     <Screen
@@ -87,11 +93,27 @@ export default function ProRoute() {
 
           <Card style={styles.section}>
             <Text variant="heading">Book {profile.data.name}</Text>
-            <Text tone="muted">
-              Booking and quotes open on Nevile soon. You&apos;ll pay through Nevile, and the
-              pro&apos;s contact details are shared once a booking is paid.
-            </Text>
-            <Button label="Booking coming soon" disabled fullWidth />
+            {firstBookable && canBook ? (
+              <>
+                <Text tone="muted">
+                  Pick a day and an arrival window, then pay securely on the Nevile website. The
+                  pro&apos;s contact details are shared once your booking is paid.
+                </Text>
+                <Button
+                  label="Book a time"
+                  icon={icons.bookings}
+                  fullWidth
+                  accessibilityHint="Opens the Nevile website"
+                  onPress={() => openBooking(firstBookable.id)}
+                />
+              </>
+            ) : (
+              <Text tone="muted">
+                {firstBookable
+                  ? `${profile.data.name} isn't taking new bookings right now. Please check back soon.`
+                  : "This pro works by quote. Quotes open on Nevile soon."}
+              </Text>
+            )}
           </Card>
 
           <Card style={styles.section}>
@@ -138,6 +160,16 @@ export default function ProRoute() {
                 </View>
                 {service.description ? <Text>{service.description}</Text> : null}
                 {service.instantBook ? <Badge label="Instant Book" size="sm" /> : null}
+                {canBook && service.bookable ? (
+                  <Button
+                    label="Book"
+                    size="sm"
+                    variant="secondary"
+                    accessibilityLabel={`Book ${service.title}`}
+                    accessibilityHint="Opens the Nevile website"
+                    onPress={() => openBooking(service.id)}
+                  />
+                ) : null}
               </Card>
             ))}
           </View>
