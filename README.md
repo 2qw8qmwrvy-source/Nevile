@@ -21,7 +21,7 @@ Product rules (fees, sales tax, cancellations, disputes, payouts, ratings) are d
 | Auth | Better Auth (email + password with verification, phone SMS code), served at `/api/auth` |
 | Database | PostgreSQL 16 + Drizzle ORM (node-postgres) |
 | Validation | Zod 4 |
-| Payments | Stripe Connect + Stripe Billing (not wired yet) |
+| Payments | Stripe Checkout + Stripe Connect Express (`@nevile/payments`; a built-in test provider in development) |
 | Lint/format | Biome |
 | Tests | Vitest |
 
@@ -111,6 +111,24 @@ senders are configured in `@nevile/auth`, and until auth rate limiting has a tru
 client IP source (`BETTER_AUTH_TRUSTED_PROXIES` or `BETTER_AUTH_CLIENT_IP_HEADER`, see
 `.env.example`).
 
+### Trying a booking locally
+
+With the default `PAYMENTS_PROVIDER=fake`, no Stripe account is needed:
+
+1. Sign up as a business owner, confirm the email (the link is in the web console), switch
+   to business mode and publish a listing with a fixed-price service (Bedford `B4A 1A1`
+   covers most of Halifax).
+2. In a private window, sign up as a customer, open the pro's page and press **Book a
+   time**. The payment step is a test page: **Pay with test card** (Instant Book) or
+   **Authorize test card** (a request the pro accepts on their **Calendar**).
+3. Business tools are under `/business`: **Calendar** (requests, crew assignment, marking
+   jobs done), **Team** (hours, time off, invites, arrival windows) and **Payouts** (test
+   payout setup).
+
+Scheduled upkeep (expiring holds, auto-confirming jobs, Monday payouts) runs when something
+calls `/api/cron`; locally, set `CRON_SECRET` in `.env` and run
+`curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron`.
+
 ## Scripts
 
 Run from the repository root.
@@ -138,9 +156,9 @@ Mobile bundle smoke test (no simulator needed):
 cd apps/mobile && npx expo export --platform ios --output-dir /tmp/nevile-export
 ```
 
-If pages keep reloading by themselves in development (or browser tests time out while
-pages flicker), stop the dev server and delete `apps/web/.next`: a stale Next.js dev cache
-can cause a reload loop.
+If pages keep reloading by themselves in development, stop the dev server and delete
+`apps/web/.next`: a stale Next.js dev cache can cause a reload loop. (Browser tests clear
+it on every run.)
 
 If mobile type-checking complains about routes after you add a screen, run
 `pnpm --filter @nevile/mobile start` once: Expo regenerates the typed-routes file
@@ -159,6 +177,7 @@ packages/
   auth/       @nevile/auth    Better Auth server config (.) and client helpers (./client)
   api/        @nevile/api     tRPC router, context and procedures shared by web and mobile
   storage/    @nevile/storage Photo storage (local folder or S3/R2) and safe image re-encoding
+  payments/   @nevile/payments Stripe (Checkout, Connect, refunds, transfers) and a test provider
   tokens/     @nevile/tokens  Seasons design tokens shared by web and mobile
 SPEC.md       Product spec (source of truth)
 CLAUDE.md     Contributor guide and conventions

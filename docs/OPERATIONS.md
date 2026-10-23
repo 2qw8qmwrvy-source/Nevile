@@ -1,7 +1,8 @@
 # Operations runbook
 
 How Nevile is run: environments, configuration, health checks, error reporting, backups,
-the Nevile Neighbours switch, and what to do when something breaks. Product rules live in
+payments and scheduled jobs, the Nevile Neighbours switch, and what to do when something
+breaks. Product rules live in
 [SPEC.md](../SPEC.md); local setup is in the [README](../README.md).
 
 ## Environments
@@ -43,6 +44,13 @@ the logs names the variable.
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | leave empty | **required** | The media bucket and a key that may only read, write and delete in it. |
 | `S3_ENDPOINT`, `S3_REGION` | leave empty | for R2 | Cloudflare R2: `https://<account-id>.r2.cloudflarestorage.com` and `auto`. Leave empty for AWS S3 and set the region. |
 | `MEDIA_PUBLIC_BASE_URL` | leave empty | recommended | The bucket's public custom domain (e.g. `https://media.<your-domain>`). Without it, photos are served through the website. Added to the page security policy automatically. |
+| `PAYMENTS_PROVIDER` | `fake` (default) | `stripe` (default) | `fake` takes no real money and is refused in production (below). |
+| `STRIPE_SECRET_KEY` | leave empty | **required** | `sk_test_…` on staging, `sk_live_…` in production. A restricted key (`rk_…`) works if it can manage Checkout, Connect accounts, refunds and transfers. |
+| `STRIPE_WEBHOOK_SECRET` | leave empty | **required** | Signing secret (`whsec_…`) of the webhook endpoint below. |
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | leave empty | optional | Only if Connect events use a second endpoint with its own secret. |
+| `NEVILE_ALLOW_TEST_PAYMENTS` | leave empty | staging only | `true` lets a production build run with a test key. Never set it in production. |
+| `CRON_SECRET` | optional | **required** | Bearer token for `/api/cron` (below). `openssl rand -base64 32`, unique per environment. |
+| `NEVILE_OPS_EMAIL` | optional | recommended | Where problems unresolved after 3 days are escalated. |
 | `EXPO_PUBLIC_API_URL` | `apps/mobile/.env.local` | app build settings | The website's origin for the mobile app. Release builds must use the production `https://` origin. |
 
 Until real email and SMS providers are connected in `@nevile/auth`, sign-in does not work
@@ -156,6 +164,79 @@ The community program (SPEC §15) is built but **off**. While off, its pages say
   Turning it off hides donations from new checkouts; donations already made stay in the
   fund's ledger.
 
+## Payments (Stripe)
+
+Bookings are paid through Stripe (SPEC §7, §19): customers pay Nevile with Stripe Checkout,
+businesses get paid to a Stripe Connect **Express** account, and Nevile sends each
+business one transfer a week. Card numbers never touch Nevile's servers.
+
+Set up once per environment (staging uses Stripe **test mode**, production live mode):
+
+1. In the Stripe dashboard, turn on **Connect** with Express accounts, country Canada,
+   currency CAD. Set the platform name, icon and support email shown during payout setup.
+2. Create a **webhook endpoint** at `https://<your-domain>/api/webhooks/stripe` listening
+   to `checkout.session.completed`, `checkout.session.expired` and `account.updated`, and
+   tick "Listen to events on Connected accounts" for `account.updated`. Put its signing
+   secret in `STRIPE_WEBHOOK_SECRET`. (If you prefer a separate Connect endpoint, use the
+   same URL and put its secret in `STRIPE_CONNECT_WEBHOOK_SECRET`.)
+3. Set `STRIPE_SECRET_KEY` and `PAYMENTS_PROVIDER=stripe`, deploy, then make a test
+   booking on staging with Stripe's test card `4242 4242 4242 4242`.
+
+How money moves:
+
+- **Instant Book** charges the card at checkout. **Requests** only hold the card; it is
+  charged when the business accepts, and the hold is released if they decline or don't
+  answer within 24 hours.
+- **Refunds** go back to the customer's card through Stripe (the amounts follow the
+  cancellation rules in `@nevile/core`). Each refund is recorded in the `refunds` table.
+- **Payouts**: every Monday (Halifax time), each business gets one transfer for jobs
+  confirmed the week before, minus Nevile's 3% fee and any refunds. A failed transfer is
+  retried on the next scheduled run. Stripe then pays the business's bank on its own
+  schedule (usually 1 to 2 business days).
+- **Payout setup deadline**: a business can take bookings before setting up payouts, but
+  its first paid booking starts a 7-day clock. If setup isn't finished in time, its
+  upcoming bookings are cancelled with full refunds and new bookings pause until setup is
+  done.
+
+Every Stripe call carries an idempotency key, so repeating a scheduled run or a webhook
+never charges, refunds or transfers twice. The webhook and the customer's return page can
+both finish a booking; whichever comes first wins.
+
+In development and browser tests, `PAYMENTS_PROVIDER=fake` replaces Stripe with test pages
+on the site itself (`/dev/fake-checkout/…`, `/dev/fake-onboarding`). They return 404 in
+production builds.
+
+## Scheduled jobs
+
+Booking upkeep runs from one protected endpoint. Call it **every 5 minutes**:
+
+```bash
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://<your-domain>/api/cron
+```
+
+Use the hosting provider's cron (for example Vercel Cron, Render Cron Jobs or a GitHub
+Actions schedule). Without `CRON_SECRET` the endpoint answers 503; with a wrong token, 401.
+Each run, in order, and each step is safe to repeat:
+
+1. expires unpaid checkouts (holds last 30 minutes) and frees their time;
+2. expires requests a business didn't answer (24 hours, or when the window starts) and
+   releases the card hold;
+3. confirms finished jobs the customer didn't answer within 48 hours;
+4. escalates problems not resolved within 3 days to `NEVILE_OPS_EMAIL`;
+5. reminds businesses 2 days before their payout setup deadline, then enforces it;
+6. on Mondays, creates and sends the week's payouts (and retries failed ones).
+
+The JSON answer lists how many items each step handled. Alert if the endpoint fails
+several runs in a row: holds then stay open longer and payouts wait.
+
+## Problems and escalations
+
+When a customer reports a problem, the business has 3 days to fix it and payment for that
+job is held. If it isn't resolved, an email goes to `NEVILE_OPS_EMAIL` with the booking.
+For now staff resolve these by contacting both sides and, if a refund is due, issuing it
+from the Stripe dashboard **and** recording it with a note in the audit log; an admin
+screen for this comes with the admin tools. Never edit payment or booking rows by hand.
+
 ## Deploying
 
 1. Merge to `main` only through a pull request with all CI checks green
@@ -173,7 +254,9 @@ The community program (SPEC §15) is built but **off**. While off, its pages say
    account) and say when the next update will come.
 3. **Stop the damage.** Roll back to the last good deployment in the hosting dashboard. If
    the problem is the community program, turn `NEVILE_NEIGHBOURS_ENABLED` off. Roll back
-   the app before touching the database.
+   the app before touching the database. If payments are misbehaving, pause the
+   scheduled jobs (stop the cron caller) so no payouts go out while you investigate;
+   Stripe keeps webhook events and retries them for up to 3 days.
 4. **Data problems.** Stop writes if data is being damaged (scale the app to zero or show
    the host's maintenance page). Use point-in-time restore into a **new** database, check it, then switch
    the app over. Never restore over the live database. Money questions are answered by

@@ -268,13 +268,14 @@ cleanup; May: lawn-mowing season; August: book fall gutter and leaf cleanup).
 
 1. ~~Clickable UI mockups~~ — done, direction A chosen.
 2. ~~Foundation: monorepo, domain rules (fees, tax, policies), database schema, auth, app shells.~~
-3. Smoother, safer, community (v1.1): Nova Scotia launch rules, onboarding, verification
+3. ~~Smoother, safer, community (v1.1): Nova Scotia launch rules, onboarding, verification
    gate, motion & performance polish, Nevile Neighbours groundwork, CI, browser tests,
-   monitoring, legal & accessibility drafts.
+   monitoring, legal & accessibility drafts.~~
 4. ~~Listings & search (v1.2, §18).~~
-5. One-off booking, crew calendar & payments (v1.3, §19) → quotes & chat, recurring jobs,
-   snow contracts, tips, in-app payment (donations plug in here) → ratings →
-   subscription → admin.
+5. ~~One-off booking, crew calendar & payments (v1.3, §19).~~ The app shows bookings; its
+   Book buttons open the website's booking page for now.
+6. Quotes & chat, recurring jobs, snow contracts (v1.4) → booking and paying inside the
+   app, tips, donations at checkout → ratings → subscription → admin.
 
 ## 15. Nevile Neighbours (community program)
 
