@@ -7,6 +7,7 @@ import {
   index,
   integer,
   pgTable,
+  smallint,
   text,
   unique,
   uniqueIndex,
@@ -68,6 +69,14 @@ export const businesses = pgTable(
     logoKey: text("logo_key").unique(),
     // Listed in search while set (SPEC §18); publishing checks readiness first.
     publishedAt: tstz("published_at"),
+    // How soon / how far ahead customers can book, in days from today (SPEC §19).
+    minNoticeDays: smallint("min_notice_days").notNull().default(1),
+    maxDaysAhead: smallint("max_days_ahead").notNull().default(60),
+    // Set by the first paid booking while payouts aren't set up: 7 days to finish.
+    payoutSetupDueAt: tstz("payout_setup_due_at"),
+    payoutSetupReminderSentAt: tstz("payout_setup_reminder_sent_at"),
+    // When Nevile last cancelled upcoming bookings for missing payout setup.
+    payoutSetupEnforcedAt: tstz("payout_setup_enforced_at"),
     ...timestamps(),
   },
   (t) => [
@@ -88,6 +97,13 @@ export const businesses = pgTable(
       "businesses_payouts_require_stripe",
       sql`NOT ${t.payoutsEnabled} OR ${t.stripeAccountId} IS NOT NULL`,
     ),
+    check(
+      "businesses_booking_notice",
+      sql`${t.minNoticeDays} BETWEEN 0 AND 14 AND ${t.maxDaysAhead} BETWEEN 7 AND 180 AND ${t.minNoticeDays} < ${t.maxDaysAhead}`,
+    ),
+    index("businesses_payout_setup_due_idx")
+      .on(t.payoutSetupDueAt)
+      .where(sql`${t.payoutSetupDueAt} IS NOT NULL AND NOT ${t.payoutsEnabled}`),
   ],
 );
 

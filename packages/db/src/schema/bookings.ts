@@ -29,6 +29,8 @@ import {
   bookingKind,
   bookingStatus,
   cancellationPolicy,
+  checkoutStatus,
+  paymentProvider,
   province,
   recurrenceFrequency,
   visitPhotoKind,
@@ -190,12 +192,12 @@ export const snowContracts = pgTable(
 );
 
 /**
- * One unit of work on a crew calendar. A slot is only locked once a visit exists,
- * i.e. after the booking is confirmed (SPEC §4). Every live visit holds a crew member
- * of the booking's business (instant book and approval assign one at confirmation, the
- * owner/manager can reassign), and overlap protection per member is an exclusion
- * constraint added in a custom migration (`visits_no_member_overlap`, needs btree_gist).
- * Cancelled and refunded visits never hold a slot.
+ * One unit of work on the business calendar. A slot is only taken once a visit exists,
+ * i.e. after the booking is confirmed (SPEC §4). `starts_at`/`ends_at` are the customer's
+ * **arrival window** and `work_minutes` the job's typical duration, which is what uses up
+ * the window's capacity (SPEC §19); one crew member can hold several jobs in a window.
+ * Visits arrive unassigned and the owner/manager assigns a crew member.
+ * Cancelled and refunded visits never hold capacity.
  */
 export const visits = pgTable(
   "visits",
@@ -213,6 +215,8 @@ export const visits = pgTable(
     sequence: integer("sequence").notNull().default(1),
     startsAt: tstz("starts_at").notNull(),
     endsAt: tstz("ends_at").notNull(),
+    // Typical duration of the service when booked (snapshot).
+    workMinutes: integer("work_minutes").notNull(),
     status: visitStatus("status").notNull().default("confirmed"),
     completedAt: tstz("completed_at"),
     completedByUserId: text("completed_by_user_id").references(() => user.id, {
@@ -246,12 +250,15 @@ export const visits = pgTable(
     }).onDelete("restrict"),
     index("visits_booking_starts_idx").on(t.bookingId, t.startsAt),
     index("visits_member_starts_idx").on(t.assignedMemberId, t.startsAt),
+    // Capacity queries: a business's live visits on a day.
+    index("visits_business_starts_idx").on(t.businessId, t.startsAt),
     index("visits_auto_confirm_idx")
       .on(t.autoConfirmAt)
       .where(sql`${t.status} = 'completed_pending_confirmation'`),
     index("visits_charge_due_idx").on(t.chargeDueAt).where(sql`${t.chargeDueAt} IS NOT NULL`),
     positive("visits", t.sequence),
     check("visits_range", sql`${t.endsAt} > ${t.startsAt}`),
+    check("visits_work_minutes_range", sql`${t.workMinutes} BETWEEN 1 AND 1440`),
     check(
       "visits_marked_complete_fields",
       sql`${t.status} NOT IN ('completed_pending_confirmation', 'disputed', 'fix_scheduled', 'completed') OR ${t.completedAt} IS NOT NULL`,
@@ -263,10 +270,6 @@ export const visits = pgTable(
     check(
       "visits_completed_fields",
       sql`${t.status} <> 'completed' OR ${t.confirmedAt} IS NOT NULL`,
-    ),
-    check(
-      "visits_live_has_member",
-      sql`${t.status} IN ('cancelled_by_customer', 'cancelled_by_business', 'refunded') OR ${t.assignedMemberId} IS NOT NULL`,
     ),
     check(
       "visits_cancelled_fields",
@@ -319,5 +322,81 @@ export const agreements = pgTable(
     unique("agreements_booking_version_unique").on(t.bookingId, t.version),
     positive("agreements", t.version),
     check("agreements_content_sha256_hex", sql`${t.contentSha256} ~ '^[0-9a-f]{64}$'`),
+  ],
+);
+
+/**
+ * A customer's checkout for a one-off booking (SPEC §19). While `open` (30 minutes) it
+ * holds its time in the window like a confirmed job, so two people can't pay for the
+ * last space. Prices are computed on the server and snapshotted here; payment completion
+ * turns the checkout into a booking (`booking_id`), at most once.
+ */
+export const bookingCheckouts = pgTable(
+  "booking_checkouts",
+  {
+    id: id(),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    serviceId: uuid("service_id")
+      .notNull()
+      .references(() => services.id, { onDelete: "cascade" }),
+    addressId: uuid("address_id")
+      .notNull()
+      .references(() => addresses.id, { onDelete: "cascade" }),
+    // The arrival window and the work it needs.
+    startsAt: tstz("starts_at").notNull(),
+    endsAt: tstz("ends_at").notNull(),
+    workMinutes: integer("work_minutes").notNull(),
+    timezone: text("timezone").notNull().default(DEFAULT_TIMEZONE),
+    // Instant Book (charged now) or an approval request (card authorised only).
+    instantBook: boolean("instant_book").notNull(),
+    priceCents: cents("price_cents").notNull(),
+    serviceFeeCents: cents("service_fee_cents").notNull(),
+    priceTaxCents: cents("price_tax_cents").notNull(),
+    feeTaxCents: cents("fee_tax_cents").notNull(),
+    totalCents: cents("total_cents").notNull(),
+    businessFeeCents: cents("business_fee_cents").notNull(),
+    taxProvince: province("tax_province").notNull(),
+    cancellationPolicy: cancellationPolicy("cancellation_policy").notNull(),
+    customerNotes: text("customer_notes"),
+    provider: paymentProvider("provider").notNull(),
+    // The provider's checkout session and payment intent, once created.
+    providerSessionId: text("provider_session_id").unique(),
+    providerPaymentIntentId: text("provider_payment_intent_id").unique(),
+    status: checkoutStatus("status").notNull().default("open"),
+    expiresAt: tstz("expires_at").notNull(),
+    bookingId: uuid("booking_id")
+      .unique()
+      .references(() => bookings.id, { onDelete: "set null" }),
+    completedAt: tstz("completed_at"),
+    ...timestamps(),
+  },
+  (t) => [
+    index("booking_checkouts_business_starts_idx")
+      .on(t.businessId, t.startsAt)
+      .where(sql`${t.status} = 'open'`),
+    index("booking_checkouts_open_expires_idx")
+      .on(t.expiresAt)
+      .where(sql`${t.status} = 'open'`),
+    index("booking_checkouts_customer_created_idx").on(t.customerId, t.createdAt),
+    check("booking_checkouts_range", sql`${t.endsAt} > ${t.startsAt}`),
+    check("booking_checkouts_work_minutes_range", sql`${t.workMinutes} BETWEEN 1 AND 1440`),
+    nonNegative("booking_checkouts", t.serviceFeeCents),
+    nonNegative("booking_checkouts", t.priceTaxCents),
+    nonNegative("booking_checkouts", t.feeTaxCents),
+    nonNegative("booking_checkouts", t.businessFeeCents),
+    positive("booking_checkouts", t.priceCents),
+    check(
+      "booking_checkouts_total_is_sum",
+      sql`${t.totalCents} = ${t.priceCents} + ${t.serviceFeeCents} + ${t.priceTaxCents} + ${t.feeTaxCents}`,
+    ),
+    check(
+      "booking_checkouts_completed_fields",
+      sql`${t.status} <> 'completed' OR ${t.completedAt} IS NOT NULL`,
+    ),
   ],
 );

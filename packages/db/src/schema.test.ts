@@ -103,6 +103,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
         businessId: ids.businessId,
         assignedMemberId: ids.ownerMemberId,
         sequence: nextSequence++,
+        workMinutes: 60,
         ...overrides,
       })
       .returning({ id: visits.id });
@@ -342,139 +343,35 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
     });
   });
 
-  describe("visits_no_member_overlap exclusion constraint", () => {
-    it("rejects overlapping live visits for the same member", async () => {
-      await visit({
-        assignedMemberId: ids.crewMemberId,
-        startsAt: at("2026-11-02T14:00:00Z"),
-        endsAt: at("2026-11-02T15:00:00Z"),
-      });
-      expect(
-        await violation(
-          visit({
-            assignedMemberId: ids.crewMemberId,
-            startsAt: at("2026-11-02T14:30:00Z"),
-            endsAt: at("2026-11-02T15:30:00Z"),
-          }),
-        ),
-      ).toEqual({ code: "23P01", constraint: "visits_no_member_overlap" });
-      // Fully contained ranges overlap too.
-      expect(
-        await violation(
-          visit({
-            assignedMemberId: ids.crewMemberId,
-            startsAt: at("2026-11-02T14:15:00Z"),
-            endsAt: at("2026-11-02T14:45:00Z"),
-          }),
-        ),
-      ).toMatchObject({ code: "23P01" });
-    });
-
-    it("allows back-to-back visits for the same member", async () => {
+  describe("visits in arrival windows (SPEC §19)", () => {
+    it("lets one crew member hold several jobs in the same window", async () => {
+      const window = { startsAt: at("2026-11-02T12:00:00Z"), endsAt: at("2026-11-02T15:00:00Z") };
       await expect(
-        visit({
-          assignedMemberId: ids.crewMemberId,
-          startsAt: at("2026-11-02T15:00:00Z"),
-          endsAt: at("2026-11-02T16:00:00Z"),
-        }),
+        visit({ ...window, assignedMemberId: ids.crewMemberId, workMinutes: 60 }),
       ).resolves.toHaveLength(1);
       await expect(
-        visit({
-          assignedMemberId: ids.crewMemberId,
-          startsAt: at("2026-11-02T13:00:00Z"),
-          endsAt: at("2026-11-02T14:00:00Z"),
-        }),
+        visit({ ...window, assignedMemberId: ids.crewMemberId, workMinutes: 60 }),
       ).resolves.toHaveLength(1);
     });
 
-    it("allows overlapping visits for different members", async () => {
+    it("allows live visits that are not assigned yet", async () => {
       await expect(
         visit({
-          assignedMemberId: ids.ownerMemberId,
-          startsAt: at("2026-11-02T14:30:00Z"),
-          endsAt: at("2026-11-02T15:30:00Z"),
-        }),
-      ).resolves.toHaveLength(1);
-    });
-
-    it("requires a crew member on every live visit, so a confirmed slot is always held", async () => {
-      const slot = { startsAt: at("2027-11-03T14:00:00Z"), endsAt: at("2027-11-03T15:00:00Z") };
-      for (const status of ["confirmed", "completed_pending_confirmation", "completed"] as const) {
-        expect(
-          await violation(
-            visit({
-              ...slot,
-              assignedMemberId: null,
-              status,
-              completedAt: at("2027-11-03T15:00:00Z"),
-              autoConfirmAt: at("2027-11-05T15:00:00Z"),
-              confirmedAt: at("2027-11-03T16:00:00Z"),
-            }),
-          ),
-        ).toEqual({ code: "23514", constraint: "visits_live_has_member" });
-      }
-      await expect(
-        visit({
-          ...slot,
+          startsAt: at("2027-11-03T12:00:00Z"),
+          endsAt: at("2027-11-03T15:00:00Z"),
           assignedMemberId: null,
-          status: "cancelled_by_business",
-          cancelledAt: at("2027-11-01T12:00:00Z"),
         }),
       ).resolves.toHaveLength(1);
     });
 
-    it("ignores refunded visits: the slot can be booked again", async () => {
-      const slot = { startsAt: at("2027-05-01T14:00:00Z"), endsAt: at("2027-05-01T15:00:00Z") };
-      const [refunded] = await visit({ ...slot, assignedMemberId: ids.crewMemberId });
-      await db
-        .update(visits)
-        .set({ status: "refunded" })
-        .where(eq(visits.id, refunded?.id ?? ""));
-      await expect(visit({ ...slot, assignedMemberId: ids.crewMemberId })).resolves.toHaveLength(1);
-    });
-
-    it("ignores cancelled visits, but not once they are re-activated", async () => {
-      const [cancelled] = await visit({
-        assignedMemberId: ids.crewMemberId,
-        startsAt: at("2026-11-02T14:30:00Z"),
-        endsAt: at("2026-11-02T15:30:00Z"),
-        status: "cancelled_by_customer",
-        cancelledAt: at("2026-11-01T12:00:00Z"),
-      });
-      expect(cancelled).toBeDefined();
-      await expect(
-        visit({
-          assignedMemberId: ids.crewMemberId,
-          startsAt: at("2026-11-02T14:30:00Z"),
-          endsAt: at("2026-11-02T15:30:00Z"),
-          status: "cancelled_by_business",
-          cancelledAt: at("2026-11-01T12:00:00Z"),
-        }),
-      ).resolves.toHaveLength(1);
-      expect(
-        await violation(
-          db
-            .update(visits)
-            .set({ status: "confirmed", cancelledAt: null })
-            .where(eq(visits.id, cancelled?.id ?? "")),
-        ),
-      ).toEqual({ code: "23P01", constraint: "visits_no_member_overlap" });
-    });
-
-    it("rejects moving a visit onto another of the member's visits", async () => {
-      const [moved] = await visit({
-        assignedMemberId: ids.crewMemberId,
-        startsAt: at("2026-11-03T14:00:00Z"),
-        endsAt: at("2026-11-03T15:00:00Z"),
-      });
-      expect(
-        await violation(
-          db
-            .update(visits)
-            .set({ startsAt: at("2026-11-02T14:30:00Z"), endsAt: at("2026-11-02T15:30:00Z") })
-            .where(eq(visits.id, moved?.id ?? "")),
-        ),
-      ).toMatchObject({ code: "23P01" });
+    it("keeps the work time within a day", async () => {
+      const window = { startsAt: at("2027-11-04T12:00:00Z"), endsAt: at("2027-11-04T15:00:00Z") };
+      for (const workMinutes of [0, 1441]) {
+        expect(await violation(visit({ ...window, workMinutes }))).toEqual({
+          code: "23514",
+          constraint: "visits_work_minutes_range",
+        });
+      }
     });
   });
 
@@ -672,6 +569,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
           assignedMemberId: memberId,
           startsAt: at("2027-12-01T14:00:00Z"),
           endsAt: at("2027-12-01T15:00:00Z"),
+          workMinutes: 60,
         })
         .returning({ id: visits.id });
       // Deleting the user cascades to the membership, which still holds a visit.
@@ -735,6 +633,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
           assignedMemberId: ids.crewMemberId,
           startsAt: at("2027-06-02T14:00:00Z"),
           endsAt: at("2027-06-02T15:00:00Z"),
+          workMinutes: 60,
         })
         .returning({ id: visits.id });
       await expect(payment({ bookingId: oneOff })).resolves.toHaveLength(1);

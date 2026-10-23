@@ -197,6 +197,8 @@ export const visitPhotoKind = pgEnum("visit_photo_kind", VISIT_PHOTO_KINDS);
 export const PAYMENT_STATUSES = [
   "pending",
   "requires_action",
+  // Card held, not yet charged: approval requests until the business accepts (SPEC §19).
+  "authorized",
   "processing",
   "succeeded",
   "failed",
@@ -206,6 +208,16 @@ export const PAYMENT_STATUSES = [
 ] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const paymentStatus = pgEnum("payment_status", PAYMENT_STATUSES);
+
+/** Where money moves: Stripe in production, a built-in fake in development and tests. */
+export const PAYMENT_PROVIDERS = ["stripe", "fake"] as const;
+export type PaymentProvider = (typeof PAYMENT_PROVIDERS)[number];
+export const paymentProvider = pgEnum("payment_provider", PAYMENT_PROVIDERS);
+
+/** A customer's checkout for a one-off booking, which holds its time while open. */
+export const CHECKOUT_STATUSES = ["open", "completed", "expired", "cancelled"] as const;
+export type CheckoutStatus = (typeof CHECKOUT_STATUSES)[number];
+export const checkoutStatus = pgEnum("checkout_status", CHECKOUT_STATUSES);
 
 export const REFUND_STATUSES = ["pending", "succeeded", "failed", "cancelled"] as const;
 export type RefundStatus = (typeof REFUND_STATUSES)[number];

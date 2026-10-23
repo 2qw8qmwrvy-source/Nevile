@@ -170,6 +170,7 @@ describe.skipIf(!TEST_DATABASE_URL)("listings and search", () => {
         bookingId: booking?.id ?? "",
         businessId: id,
         assignedMemberId: ownerMember?.id ?? null,
+        workMinutes: 60,
         startsAt: new Date(`${month}-10T14:00:00Z`),
         endsAt: new Date(`${month}-10T15:00:00Z`),
         status: "completed",

@@ -15,7 +15,13 @@ import { bookings, visits } from "./bookings.ts";
 import { businesses } from "./businesses.ts";
 import { cents, id, nonNegative, positive, timestamps, tstz } from "./columns.ts";
 import { disputes } from "./disputes.ts";
-import { paymentStatus, payoutStatus, refundReason, refundStatus } from "./enums.ts";
+import {
+  paymentProvider,
+  paymentStatus,
+  payoutStatus,
+  refundReason,
+  refundStatus,
+} from "./enums.ts";
 
 /** Weekly Monday payout batch to a business's Stripe Connect account (SPEC §7). */
 export const payouts = pgTable(
@@ -29,6 +35,7 @@ export const payouts = pgTable(
     periodStart: date("period_start", { mode: "string" }).notNull(),
     periodEnd: date("period_end", { mode: "string" }).notNull(),
     amountCents: cents("amount_cents").notNull(),
+    provider: paymentProvider("provider").notNull().default("stripe"),
     stripeTransferId: text("stripe_transfer_id").unique(),
     status: payoutStatus("status").notNull().default("pending"),
     paidAt: tstz("paid_at"),
@@ -70,6 +77,7 @@ export const payments = pgTable(
     businessId: uuid("business_id").notNull(),
     // Null for booking-level charges (one-off upfront, season-priced contract).
     visitId: uuid("visit_id").references(() => visits.id, { onDelete: "restrict" }),
+    provider: paymentProvider("provider").notNull().default("stripe"),
     stripePaymentIntentId: text("stripe_payment_intent_id").notNull().unique(),
     stripeChargeId: text("stripe_charge_id").unique(),
     amountCents: cents("amount_cents").notNull(),

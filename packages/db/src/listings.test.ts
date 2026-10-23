@@ -4,7 +4,20 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, type Database } from "./client.ts";
 import { importPostalAreas, parseCsv, readAreasCsv } from "./import-postal-areas.ts";
-import { businesses, businessPhotos, postalAreas, serviceAreas, user } from "./schema/index.ts";
+import {
+  addresses,
+  arrivalWindows,
+  availabilityRules,
+  bookingCheckouts,
+  businesses,
+  businessMembers,
+  businessPhotos,
+  postalAreas,
+  serviceAreas,
+  serviceCategories,
+  services,
+  user,
+} from "./schema/index.ts";
 import { seedPostalAreas, starterPostalAreas } from "./seed.ts";
 import { resetTestDatabase } from "./testing.ts";
 
@@ -205,5 +218,120 @@ describe.skipIf(!TEST_DATABASE_URL)("listing tables", () => {
         }),
       ),
     ).toMatchObject({ code: "23505" });
+  });
+
+  describe("booking setup (SPEC §19)", () => {
+    it("keeps arrival windows between 6 am and 9 pm, 1–6 hours, on 15-minute marks", async () => {
+      await db.insert(arrivalWindows).values({ businessId, startMinute: 480, endMinute: 660 });
+      expect(
+        await violation(
+          db.insert(arrivalWindows).values({ businessId, startMinute: 480, endMinute: 600 }),
+        ),
+      ).toMatchObject({ code: "23505", constraint: "arrival_windows_business_start_uidx" });
+      for (const [startMinute, endMinute, constraint] of [
+        [300, 480, "arrival_windows_range"],
+        [600, 630, "arrival_windows_range"],
+        [600, 1000, "arrival_windows_range"],
+        [605, 785, "arrival_windows_step"],
+      ] as const) {
+        expect(
+          await violation(db.insert(arrivalWindows).values({ businessId, startMinute, endMinute })),
+        ).toMatchObject({ code: "23514", constraint });
+      }
+    });
+
+    it("bounds how soon and how far ahead customers can book", async () => {
+      for (const set of [
+        { minNoticeDays: 15 },
+        { maxDaysAhead: 181 },
+        { minNoticeDays: 7, maxDaysAhead: 7 },
+      ]) {
+        expect(
+          await violation(db.update(businesses).set(set).where(eq(businesses.id, businessId))),
+        ).toMatchObject({ code: "23514", constraint: "businesses_booking_notice" });
+      }
+    });
+
+    it("allows one span of working hours per crew member and weekday", async () => {
+      const [owner] = await db
+        .select({ id: businesses.ownerUserId })
+        .from(businesses)
+        .where(eq(businesses.id, businessId));
+      const [member] = await db
+        .insert(businessMembers)
+        .values({ businessId, userId: owner?.id ?? "", role: "owner" })
+        .returning({ id: businessMembers.id });
+      const memberId = member?.id ?? "";
+      await db
+        .insert(availabilityRules)
+        .values({ memberId, weekday: 1, startMinute: 480, endMinute: 1020 });
+      expect(
+        await violation(
+          db
+            .insert(availabilityRules)
+            .values({ memberId, weekday: 1, startMinute: 1080, endMinute: 1200 }),
+        ),
+      ).toMatchObject({ code: "23505", constraint: "availability_rules_member_weekday_uidx" });
+    });
+
+    it("keeps checkout totals consistent and links each to at most one booking", async () => {
+      const [customer] = await db
+        .insert(user)
+        .values({ id: randomUUID(), name: "Cam Customer", email: "cam@example.com" })
+        .returning({ id: user.id });
+      const [category] = await db
+        .insert(serviceCategories)
+        .values({ slug: "lawn-mowing", name: "Lawn Mowing" })
+        .onConflictDoNothing()
+        .returning({ id: serviceCategories.id });
+      const [service] = await db
+        .insert(services)
+        .values({
+          businessId,
+          categoryId: category?.id ?? "",
+          title: "Mowing",
+          pricingType: "fixed",
+          priceCents: 6000,
+          durationMinutes: 60,
+        })
+        .returning({ id: services.id });
+      const [address] = await db
+        .insert(addresses)
+        .values({
+          userId: customer?.id ?? "",
+          line1: "1 Test Road",
+          city: "Halifax",
+          province: "NS",
+          postalCode: "B3H 1A1",
+        })
+        .returning({ id: addresses.id });
+      const checkout = {
+        customerId: customer?.id ?? "",
+        businessId,
+        serviceId: service?.id ?? "",
+        addressId: address?.id ?? "",
+        startsAt: new Date("2026-11-02T12:00:00Z"),
+        endsAt: new Date("2026-11-02T15:00:00Z"),
+        workMinutes: 60,
+        instantBook: true,
+        priceCents: 6000,
+        serviceFeeCents: 422,
+        priceTaxCents: 840,
+        feeTaxCents: 59,
+        totalCents: 7321,
+        businessFeeCents: 180,
+        taxProvince: "NS" as const,
+        cancellationPolicy: "flexible" as const,
+        provider: "fake" as const,
+        expiresAt: new Date("2026-11-01T12:30:00Z"),
+      };
+      await expect(db.insert(bookingCheckouts).values(checkout)).resolves.toBeDefined();
+      expect(
+        await violation(db.insert(bookingCheckouts).values({ ...checkout, totalCents: 7320 })),
+      ).toMatchObject({ code: "23514", constraint: "booking_checkouts_total_is_sum" });
+      expect(
+        await violation(db.insert(bookingCheckouts).values({ ...checkout, status: "completed" })),
+      ).toMatchObject({ code: "23514", constraint: "booking_checkouts_completed_fields" });
+    });
   });
 });

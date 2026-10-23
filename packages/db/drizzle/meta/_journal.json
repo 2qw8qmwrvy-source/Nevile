@@ -57,6 +57,13 @@
       "when": 1792772004721,
       "tag": "0007_listings_and_postal_areas",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792780271509,
+      "tag": "0008_bookings_v1_3",
+      "breakpoints": true
     }
   ]
 }
