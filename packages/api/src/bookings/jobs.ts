@@ -150,7 +150,7 @@ async function cancelUpcoming(deps: BookingDeps, business: Business): Promise<nu
     } else {
       await cancelByBusiness(deps, booking.id, {
         actorUserId: null,
-        reason: "Payout setup wasn't finished in time.",
+        reason: "The pro didn't finish setting up payments on Nevile in time.",
       }).catch((error) => console.error("[jobs] could not cancel booking", booking.id, error));
     }
   }

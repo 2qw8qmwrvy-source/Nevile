@@ -9,7 +9,7 @@ const TINY_PNG = Buffer.from(
 test.describe("listings and search", () => {
   test("a business builds and publishes a listing that customers can find", async ({
     page,
-    browser,
+    newVisitor,
     uniq,
   }) => {
     const name = `Bedford Lawns ${uniq.key}`;
@@ -73,8 +73,7 @@ test.describe("listings and search", () => {
     expect(await seriousViolations(page)).toEqual([]);
 
     // A customer (not signed in) finds it from a Halifax postal code.
-    const customer = await browser.newContext();
-    const visitor = await customer.newPage();
+    const visitor = await newVisitor("customer");
     await visitor.goto("/search?service=lawn-mowing&postal=B3H%201A1");
     await expect(visitor.getByText("Near B3H · Halifax (South End)")).toBeVisible();
     const result = visitor.getByRole("link", { name: new RegExp(name) });
@@ -83,11 +82,11 @@ test.describe("listings and search", () => {
     await expect(result).toContainText("New on Nevile");
     await result.click();
 
-    // Its public page: no contact details, booking not open yet.
+    // Its public page: no contact details; fixed-price services can be booked.
     await expect(visitor.getByRole("heading", { level: 1, name })).toBeVisible();
     await expect(visitor.getByText("Serves about 25 km around Bedford").first()).toBeVisible();
     await expect(visitor.getByRole("img", { name: "Striped lawn in Bedford" })).toBeVisible();
-    await expect(visitor.getByRole("button", { name: "Booking coming soon" })).toBeDisabled();
+    await expect(visitor.getByRole("link", { name: "Book a time" })).toBeVisible();
     await expect(visitor.getByText(uniq.email)).toHaveCount(0);
     expect(await seriousViolations(visitor)).toEqual([]);
 
@@ -100,7 +99,6 @@ test.describe("listings and search", () => {
     await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
     await visitor.goto("/search?service=lawn-mowing&postal=B3H%201A1");
     await expect(visitor.getByRole("link", { name: new RegExp(name) })).toHaveCount(0);
-    await customer.close();
   });
 
   test("search explains postal codes it can't use", async ({ page }) => {

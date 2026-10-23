@@ -100,11 +100,14 @@ export const bookingEmails = {
     facts: BookingMailFacts,
     by: "customer" | "business",
     refundCents: number,
+    reason?: string,
   ) =>
     to(
       recipients,
       `Cancelled: ${facts.serviceTitle} on ${facts.when.split(" · ")[0]}`,
-      `${by === "customer" ? "You cancelled" : `${facts.businessName} cancelled`} this booking.\n\n${facts.serviceTitle}\n${facts.when}\n\n${
+      `${by === "customer" ? "You cancelled" : `${facts.businessName} cancelled`} this booking.${
+        reason ? `\n\nTheir reason: "${reason}"` : ""
+      }\n\n${facts.serviceTitle}\n${facts.when}\n\n${
         refundCents > 0
           ? `Refund: ${formatCad(refundCents)} to your card (usually 5–10 business days).`
           : "No refund is due under this pro's cancellation policy."

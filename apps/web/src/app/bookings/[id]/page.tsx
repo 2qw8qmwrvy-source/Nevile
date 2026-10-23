@@ -93,6 +93,11 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                 {dateTime.format(booking.approvalExpiresAt)}.
               </p>
             ) : null}
+            {booking.cancellationReason ? (
+              <p className="mt-3 text-[15px]">
+                {booking.business.name} cancelled: “{booking.cancellationReason}”
+              </p>
+            ) : null}
             {booking.autoConfirmAt ? (
               <p className="mt-3 text-sm text-muted">
                 Confirm or report a problem by {dateTime.format(booking.autoConfirmAt)}; after that

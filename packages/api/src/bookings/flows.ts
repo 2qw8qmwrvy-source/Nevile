@@ -1020,6 +1020,7 @@ export async function cancelByBusiness(
         mailFacts(parts, deps.config),
         "business",
         refundCents,
+        how.reason,
       ),
     );
   });

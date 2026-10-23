@@ -8,6 +8,7 @@ const DATABASE_URL =
   process.env.DATABASE_URL ??
   "postgresql://nevile:nevile@localhost:5432/nevile_e2e";
 export const OUTBOX_DIR = resolve(import.meta.dirname, ".outbox");
+export const E2E_CRON_SECRET = "e2e-only-cron-secret-0123456789abcdef";
 const MEDIA_DIR = resolve(import.meta.dirname, ".media");
 
 // Locally, an already-installed Chromium can be used instead of downloading one.
@@ -52,7 +53,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm --filter @nevile/web exec next dev -p ${PORT}`,
+    // A stale Next.js dev cache can put pages in a reload loop, so each run starts clean.
+    command: `pnpm --filter @nevile/web exec sh -c "rm -rf .next/dev && exec next dev -p ${PORT}"`,
     url: `${BASE_URL}/api/health`,
     timeout: 180_000,
     reuseExistingServer: !process.env.CI,
@@ -67,6 +69,9 @@ export default defineConfig({
       MEDIA_STORAGE: "local",
       MEDIA_LOCAL_DIR: MEDIA_DIR,
       NEVILE_NEIGHBOURS_ENABLED: "false",
+      // Bookings use the built-in test payment provider (no Stripe calls).
+      PAYMENTS_PROVIDER: "fake",
+      CRON_SECRET: E2E_CRON_SECRET,
       NEXT_TELEMETRY_DISABLED: "1",
     },
   },

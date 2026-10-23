@@ -140,11 +140,10 @@ export async function loadSchedule(
   options: { excludeCheckoutId?: string } = {},
 ) {
   const range = dayRange(first, days, business.timezone);
-  const [windows, members, placed] = await Promise.all([
-    windowsFor(db, business.id),
-    crewAvailability(db, business.id, range),
-    placedWork(db, business.id, range, now, options),
-  ]);
+  // One after another: `db` may be a transaction, and a connection runs one query at a time.
+  const windows = await windowsFor(db, business.id);
+  const members = await crewAvailability(db, business.id, range);
+  const placed = await placedWork(db, business.id, range, now, options);
   return { windows, members, placed, range };
 }
 

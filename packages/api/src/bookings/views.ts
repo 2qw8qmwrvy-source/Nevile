@@ -107,6 +107,8 @@ export async function customerBookingView(
     },
     cancellationPolicy: { label: policy.label, description: policy.description },
     approvalExpiresAt: booking.status === "requested" ? booking.approvalExpiresAt : null,
+    /** Why the pro cancelled (customers are told; SPEC §5). */
+    cancellationReason: status === "cancelled_by_business" ? booking.cancellationReason : null,
     autoConfirmAt: visit?.autoConfirmAt ?? null,
     actions: {
       cancel: allowed.has("cancel_by_customer"),
