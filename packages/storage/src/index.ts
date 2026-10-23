@@ -3,6 +3,7 @@ export {
   createS3Storage,
   createStorageFromEnv,
   getStorage,
+  lazyStorage,
   MEDIA_ROUTE_PREFIX,
   type MediaStorage,
   type S3StorageOptions,

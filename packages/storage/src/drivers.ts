@@ -154,3 +154,14 @@ export function getStorage(): MediaStorage {
   shared ??= createStorageFromEnv();
   return shared;
 }
+
+/**
+ * The process-wide storage, resolved on first use: a missing production configuration
+ * fails the requests that touch media instead of every request.
+ */
+export const lazyStorage: MediaStorage = {
+  put: (key, body, contentType) => getStorage().put(key, body, contentType),
+  get: (key) => getStorage().get(key),
+  delete: (key) => getStorage().delete(key),
+  publicUrl: (key) => getStorage().publicUrl(key),
+};

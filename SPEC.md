@@ -350,7 +350,8 @@ separate Nevile account with legal/accounting sign-off). While off, program page
 ### Photos
 
 - Logo and work photos are uploaded through the website: JPEG, PNG, WebP or HEIC, up to
-  **10 MB** each. Every image is re-encoded on the server (WebP, at most 1600 px wide; logos
+  **10 MB** each. (Phones hand iPhone HEIC photos to the website as JPEG; a raw HEIC file
+  the server can't decode is refused with a clear message.) Every image is re-encoded on the server (WebP, at most 1600 px wide; logos
   512 px square), which **removes all metadata including GPS location**. The original file
   is never stored.
 - Storage is S3-compatible (e.g. Cloudflare R2) in production and a local folder in
@@ -383,8 +384,12 @@ separate Nevile account with legal/accounting sign-off). While off, program page
 - Until then the database is seeded with a **starter list of Nova Scotia areas** whose
   centres are approximate (town and neighbourhood centres) and flagged `approximate`.
   Replacing them is on the launch checklist (docs/OPERATIONS.md).
-- An unknown area falls back to the nearest known one with the same first two characters,
-  then to all of Nova Scotia (results sorted without distance).
+- An unknown area falls back to the known area with the same first two characters whose
+  last letter is nearest in code order (neighbouring codes are usually neighbouring places),
+  then to all of Nova Scotia (results sorted without distance). A postal code outside Nova
+  Scotia shows no results and the launch-region message (§2).
+- A published listing stays ready: an edit that breaks a publishing requirement (e.g.
+  deleting the last active service) unpublishes it and tells the business why.
 
 ### Public business page
 

@@ -1,6 +1,10 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type Auth, createAuth, type EmailMessage, type SmsMessage } from "@nevile/auth";
 import { createDb, type Database } from "@nevile/db";
-import { seedCategories } from "@nevile/db/seed";
+import { seedCategories, seedPostalAreas } from "@nevile/db/seed";
+import { createLocalStorage } from "@nevile/storage";
 import { TRPCError } from "@trpc/server";
 import { type ApiConfig, DEFAULT_API_CONFIG } from "../config.ts";
 import { type Context, createContext } from "../context.ts";
@@ -38,6 +42,10 @@ export async function createHarness(baseUrl: string) {
   const url = await freshTestDatabase(baseUrl, "api");
   const db: Database = createDb(url, { max: 4 });
   await seedCategories(db);
+  await seedPostalAreas(db);
+  // Media goes to a throwaway folder; tests read it back through `storage`.
+  const mediaDir = mkdtempSync(join(tmpdir(), "nevile-api-media-"));
+  const storage = createLocalStorage(mediaDir);
   const emails: EmailMessage[] = [];
   const sms: SmsMessage[] = [];
   const auth: Auth = createAuth({
@@ -50,7 +58,7 @@ export async function createHarness(baseUrl: string) {
   });
 
   async function contextFor(cookie: string, config: ApiConfig = DEFAULT_API_CONFIG) {
-    return createContext({ headers: new Headers({ cookie }), db, auth, config });
+    return createContext({ headers: new Headers({ cookie }), db, auth, config, storage });
   }
 
   /** Confirms `email` with the link from its latest verification email. */
@@ -100,12 +108,14 @@ export async function createHarness(baseUrl: string) {
   }
 
   function anonymous(config: ApiConfig = DEFAULT_API_CONFIG): Context {
-    return { db, session: null, headers: new Headers(), config };
+    return { db, session: null, headers: new Headers(), config, storage };
   }
 
   return {
     db,
     auth,
+    storage,
+    mediaDir,
     emails,
     sms,
     contextFor,

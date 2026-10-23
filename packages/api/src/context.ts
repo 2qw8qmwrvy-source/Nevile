@@ -1,5 +1,6 @@
 import { type Auth, auth as defaultAuth, type Session } from "@nevile/auth";
 import { type Database, db as defaultDb } from "@nevile/db";
+import { lazyStorage, type MediaStorage } from "@nevile/storage";
 import { type ApiConfig, getApiConfig } from "./config.ts";
 
 export interface Context {
@@ -10,6 +11,8 @@ export interface Context {
   headers: Headers;
   /** Feature switches (`NEVILE_NEIGHBOURS_ENABLED`, ...). */
   config: ApiConfig;
+  /** Business photos and logos (SPEC §18). */
+  storage: MediaStorage;
 }
 
 export interface CreateContextOptions {
@@ -25,6 +28,8 @@ export interface CreateContextOptions {
   session?: Session | null;
   /** Defaults to the environment (`getApiConfig()`). */
   config?: ApiConfig;
+  /** Defaults to the storage configured by MEDIA_STORAGE (`@nevile/storage`). */
+  storage?: MediaStorage;
 }
 
 /** Resolves the session from the request cookies once per request. */
@@ -46,5 +51,6 @@ export async function createContext(options: CreateContextOptions): Promise<Cont
     session,
     headers,
     config: options.config ?? getApiConfig(),
+    storage: options.storage ?? lazyStorage,
   };
 }
