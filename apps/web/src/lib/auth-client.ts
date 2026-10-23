@@ -1,4 +1,5 @@
 import { createNevileAuthClient } from "@nevile/auth/client";
+import { launchPostalCodeSchema, OUTSIDE_LAUNCH_REGION_MESSAGE } from "@nevile/core";
 
 /** Browser auth client; talks to `/api/auth` on the current origin. */
 export const authClient = createNevileAuthClient();
@@ -15,8 +16,17 @@ export function authErrorMessage(
   switch (error.code) {
     case "INVALID_EMAIL_OR_PASSWORD":
       return "That email and password don't match. Check them and try again.";
-    case "EMAIL_NOT_VERIFIED":
-      return "Confirm your email first. We've sent you a new link.";
+    case "USER_ALREADY_EXISTS":
+    case "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL":
+      return "There's already an account with that email. Sign in instead.";
+    case "POSTAL_CODE_REQUIRED":
+      return "Enter your postal code.";
+    case "INVALID_POSTAL_CODE":
+      return "Enter a postal code like B3H 1A1.";
+    case "NOT_IN_SERVICE_AREA":
+      return OUTSIDE_LAUNCH_REGION_MESSAGE;
+    case "SIGN_UP_NOT_ALLOWED":
+      return "New accounts can only be created with an email or a text code.";
     case "PASSWORD_TOO_SHORT":
       return "Use at least 10 characters for your password.";
     case "PASSWORD_TOO_LONG":
@@ -39,4 +49,21 @@ export function authErrorMessage(
     default:
       return fallback;
   }
+}
+
+/** Error codes the server uses for the postal code field (SPEC §2). */
+export const POSTAL_CODE_ERROR_CODES: ReadonlySet<string> = new Set([
+  "POSTAL_CODE_REQUIRED",
+  "INVALID_POSTAL_CODE",
+  "NOT_IN_SERVICE_AREA",
+]);
+
+/**
+ * Client-side check of a sign-up postal code: a hint only, the server decides. Returns an
+ * error message, or null when the code is a valid Nova Scotia postal code.
+ */
+export function postalCodeError(value: string): string | null {
+  if (!value.trim()) return "Enter your postal code.";
+  const result = launchPostalCodeSchema.safeParse(value);
+  return result.success ? null : (result.error.issues[0]?.message ?? "Enter a valid postal code.");
 }

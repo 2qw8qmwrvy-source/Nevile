@@ -13,8 +13,10 @@ type SignUpPageProps = { searchParams: Promise<Record<string, string | string[] 
 export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   const { intent } = await searchParams;
   const forBusiness = intent === "business";
-  const next = forBusiness ? "/account?intent=business" : "/account";
-  const signInHref = `/sign-in?next=${encodeURIComponent(next)}` as Route;
+  // New accounts land on the optional welcome flow (SPEC §16); business sign-ups start it
+  // with "I run a business" picked.
+  const next = (forBusiness ? "/welcome?intent=business" : "/welcome") as Route;
+  const signInHref = `/sign-in?next=${encodeURIComponent(forBusiness ? "/account" : "/")}` as Route;
   const phoneHref = `/sign-in?method=phone&next=${encodeURIComponent(next)}` as Route;
 
   return (
@@ -24,7 +26,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
       description={
         forBusiness
           ? "One account works for booking and for running your business. Once you're in, switch to business mode from your account page."
-          : "Book local pros, pay in the app, and keep every job in one place."
+          : "Book local pros across Nova Scotia, pay in the app, and keep every job in one place."
       }
       footer={
         <div className="grid gap-2">
@@ -43,7 +45,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
         </div>
       }
     >
-      <SignUpForm signInHref={signInHref} />
+      <SignUpForm signInHref={signInHref} next={next} />
     </AuthCard>
   );
 }

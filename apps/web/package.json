@@ -13,6 +13,7 @@
     "@nevile/api": "workspace:*",
     "@nevile/auth": "workspace:*",
     "@nevile/core": "workspace:*",
+    "@nevile/db": "workspace:*",
     "@nevile/tokens": "workspace:*",
     "@sentry/nextjs": "11.8.0",
     "@tanstack/react-query": "5.104.5",

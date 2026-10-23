@@ -88,9 +88,7 @@ export async function SiteFooter() {
               ))}
             </ul>
           </nav>
-          <p>
-            &copy; {year} Nevile · Prices in CAD. HST is added at checkout where it applies.
-          </p>
+          <p>&copy; {year} Nevile · Prices in CAD. HST is added at checkout where it applies.</p>
         </div>
       </Container>
     </footer>

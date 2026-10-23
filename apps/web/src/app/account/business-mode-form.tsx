@@ -1,29 +1,26 @@
 "use client";
 
-import {
-  BUSINESS_NAME_MAX_LENGTH,
-  PROVINCE_CODES,
-  PROVINCES,
-  type ProvinceCode,
-} from "@nevile/core";
+import { BUSINESS_NAME_MAX_LENGTH, LAUNCH_PROVINCES, PROVINCES } from "@nevile/core";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState } from "react";
 import { FormAlert } from "@/app/(auth)/_components/form-alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import { Field, Input, Select } from "@/components/ui/field.tsx";
+import { Field, Input } from "@/components/ui/field.tsx";
 import { useTRPC } from "@/lib/trpc.ts";
 
+/** Nevile launches in Nova Scotia only (SPEC §2), so every new business is set up there. */
+const LAUNCH_PROVINCE = LAUNCH_PROVINCES[0];
+
 /**
- * "Switch to business mode" for accounts without a business: names the business and its
- * province, then creates it with the caller as owner.
+ * "Switch to business mode" for accounts without a business: names the business, then
+ * creates it in the launch province with the caller as owner.
  */
 export function BusinessModeForm({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const trpc = useTRPC();
   const router = useRouter();
   const [open, setOpen] = useState(defaultOpen);
   const [name, setName] = useState("");
-  const [province, setProvince] = useState<ProvinceCode>("ON");
   const formRef = useRef<HTMLFormElement>(null);
 
   const create = useMutation(
@@ -33,12 +30,12 @@ export function BusinessModeForm({ defaultOpen = false }: { defaultOpen?: boolea
   );
   const fieldErrors = create.error?.data?.zodError?.fieldErrors;
   const nameError = fieldErrors?.name?.[0];
-  const provinceError = fieldErrors?.province?.[0] ? "Choose a province or territory." : undefined;
-  const formError = create.error && !nameError && !provinceError ? create.error.message : null;
+  const provinceError = fieldErrors?.province?.[0];
+  const formError = create.error && !nameError ? (provinceError ?? create.error.message) : null;
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    create.mutate({ name, province });
+    create.mutate({ name, province: LAUNCH_PROVINCE });
   }
 
   if (!open) {
@@ -78,23 +75,14 @@ export function BusinessModeForm({ defaultOpen = false }: { defaultOpen?: boolea
           required
         />
       </Field>
-      <Field
-        label="Province or territory"
-        hint="Where you do most of your work."
-        error={provinceError}
-      >
-        <Select
-          name="province"
-          value={province}
-          onChange={(event) => setProvince(event.target.value as ProvinceCode)}
-        >
-          {PROVINCE_CODES.map((code) => (
-            <option key={code} value={code}>
-              {PROVINCES[code].name}
-            </option>
-          ))}
-        </Select>
-      </Field>
+      <p className="rounded-input border border-border bg-ground px-3.5 py-3 text-[15px] leading-snug">
+        <strong>{PROVINCES[LAUNCH_PROVINCE].name}</strong>
+        <span className="text-muted">
+          {" "}
+          · Nevile is only in Nova Scotia for now. You&apos;ll draw your exact service area on a map
+          when you add your services.
+        </span>
+      </p>
       <Button
         type="submit"
         size="lg"

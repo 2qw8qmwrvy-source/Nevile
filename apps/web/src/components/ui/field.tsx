@@ -7,6 +7,7 @@ import {
   type ReactElement,
   type ReactNode,
   type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
   useId,
 } from "react";
 import { cn } from "@/lib/cn.ts";
@@ -78,6 +79,63 @@ export function Select({ className, icon, children, ...rest }: SelectProps) {
         size={18}
         className="pointer-events-none absolute top-[15px] right-3.5 text-muted"
       />
+    </div>
+  );
+}
+
+export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      className={cn(control, "h-auto min-h-28 resize-y px-3.5 py-3 leading-relaxed", className)}
+      {...rest}
+    />
+  );
+}
+
+export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  label: ReactNode;
+  /** Secondary line under the label. */
+  description?: ReactNode;
+  error?: ReactNode;
+};
+
+/**
+ * Checkbox with its label as one large tap target (at least 44px tall). Never pass
+ * `defaultChecked` for consent boxes: CASL consent must be an active choice (SPEC §17).
+ */
+export function Checkbox({ label, description, error, className, id, ...rest }: CheckboxProps) {
+  const generated = useId();
+  const inputId = id ?? `checkbox-${generated}`;
+  const descriptionId = description ? `${inputId}-description` : undefined;
+  const errorId = error ? `${inputId}-error` : undefined;
+  return (
+    <div className={className}>
+      <label
+        htmlFor={inputId}
+        className="flex min-h-11 cursor-pointer items-start gap-3 rounded-input py-1.5 text-[15px] leading-snug"
+      >
+        <input
+          id={inputId}
+          type="checkbox"
+          aria-describedby={[descriptionId, errorId].filter(Boolean).join(" ") || undefined}
+          aria-invalid={error ? true : undefined}
+          className="mt-0.5 size-5 flex-none cursor-pointer rounded-[6px] accent-primary"
+          {...rest}
+        />
+        <span>
+          <span className="block text-ink">{label}</span>
+          {description ? (
+            <span id={descriptionId} className="mt-0.5 block text-sm text-muted">
+              {description}
+            </span>
+          ) : null}
+        </span>
+      </label>
+      {error ? (
+        <p id={errorId} className="mt-1 ml-8 text-sm font-medium text-danger">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

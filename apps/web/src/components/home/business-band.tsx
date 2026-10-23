@@ -1,3 +1,4 @@
+import type { Season } from "@nevile/tokens";
 import Link from "next/link";
 import { Button } from "@/components/ui/button.tsx";
 import { ArrowRightIcon, CheckIcon } from "@/components/ui/icons.tsx";
@@ -11,7 +12,7 @@ const POINTS = [
   ["Paid every Monday:", `weekly payouts, a flat ${BUSINESS_FEE_LABEL} fee per job.`],
 ] as const;
 
-export function BusinessBand() {
+export function BusinessBand({ season }: { season: Season }) {
   return (
     <section id="business" aria-labelledby="biz-title" className="pt-14">
       <div className="on-dark grid grid-cols-[minmax(0,1fr)] items-center gap-10 rounded-panel bg-primary px-5 py-7 text-white sm:rounded-hero sm:px-12 sm:py-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
@@ -57,7 +58,7 @@ export function BusinessBand() {
             Same login as your customer account: switch to business mode anytime.
           </p>
         </div>
-        <CrewCalendarPreview />
+        <CrewCalendarPreview season={season} />
       </div>
     </section>
   );

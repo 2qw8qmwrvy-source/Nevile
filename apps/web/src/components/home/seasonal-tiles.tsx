@@ -1,17 +1,15 @@
-"use client";
-
 import type { Season } from "@nevile/tokens";
 import type { Route } from "next";
 import Link from "next/link";
 import { ArrowRightIcon, categoryIconName, Icon } from "@/components/ui/icons.tsx";
 import { cn } from "@/lib/cn.ts";
 import { SEASON_COPY } from "./season-content.ts";
-import { useSeason } from "./season-scope.tsx";
 
 export type Tile = { slug: string; name: string; description: string };
 
 type SeasonalTilesProps = {
-  tiles: Readonly<Record<Season, readonly Tile[]>>;
+  season: Season;
+  tiles: readonly Tile[];
   totalServices: number;
 };
 
@@ -22,9 +20,7 @@ const columns: Record<number, string> = {
   4: "lg:grid-cols-4",
 };
 
-export function SeasonalTiles({ tiles, totalServices }: SeasonalTilesProps) {
-  const { season } = useSeason();
-  const list = tiles[season];
+export function SeasonalTiles({ season, tiles: list, totalServices }: SeasonalTilesProps) {
   return (
     <div id="services" className="mt-7">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">

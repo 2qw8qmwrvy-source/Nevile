@@ -12,16 +12,19 @@
 export function contentSecurityPolicy(
   nonce: string,
   env: string | undefined = process.env.NODE_ENV,
+  sentryDsn: string | undefined = process.env.NEXT_PUBLIC_SENTRY_DSN,
 ): string {
   const isDev = env === "development";
   const isProd = env === "production";
+  const sentryOrigin = originOf(sentryDsn);
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
-    `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+    // Browser error reports go to Sentry only when a DSN is configured (SPEC §17).
+    `connect-src 'self'${sentryOrigin ? ` ${sentryOrigin}` : ""}${isDev ? " ws: wss:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -30,6 +33,17 @@ export function contentSecurityPolicy(
     "worker-src 'self' blob:",
     ...(isProd ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
+}
+
+/** "https://key@o1.ingest.sentry.io/2" → "https://o1.ingest.sentry.io"; null if unset or not https. */
+function originOf(dsn: string | undefined): string | null {
+  if (!dsn) return null;
+  try {
+    const url = new URL(dsn);
+    return url.protocol === "https:" ? url.origin : null;
+  } catch {
+    return null;
+  }
 }
 
 /** 128 random bits, base64-encoded, as CSP nonces should be. */

@@ -18,13 +18,13 @@ const STEPS = [
   },
 ] as const;
 
-/** Example job used to illustrate the checkout: $60.00, Ontario, GST/HST-registered business. */
+/** Example job used to illustrate the checkout: $60.00, Nova Scotia, HST-registered business. */
 const EXAMPLE_PRICE_CENTS = 6000;
 
 export function HowItWorks() {
   const charge = calculateCharge({
     priceCents: EXAMPLE_PRICE_CENTS,
-    province: "ON",
+    province: "NS",
     businessTaxRegistered: true,
   });
 
@@ -75,10 +75,10 @@ export function HowItWorks() {
             id="receipt-title"
             className="mt-1.5 font-display text-xl leading-tight font-semibold"
           >
-            A one-off lawn mow in Ontario
+            A one-off lawn mow in Nova Scotia
           </h3>
           <p className="mt-1 text-sm text-muted">
-            Flexible cancellation: free until 24h before the job
+            Flexible cancellation: free until 24h before, then 50% back
           </p>
           <dl className="mt-3.5 text-[15px] tabular-nums">
             <div className="flex justify-between gap-3 border-b border-border py-2">

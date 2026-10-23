@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import {
   BUSINESS_NAME_MAX_LENGTH,
   BUSINESS_NAME_MIN_LENGTH,
+  isLaunchProvince,
+  OUTSIDE_LAUNCH_REGION_MESSAGE,
   PROVINCES,
   provinceCodeSchema,
 } from "@nevile/core";
@@ -35,7 +37,10 @@ export const createBusinessInput = z.object({
       message: `Business names can be up to ${BUSINESS_NAME_MAX_LENGTH} characters`,
     })
     .regex(/^[^\p{Cc}]+$/u, { message: "Business names can't contain control characters" }),
-  province: provinceCodeSchema,
+  // SPEC §2: businesses can only be set up in a launch province (Nova Scotia).
+  province: provinceCodeSchema.refine((code) => isLaunchProvince(code), {
+    message: OUTSIDE_LAUNCH_REGION_MESSAGE,
+  }),
 });
 
 /** Fields of a business that its members may see (no Stripe or tax identifiers). */

@@ -28,9 +28,7 @@ export function FooterAccountLinks({ hasSessionCookie }: { hasSessionCookie: boo
         <li key={link.label}>
           <Link
             href={link.href}
-            className={
-              status === "unknown" ? `${footerLinkClass} invisible` : footerLinkClass
-            }
+            className={status === "unknown" ? `${footerLinkClass} invisible` : footerLinkClass}
           >
             {link.label}
           </Link>

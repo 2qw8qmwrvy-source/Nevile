@@ -1,13 +1,17 @@
-import { PROVINCES } from "@nevile/core";
+import { contactEmail } from "@nevile/auth/client";
+import { DEFAULT_CATEGORIES, PROVINCES } from "@nevile/core";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Container } from "@/components/ui/container.tsx";
+import { VerificationRequired } from "@/components/verification/verification-required.tsx";
 import { getSession } from "@/lib/auth.ts";
 import { getServerCaller } from "@/lib/trpc-server.ts";
 import { BusinessModeForm } from "./business-mode-form.tsx";
+import { EmailUpdatesToggle } from "./email-updates-toggle.tsx";
 import { SignOutButton } from "./sign-out-button.tsx";
 
 export const metadata: Metadata = {
@@ -17,7 +21,7 @@ export const metadata: Metadata = {
 
 const ROLE_LABELS = { owner: "Owner", manager: "Manager", crew: "Crew" } as const;
 
-/** "+14165551234" → "(416) 555-1234" */
+/** "+19025551234" → "(902) 555-1234" */
 function formatPhone(e164: string): string {
   const digits = e164.replace(/^\+1/, "");
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
@@ -39,8 +43,12 @@ type AccountPageProps = { searchParams: Promise<Record<string, string | string[]
 export default async function AccountPage({ searchParams }: AccountPageProps) {
   if (!(await getSession())) redirect("/sign-in?next=/account");
   const [{ intent }, caller] = await Promise.all([searchParams, getServerCaller()]);
-  const { user, businesses } = await caller.me.get();
+  const { user, businesses, verified, onboarding, marketingConsent } = await caller.me.get();
   const greetingName = user.name.trim();
+  const email = contactEmail(user.email);
+  const interestNames = DEFAULT_CATEGORIES.filter((category) =>
+    onboarding.interests.includes(category.slug),
+  ).map((category) => category.name);
 
   return (
     <Container className="pt-1 pb-16 sm:pb-24">
@@ -76,9 +84,9 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
               {greetingName || <span className="text-muted">Not added yet</span>}
             </DetailRow>
             <DetailRow label="Email">
-              {user.email ? (
+              {email ? (
                 <>
-                  <span className="min-w-0 break-all">{user.email}</span>
+                  <span className="min-w-0 break-all">{email}</span>
                   {user.emailVerified ? <Badge variant="verified">Confirmed</Badge> : null}
                 </>
               ) : (
@@ -98,6 +106,41 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
           </dl>
           <div className="mt-6 border-t border-border pt-5">
             <SignOutButton />
+          </div>
+        </Card>
+
+        <Card as="section" aria-labelledby="preferences-title">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2
+              id="preferences-title"
+              className="font-display text-[22px] leading-tight font-bold tracking-[-0.02em]"
+            >
+              Preferences
+            </h2>
+            <Link
+              href="/welcome"
+              className="inline-flex min-h-11 items-center font-semibold text-primary"
+            >
+              Edit
+            </Link>
+          </div>
+          <dl className="mt-4">
+            <DetailRow label="Postal code">
+              {onboarding.postalCode ?? <span className="text-muted">Not added yet</span>}
+            </DetailRow>
+            <DetailRow label="Interests">
+              {interestNames.length > 0 ? (
+                interestNames.join(", ")
+              ) : (
+                <span className="text-muted">None picked yet</span>
+              )}
+            </DetailRow>
+          </dl>
+          <div className="mt-5 border-t border-border pt-4">
+            <h3 className="text-[15px] font-semibold">Email updates</h3>
+            <div className="mt-2">
+              <EmailUpdatesToggle consented={marketingConsent.consented} />
+            </div>
           </div>
         </Card>
 
@@ -131,8 +174,14 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
                 Managing your services, calendar and crew from the website is coming soon.
               </p>
             </>
-          ) : (
+          ) : verified ? (
             <BusinessModeForm defaultOpen={intent === "business"} />
+          ) : (
+            <VerificationRequired
+              className="mt-4"
+              action="switch to business mode"
+              email={contactEmail(user.email)}
+            />
           )}
         </Card>
       </div>

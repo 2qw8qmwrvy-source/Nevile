@@ -159,6 +159,9 @@ importers:
       '@nevile/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@nevile/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@nevile/tokens':
         specifier: workspace:*
         version: link:../../packages/tokens

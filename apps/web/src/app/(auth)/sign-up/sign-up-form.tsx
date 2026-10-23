@@ -1,17 +1,44 @@
 "use client";
 
 import { NAME_MAX_LENGTH } from "@nevile/auth/client";
-import { emailSchema, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@nevile/core";
+import {
+  emailSchema,
+  launchPostalCodeSchema,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@nevile/core";
 import type { Route } from "next";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { Field, Input } from "@/components/ui/field.tsx";
-import { authClient, authErrorMessage } from "@/lib/auth-client.ts";
+import {
+  authClient,
+  authErrorMessage,
+  POSTAL_CODE_ERROR_CODES,
+  postalCodeError,
+} from "@/lib/auth-client.ts";
 import { FormAlert } from "../_components/form-alert.tsx";
+import { MarketingConsent } from "../_components/marketing-consent.tsx";
 import { PasswordInput } from "../_components/password-input.tsx";
 
-type Fields = { name: string; email: string; password: string; confirm: string };
+type Fields = {
+  name: string;
+  email: string;
+  postalCode: string;
+  password: string;
+  confirm: string;
+};
 type FieldErrors = Partial<Record<keyof Fields, string>>;
+
+const FIELD_ORDER: readonly (keyof Fields)[] = [
+  "name",
+  "email",
+  "postalCode",
+  "password",
+  "confirm",
+];
 
 function validate(fields: Fields): FieldErrors {
   const errors: FieldErrors = {};
@@ -20,6 +47,8 @@ function validate(fields: Fields): FieldErrors {
   else if (name.length > NAME_MAX_LENGTH)
     errors.name = `Use at most ${NAME_MAX_LENGTH} characters.`;
   if (!emailSchema.safeParse(fields.email).success) errors.email = "Enter a valid email address.";
+  const postal = postalCodeError(fields.postalCode);
+  if (postal) errors.postalCode = postal;
   if (fields.password.length < PASSWORD_MIN_LENGTH) {
     errors.password = `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
   } else if (fields.password.length > PASSWORD_MAX_LENGTH) {
@@ -31,13 +60,35 @@ function validate(fields: Fields): FieldErrors {
   return errors;
 }
 
-export function SignUpForm({ signInHref }: { signInHref: Route }) {
-  const [fields, setFields] = useState<Fields>({ name: "", email: "", password: "", confirm: "" });
+type SignUpFormProps = {
+  signInHref: Route;
+  /** Where to go once the account exists: the welcome flow (SPEC §16). */
+  next: Route;
+};
+
+/**
+ * Email sign-up. Nova Scotia postal codes only (SPEC §2), checked here as a hint and
+ * enforced by the server. A new account is signed in straight away; the confirmation
+ * email unlocks booking and messaging (SPEC §1).
+ */
+export function SignUpForm({ signInHref, next }: SignUpFormProps) {
+  const router = useRouter();
+  const [fields, setFields] = useState<Fields>({
+    name: "",
+    email: "",
+    postalCode: "",
+    password: "",
+    confirm: "",
+  });
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [formError, setFormError] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [formError, setFormError] = useState<{ text: string; signIn?: boolean } | null>(null);
   const [pending, setPending] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+
+  function focusField(key: keyof Fields) {
+    formRef.current?.querySelector<HTMLInputElement>(`[name="${key}"]`)?.focus();
+  }
 
   function update(key: keyof Fields) {
     return (event: { target: { value: string } }) => {
@@ -51,55 +102,48 @@ export function SignUpForm({ signInHref }: { signInHref: Route }) {
     setFormError(null);
     const found = validate(fields);
     setErrors(found);
-    const firstInvalid = (Object.keys(found) as (keyof Fields)[])[0];
+    const firstInvalid = FIELD_ORDER.find((key) => found[key]);
     if (firstInvalid) {
-      formRef.current?.querySelector<HTMLInputElement>(`[name="${firstInvalid}"]`)?.focus();
+      focusField(firstInvalid);
       return;
     }
     setPending(true);
-    const email = emailSchema.parse(fields.email);
     const { error } = await authClient.signUp.email({
       name: fields.name.trim(),
-      email,
+      email: emailSchema.parse(fields.email),
       password: fields.password,
+      postalCode: launchPostalCodeSchema.parse(fields.postalCode),
+      marketingConsent,
     });
-    setPending(false);
     if (error) {
-      setFormError(authErrorMessage(error, "We couldn't create your account. Please try again."));
+      setPending(false);
+      const message = authErrorMessage(error, "We couldn't create your account. Please try again.");
+      if (error.code && POSTAL_CODE_ERROR_CODES.has(error.code)) {
+        setErrors({ postalCode: message });
+        focusField("postalCode");
+      } else if (error.code?.startsWith("USER_ALREADY_EXISTS")) {
+        setFormError({ text: message, signIn: true });
+      } else {
+        setFormError({ text: message });
+      }
       return;
     }
-    // The same answer whether or not the address already had an account.
-    setSentTo(email);
-  }
-
-  if (sentTo) {
-    return (
-      <div className="grid gap-4">
-        <FormAlert tone="success">Check your inbox to finish signing up.</FormAlert>
-        <p className="text-[15px] leading-relaxed text-muted">
-          We sent a confirmation link to <strong className="break-all text-ink">{sentTo}</strong>.
-          It expires in 1 hour. After you confirm, sign in with your email and password.
-        </p>
-        <Button href={signInHref} block size="lg">
-          Go to sign in
-        </Button>
-        <button
-          type="button"
-          onClick={() => {
-            setSentTo(null);
-            setFields((current) => ({ ...current, password: "", confirm: "" }));
-          }}
-          className="min-h-11 cursor-pointer text-[15px] font-semibold text-primary"
-        >
-          Use a different email
-        </button>
-      </div>
-    );
+    router.replace(next);
+    router.refresh();
   }
 
   return (
     <form ref={formRef} onSubmit={onSubmit} noValidate className="grid gap-4">
-      {formError ? <FormAlert tone="error">{formError}</FormAlert> : null}
+      {formError ? (
+        <FormAlert tone="error">
+          {formError.text}{" "}
+          {formError.signIn ? (
+            <Link href={signInHref} className="font-semibold text-danger underline">
+              Go to sign in
+            </Link>
+          ) : null}
+        </FormAlert>
+      ) : null}
       <Field label="Your name" error={errors.name}>
         <Input
           name="name"
@@ -118,6 +162,29 @@ export function SignUpForm({ signInHref }: { signInHref: Route }) {
           inputMode="email"
           value={fields.email}
           onChange={update("email")}
+          required
+        />
+      </Field>
+      <Field
+        label="Postal code"
+        hint="Nevile is only in Nova Scotia for now (postal codes start with B)."
+        error={errors.postalCode}
+      >
+        <Input
+          name="postalCode"
+          autoComplete="postal-code"
+          autoCapitalize="characters"
+          placeholder="B3H 1A1"
+          maxLength={7}
+          value={fields.postalCode}
+          onChange={update("postalCode")}
+          onBlur={() => {
+            if (fields.postalCode.trim()) {
+              const problem = postalCodeError(fields.postalCode);
+              if (problem) setErrors((current) => ({ ...current, postalCode: problem }));
+            }
+          }}
+          className="uppercase"
           required
         />
       </Field>
@@ -145,11 +212,21 @@ export function SignUpForm({ signInHref }: { signInHref: Route }) {
           required
         />
       </Field>
+      <MarketingConsent checked={marketingConsent} onChange={setMarketingConsent} />
       <Button type="submit" size="lg" block disabled={pending} aria-busy={pending}>
         {pending ? "Creating your account…" : "Create account"}
       </Button>
       <p className="text-sm leading-relaxed text-muted">
-        We&apos;ll email you a link to confirm your address before you can sign in.
+        You&apos;ll be signed in right away. We&apos;ll email you a link to confirm your address
+        before you book or message a pro. By creating an account you agree to our{" "}
+        <Link href="/terms" className="font-semibold text-primary">
+          Terms
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" className="font-semibold text-primary">
+          Privacy Policy
+        </Link>
+        .
       </p>
     </form>
   );

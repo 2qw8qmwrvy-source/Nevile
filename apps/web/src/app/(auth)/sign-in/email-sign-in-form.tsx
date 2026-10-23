@@ -14,7 +14,7 @@ export function EmailSignInForm({ next }: { next: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ tone: "error"; text: string } | null>(null);
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -30,14 +30,7 @@ export function EmailSignInForm({ next }: { next: string }) {
     if (error) {
       setPending(false);
       setPassword("");
-      setMessage(
-        error.code === "EMAIL_NOT_VERIFIED"
-          ? {
-              tone: "info",
-              text: `Confirm your email first. We've sent a new link to ${parsed.data}; it expires in 1 hour.`,
-            }
-          : { tone: "error", text: authErrorMessage(error) },
-      );
+      setMessage({ tone: "error", text: authErrorMessage(error) });
       return;
     }
     router.replace(next as Route);

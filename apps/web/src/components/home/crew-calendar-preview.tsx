@@ -1,8 +1,6 @@
-"use client";
-
+import type { Season } from "@nevile/tokens";
 import { UsersIcon } from "@/components/ui/icons.tsx";
 import { SEASON_JOBS } from "./season-content.ts";
-import { useSeason } from "./season-scope.tsx";
 
 type Kind = "A" | "B" | "C" | "";
 
@@ -21,8 +19,7 @@ const kindStyle: Record<Exclude<Kind, "">, { index: 0 | 1 | 2; className: string
 };
 
 /** Decorative example of a crew calendar for the business band. Not real bookings. */
-export function CrewCalendarPreview() {
-  const { season } = useSeason();
+export function CrewCalendarPreview({ season }: { season: Season }) {
   const { jobs, times } = SEASON_JOBS[season];
   return (
     <figure className="m-0 min-w-0 rounded-card bg-surface p-4.5 text-ink shadow-card">

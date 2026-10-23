@@ -22,7 +22,11 @@ export function useAuthState(hasSessionCookie: boolean): {
 } {
   const { data, isPending } = authClient.useSession();
   if (data) {
-    return { status: "signed-in", user: data.user, verified: verificationMethodOf(data.user) !== null };
+    return {
+      status: "signed-in",
+      user: data.user,
+      verified: verificationMethodOf(data.user) !== null,
+    };
   }
   if (isPending && hasSessionCookie) return { status: "unknown", user: null, verified: false };
   return { status: "signed-out", user: null, verified: false };

@@ -34,7 +34,10 @@ export function ResendEmailButton({
     setPending(false);
     setStatus(
       error
-        ? { tone: "error", text: authErrorMessage(error, "We couldn't send a new link. Try again.") }
+        ? {
+            tone: "error",
+            text: authErrorMessage(error, "We couldn't send a new link. Try again."),
+          }
         : { tone: "success", text: "Sent. Check your inbox (and spam folder)." },
     );
   }

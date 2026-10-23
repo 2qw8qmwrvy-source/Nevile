@@ -1,17 +1,21 @@
 "use client";
 
 import Form from "next/form";
+import { useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { Input, Label, Select } from "@/components/ui/field.tsx";
 import { SearchIcon } from "@/components/ui/icons.tsx";
 import { ADDRESS_MAX_LENGTH, WHEN_OPTIONS } from "@/lib/search-options.ts";
-import { useSeason } from "./season-scope.tsx";
 
-type SearchCardProps = { categories: ReadonlyArray<{ slug: string; name: string }> };
+type SearchCardProps = {
+  categories: ReadonlyArray<{ slug: string; name: string }>;
+  /** Pre-selected service: the current season's most-booked category. */
+  defaultService: string;
+};
 
 /** The hero search, a plain GET form to /search so it works before hydration too. */
-export function SearchCard({ categories }: SearchCardProps) {
-  const { service, setService } = useSeason();
+export function SearchCard({ categories, defaultService }: SearchCardProps) {
+  const [service, setService] = useState(defaultService);
   return (
     <search aria-label="Find a home service" className="mt-7 block">
       <Form
@@ -39,7 +43,7 @@ export function SearchCard({ categories }: SearchCardProps) {
             id="q-address"
             name="address"
             icon="pin"
-            placeholder="123 Main St, Ottawa"
+            placeholder="123 Main St, Halifax"
             autoComplete="street-address"
             maxLength={ADDRESS_MAX_LENGTH}
             required

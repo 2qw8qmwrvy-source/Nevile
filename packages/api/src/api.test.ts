@@ -81,7 +81,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/api", () => {
     const calls = [
       caller.me.get(),
       caller.business.mine(),
-      caller.business.create({ name: "Sneaky Snow", province: "ON" }),
+      caller.business.create({ name: "Sneaky Snow", province: "NS" }),
       caller.business.get({ businessId: "00000000-0000-4000-8000-000000000000" }),
       caller.onboarding.save({ intent: "customer", postalCode: "B3H 1A1" }),
       caller.onboarding.skip(),
@@ -139,12 +139,12 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/api", () => {
 
   it("creates a business owned by the caller with an owner membership", async () => {
     const caller = createCaller(maya);
-    const created = await caller.business.create({ name: "  Côté Lawn & Snow ", province: "qc" });
+    const created = await caller.business.create({ name: "  Côté Lawn & Snow ", province: "ns" });
     expect(created).toMatchObject({
       name: "Côté Lawn & Snow",
       slug: "cote-lawn-and-snow",
-      province: "QC",
-      timezone: "America/Toronto",
+      province: "NS",
+      timezone: "America/Halifax",
       plan: "free",
       role: "owner",
     });
@@ -176,17 +176,17 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/api", () => {
 
     // One owned business per account.
     expect(
-      (await trpcError(caller.business.create({ name: "Second Co", province: "ON" }))).code,
+      (await trpcError(caller.business.create({ name: "Second Co", province: "NS" }))).code,
     ).toBe("CONFLICT");
   });
 
   it("gives each business a unique slug", async () => {
     const created = await createCaller(leo).business.create({
       name: "Cote Lawn and Snow",
-      province: "ON",
+      province: "NS",
     });
     expect(created.slug).toBe("cote-lawn-and-snow-2");
-    expect(created.timezone).toBe("America/Toronto");
+    expect(created.timezone).toBe("America/Halifax");
   });
 
   it("keeps businesses private to their members", async () => {
@@ -207,7 +207,13 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/api", () => {
       caller.business.create({ name: "Okay Name", province: "ZZ" }),
     );
     expect(badProvince.code).toBe("BAD_REQUEST");
-    expect((await trpcError(caller.business.create({ name: " x ", province: "ON" }))).code).toBe(
+    // SPEC §2: businesses outside Nova Scotia can't be created yet.
+    const outsideLaunch = await trpcError(
+      caller.business.create({ name: "Ottawa Lawns", province: "ON" }),
+    );
+    expect(outsideLaunch.code).toBe("BAD_REQUEST");
+    expect(outsideLaunch.message).toContain("Nevile is only in Nova Scotia for now.");
+    expect((await trpcError(caller.business.create({ name: " x ", province: "NS" }))).code).toBe(
       "BAD_REQUEST",
     );
     expect((await trpcError(caller.business.get({ businessId: "not-a-uuid" }))).code).toBe(
@@ -316,7 +322,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/api", () => {
 
   it("formats validation errors for clients", async () => {
     const caller = createCaller(maya);
-    const error = await trpcError(caller.business.create({ name: "", province: "ON" }));
+    const error = await trpcError(caller.business.create({ name: "", province: "NS" }));
     const shape = appRouter._def._config.errorFormatter({
       error,
       type: "mutation",

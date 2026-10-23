@@ -3,6 +3,8 @@ import { isAPIError } from "better-auth/api";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button.tsx";
+import { SessionRefresh } from "@/components/verification/session-refresh.tsx";
+import { getSessionOrNull } from "@/lib/auth.ts";
 import { AuthCard } from "../_components/auth-card.tsx";
 import { FormAlert } from "../_components/form-alert.tsx";
 import { ResendVerificationForm } from "./resend-form.tsx";
@@ -56,18 +58,31 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
   const outcome = await confirm(value);
 
   if (outcome === "verified") {
+    // The link may be opened in the browser that's already signed in, or somewhere else.
+    const signedIn = (await getSessionOrNull()) !== null;
     return (
       <AuthCard
         eyebrow="Email confirmed"
         icon="check"
         title="You're all set"
-        description="Your email address is confirmed. Sign in with your email and password to continue."
+        description={
+          signedIn
+            ? "Your email address is confirmed. You can now book, pay and message local pros."
+            : "Your email address is confirmed. Sign in to continue."
+        }
       >
         <div className="grid gap-4">
           <FormAlert tone="success">Thanks for confirming your email.</FormAlert>
-          <Button href="/sign-in" size="lg" block>
-            Sign in
-          </Button>
+          {signedIn ? <SessionRefresh /> : null}
+          {signedIn ? (
+            <Button href="/" size="lg" block>
+              Continue
+            </Button>
+          ) : (
+            <Button href="/sign-in" size="lg" block>
+              Sign in
+            </Button>
+          )}
         </div>
       </AuthCard>
     );
