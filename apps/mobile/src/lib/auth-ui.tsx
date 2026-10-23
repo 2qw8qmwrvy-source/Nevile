@@ -58,7 +58,9 @@ export function AuthScreen({
       edges={["top", "bottom", "left", "right"]}
       avoidKeyboard
       header={
-        <TopBar trailing={<IconButton icon={topBarIcons.close} label="Close" onPress={closeAuthFlow} />} />
+        <TopBar
+          trailing={<IconButton icon={topBarIcons.close} label="Close" onPress={closeAuthFlow} />}
+        />
       }
     >
       {children}

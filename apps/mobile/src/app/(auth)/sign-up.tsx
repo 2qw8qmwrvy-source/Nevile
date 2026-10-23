@@ -1,33 +1,61 @@
-import { emailSchema, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@nevile/core";
+import {
+  emailSchema,
+  launchPostalCodeSchema,
+  MARKETING_CONSENT_SENDER,
+  MARKETING_CONSENT_STATEMENT,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@nevile/core";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 import { StyleSheet, type TextInputInstance, View } from "react-native";
 
 import { Button } from "@/components/button.tsx";
-import { Card } from "@/components/card.tsx";
-import { Icon } from "@/components/icon.tsx";
 import { Text } from "@/components/text.tsx";
 import {
   authClient,
   authErrorMessage,
   callAuth,
-  EMAIL_LINK_EXPIRES_IN_HOURS,
+  isEmailTakenError,
+  isPostalCodeError,
   NAME_MAX_LENGTH,
 } from "@/lib/auth.ts";
 import {
   AuthScreen,
+  Checkbox,
   FormAlert,
-  formIcons,
   PasswordField,
   SwitchPrompt,
   TextField,
 } from "@/lib/auth-ui.tsx";
-import { colors, space } from "@/theme";
+import { space } from "@/theme";
 
-type Fields = { name: string; email: string; password: string; confirm: string };
+type Fields = {
+  name: string;
+  email: string;
+  postalCode: string;
+  password: string;
+  confirm: string;
+};
 type FieldErrors = Partial<Record<keyof Fields, string>>;
 
-const EMPTY: Fields = { name: "", email: "", password: "", confirm: "" };
+const EMPTY: Fields = { name: "", email: "", postalCode: "", password: "", confirm: "" };
+const FIELD_ORDER: readonly (keyof Fields)[] = [
+  "name",
+  "email",
+  "postalCode",
+  "password",
+  "confirm",
+];
+
+/** Client-side hint for the postal code (SPEC §2); the server has the final say. */
+function postalCodeProblem(value: string): string | undefined {
+  if (!value.trim()) return "Enter your postal code.";
+  const result = launchPostalCodeSchema.safeParse(value);
+  return result.success
+    ? undefined
+    : (result.error.issues[0]?.message ?? "Enter a valid postal code.");
+}
 
 function validate(fields: Fields): FieldErrors {
   const errors: FieldErrors = {};
@@ -36,6 +64,8 @@ function validate(fields: Fields): FieldErrors {
   else if (name.length > NAME_MAX_LENGTH)
     errors.name = `Use at most ${NAME_MAX_LENGTH} characters.`;
   if (!emailSchema.safeParse(fields.email).success) errors.email = "Enter a valid email address.";
+  const postal = postalCodeProblem(fields.postalCode);
+  if (postal) errors.postalCode = postal;
   if (fields.password.length < PASSWORD_MIN_LENGTH) {
     errors.password = `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
   } else if (fields.password.length > PASSWORD_MAX_LENGTH) {
@@ -47,54 +77,21 @@ function validate(fields: Fields): FieldErrors {
   return errors;
 }
 
-/** Shown after sign-up: the account only works once the emailed link is opened. */
-function CheckEmail({
-  email,
-  onUseDifferentEmail,
-}: {
-  email: string;
-  onUseDifferentEmail: () => void;
-}) {
-  return (
-    <View style={styles.body}>
-      <Card style={styles.sentCard}>
-        <View style={styles.sentIcon}>
-          <Icon name={formIcons.mail} size={28} color={colors.primary} />
-        </View>
-        <Text variant="title">Check your email</Text>
-        <Text tone="muted">
-          We sent a confirmation link to{" "}
-          <Text variant="bodyStrong" accessibilityRole="text">
-            {email}
-          </Text>
-          . It expires in {EMAIL_LINK_EXPIRES_IN_HOURS} hour. After you confirm, sign in with your
-          email and password.
-        </Text>
-      </Card>
-      <Button
-        label="Go to sign in"
-        fullWidth
-        onPress={() => router.replace({ pathname: "/sign-in", params: { email } })}
-      />
-      <Button
-        variant="ghost"
-        label="Use a different email"
-        fullWidth
-        onPress={onUseDifferentEmail}
-      />
-    </View>
-  );
-}
-
+/**
+ * Email sign-up. Nova Scotia postal codes only (SPEC §2). The new account is signed in
+ * straight away and goes to the optional welcome; the emailed link unlocks booking and
+ * messaging (SPEC §1).
+ */
 export default function SignUpRoute() {
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [pending, setPending] = useState(false);
   const refs = {
     name: useRef<TextInputInstance>(null),
     email: useRef<TextInputInstance>(null),
+    postalCode: useRef<TextInputInstance>(null),
     password: useRef<TextInputInstance>(null),
     confirm: useRef<TextInputInstance>(null),
   };
@@ -111,7 +108,7 @@ export default function SignUpRoute() {
     setFormError(null);
     const found = validate(fields);
     setErrors(found);
-    const firstInvalid = (Object.keys(found) as (keyof Fields)[])[0];
+    const firstInvalid = FIELD_ORDER.find((key) => found[key]);
     if (firstInvalid) {
       refs[firstInvalid].current?.focus();
       return;
@@ -119,35 +116,36 @@ export default function SignUpRoute() {
     setPending(true);
     const email = emailSchema.parse(fields.email);
     const { error } = await callAuth(() =>
-      authClient.signUp.email({ name: fields.name.trim(), email, password: fields.password }),
+      authClient.signUp.email({
+        name: fields.name.trim(),
+        email,
+        password: fields.password,
+        postalCode: launchPostalCodeSchema.parse(fields.postalCode),
+        marketingConsent,
+      }),
     );
     setPending(false);
     if (error) {
-      setFormError(authErrorMessage(error, "We couldn't create your account. Please try again."));
+      const message = authErrorMessage(error, "We couldn't create your account. Please try again.");
+      if (isPostalCodeError(error)) {
+        setErrors({ postalCode: message });
+        refs.postalCode.current?.focus();
+      } else if (isEmailTakenError(error)) {
+        setErrors({ email: message });
+        refs.email.current?.focus();
+      } else {
+        setFormError(message);
+      }
       return;
     }
-    // The same answer whether or not the address already had an account.
-    setSentTo(email);
-  }
-
-  if (sentTo) {
-    return (
-      <AuthScreen title="Almost there">
-        <CheckEmail
-          email={sentTo}
-          onUseDifferentEmail={() => {
-            setSentTo(null);
-            setFields((current) => ({ ...current, email: "", password: "", confirm: "" }));
-          }}
-        />
-      </AuthScreen>
-    );
+    // Signed in: on to the optional welcome (SPEC §16).
+    router.replace("/welcome");
   }
 
   return (
     <AuthScreen
       title="Create your account"
-      subtitle="Book local pros for your home, or switch to business mode to take bookings."
+      subtitle="Book local pros across Nova Scotia, or switch to business mode to take bookings."
     >
       <View style={styles.body}>
         <View style={styles.form}>
@@ -178,6 +176,24 @@ export default function SignUpRoute() {
             autoCorrect={false}
             autoComplete="email"
             textContentType="emailAddress"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => refs.postalCode.current?.focus()}
+            editable={!pending}
+          />
+          <TextField
+            ref={refs.postalCode}
+            label="Postal code"
+            hint="Nevile is only in Nova Scotia for now (postal codes start with B)."
+            value={fields.postalCode}
+            onChangeText={update("postalCode")}
+            error={errors.postalCode}
+            placeholder="B3H 1A1"
+            maxLength={7}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            autoComplete="postal-code"
+            textContentType="postalCode"
             returnKeyType="next"
             submitBehavior="submit"
             onSubmitEditing={() => refs.password.current?.focus()}
@@ -212,9 +228,18 @@ export default function SignUpRoute() {
             onSubmitEditing={onSubmit}
             editable={!pending}
           />
+          <Checkbox
+            checked={marketingConsent}
+            onChange={setMarketingConsent}
+            label={`${MARKETING_CONSENT_STATEMENT} (optional)`}
+            description={MARKETING_CONSENT_SENDER}
+            disabled={pending}
+          />
           <Button label="Create account" fullWidth loading={pending} onPress={onSubmit} />
           <Text variant="small" tone="muted">
-            We'll email you a link to confirm your address before you can sign in.
+            You'll be signed in right away. We'll email you a link to confirm your address before
+            you book or message a pro. By creating an account you agree to our Terms and Privacy
+            Policy.
           </Text>
         </View>
         <SwitchPrompt
@@ -235,14 +260,4 @@ export default function SignUpRoute() {
 const styles = StyleSheet.create({
   body: { gap: space.lg },
   form: { gap: space.md },
-  sentCard: { gap: space.sm, alignItems: "flex-start" },
-  sentIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: colors.tabPill,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
 });

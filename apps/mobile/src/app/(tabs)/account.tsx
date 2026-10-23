@@ -5,8 +5,16 @@ import { useEffect, useState } from "react";
 import { AccessibilityInfo, Alert } from "react-native";
 
 import { authClient, callAuth, contactEmail, formatPhone, useSession } from "@/lib/auth.ts";
+import { openLegalPage } from "@/lib/links.ts";
+import { useUpdateMe } from "@/lib/me.ts";
 import { useTRPC } from "@/lib/trpc.tsx";
-import { apiErrorCode, apiErrorMessage, apiFieldErrors } from "@/lib/trpc-client.ts";
+import {
+  apiErrorCode,
+  apiErrorMessage,
+  apiErrorReason,
+  apiFieldErrors,
+} from "@/lib/trpc-client.ts";
+import { useEmailVerification } from "@/lib/verification.ts";
 import {
   type AccountBusiness,
   AccountScreen,
@@ -29,6 +37,22 @@ export default function AccountRoute() {
 
   const me = useQuery({ ...trpc.me.get.queryOptions(), enabled: user !== null });
   const meQueryKey = trpc.me.get.queryKey();
+  const updateMe = useUpdateMe();
+  const verification = useEmailVerification();
+
+  const setConsent = useMutation(
+    trpc.profile.setMarketingConsent.mutationOptions({
+      onSuccess: (marketingConsent) => {
+        updateMe((current) => ({ ...current, marketingConsent }));
+        AccessibilityInfo.announceForAccessibility(
+          marketingConsent.consented
+            ? "You're subscribed to Nevile emails."
+            : "You're unsubscribed from Nevile emails.",
+        );
+      },
+      onError: (error) => Alert.alert("Couldn't save that", apiErrorMessage(error, "Try again.")),
+    }),
+  );
 
   // The server no longer accepts the stored session (expired or revoked elsewhere): reload
   // it, which signs this device out if the server agrees.
@@ -46,8 +70,11 @@ export default function AccountRoute() {
         );
       },
       onError: (error) => {
-        // "You already have a business": show it instead of the form.
-        if (apiErrorCode(error) === "CONFLICT") {
+        // "You already have a business", or the email was confirmed elsewhere: refresh.
+        if (
+          apiErrorCode(error) === "CONFLICT" ||
+          apiErrorReason(error) === "VERIFICATION_REQUIRED"
+        ) {
           void queryClient.invalidateQueries({ queryKey: meQueryKey });
         }
       },
@@ -85,7 +112,7 @@ export default function AccountRoute() {
     const fields = apiFieldErrors(createBusiness.error);
     businessErrors = {
       name: fields.name,
-      province: fields.province ? "Choose a province or territory." : undefined,
+      province: fields.province,
       form:
         fields.name || fields.province
           ? undefined
@@ -131,6 +158,36 @@ export default function AccountRoute() {
       onSignOut={confirmSignOut}
       onOpenProfile={() => comingSoon("Profile")}
       onOpenPaymentMethods={() => comingSoon("Payment methods")}
+      verification={
+        verification.needed
+          ? {
+              email: verification.email,
+              sending: verification.sending,
+              cooldown: verification.cooldown,
+              notice: verification.notice,
+              onResend: () => void verification.resend(),
+            }
+          : null
+      }
+      preferences={
+        me.data
+          ? { postalCode: me.data.onboarding.postalCode, interests: me.data.onboarding.interests }
+          : undefined
+      }
+      onOpenPreferences={() => router.push("/welcome")}
+      marketingConsent={
+        me.data
+          ? {
+              consented: setConsent.isPending
+                ? Boolean(setConsent.variables?.consent)
+                : me.data.marketingConsent.consented,
+              saving: setConsent.isPending,
+              onChange: (consent) => setConsent.mutate({ consent }),
+            }
+          : undefined
+      }
+      onOpenNeighbours={() => router.push("/neighbours")}
+      onOpenLegal={(page) => void openLegalPage(page)}
     />
   );
 }

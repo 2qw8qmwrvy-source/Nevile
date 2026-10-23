@@ -4,7 +4,6 @@
  * attaches them to every auth request; `getAuthCookie` exposes them for the tRPC client.
  */
 import { expoClient } from "@better-auth/expo/client";
-import { OUTSIDE_LAUNCH_REGION_MESSAGE, POSTAL_CODE_INVALID_MESSAGE } from "@nevile/core";
 import {
   AUTH_COOKIE_PREFIX,
   createNevileAuthClient,
@@ -12,6 +11,7 @@ import {
   MOBILE_APP_ORIGIN,
   OTP_EXPIRES_IN_SECONDS,
 } from "@nevile/auth/client";
+import { OUTSIDE_LAUNCH_REGION_MESSAGE, POSTAL_CODE_INVALID_MESSAGE } from "@nevile/core";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
@@ -180,7 +180,7 @@ export function authErrorMessage(
   }
 }
 
-/** "+14165551234" → "(416) 555-1234" */
+/** "+19025551234" → "(902) 555-1234" */
 export function formatPhone(e164: string): string {
   const digits = e164.replace(/^\+1/, "");
   if (!/^\d{10}$/.test(digits)) return e164;

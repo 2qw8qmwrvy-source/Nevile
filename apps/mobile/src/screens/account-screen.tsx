@@ -1,6 +1,8 @@
 import {
   BUSINESS_NAME_MAX_LENGTH,
-  PROVINCE_CODES,
+  LAUNCH_PROVINCES,
+  MARKETING_CONSENT_SENDER,
+  MARKETING_CONSENT_STATEMENT,
   PROVINCES,
   type ProvinceCode,
 } from "@nevile/core";
@@ -10,12 +12,17 @@ import { ActivityIndicator, StyleSheet, type TextInputInstance, View } from "rea
 import { Badge } from "@/components/badge.tsx";
 import { Button } from "@/components/button.tsx";
 import { Card } from "@/components/card.tsx";
-import { Chip } from "@/components/chip.tsx";
 import { Icon, icons } from "@/components/icon.tsx";
 import { ListRow } from "@/components/list-row.tsx";
 import { Screen } from "@/components/screen.tsx";
 import { Text } from "@/components/text.tsx";
-import { FormAlert, TextField } from "@/lib/auth-ui.tsx";
+import {
+  VerificationBanner,
+  type VerificationBannerProps,
+} from "@/components/verification-banner.tsx";
+import { Checkbox, FormAlert, TextField } from "@/lib/auth-ui.tsx";
+import type { LegalPage } from "@/lib/links.ts";
+import { NEIGHBOURS_COPY } from "@/lib/neighbours.ts";
 import { colors, space } from "@/theme";
 
 /** The minimal user shape the account screen renders; the route maps its session to this. */
@@ -24,7 +31,7 @@ export type AccountUser = {
   name: string;
   email?: string | null;
   emailVerified?: boolean;
-  /** Display-formatted, e.g. "(416) 555-0123". */
+  /** Display-formatted, e.g. "(902) 555-0123". */
   phone?: string | null;
   phoneVerified?: boolean;
 };
@@ -41,11 +48,14 @@ export type AccountBusiness = {
   name: string;
   /** e.g. "Owner" */
   roleLabel: string;
-  /** e.g. "Ontario" */
+  /** e.g. "Nova Scotia" */
   place: string;
 };
 
 export type BusinessFormInput = { name: string; province: ProvinceCode };
+
+/** Nevile launches in Nova Scotia only (SPEC §2): new businesses are set up there. */
+const LAUNCH_PROVINCE = LAUNCH_PROVINCES[0];
 export type BusinessFormErrors = { name?: string; province?: string; form?: string };
 
 export type AccountScreenProps = {
@@ -68,7 +78,23 @@ export type AccountScreenProps = {
   onSignOut?: () => void;
   onOpenProfile?: () => void;
   onOpenPaymentMethods?: () => void;
+  /** Set while the account has no verified contact (SPEC §1): banner + business gate. */
+  verification?: VerificationBannerProps | null;
+  /** Postal code and interests from the welcome (SPEC §16). */
+  preferences?: { postalCode: string | null; interests: readonly string[] };
+  onOpenPreferences?: () => void;
+  /** CASL marketing consent (SPEC §17); one tap to give or withdraw. */
+  marketingConsent?: { consented: boolean; saving: boolean; onChange: (consent: boolean) => void };
+  onOpenNeighbours?: () => void;
+  onOpenLegal?: (page: LegalPage) => void;
 };
+
+const legalIcons = {
+  privacy: { ios: "lock.shield", android: "shield" },
+  terms: { ios: "doc.text", android: "description" },
+  accessibility: { ios: "accessibility", android: "accessibility_new" },
+} as const;
+const preferencesIcon = { ios: "slider.horizontal.3", android: "tune" } as const;
 
 const verifiedIcon = { ios: "checkmark.seal.fill", android: "verified" } as const;
 
@@ -139,7 +165,6 @@ function BusinessForm({
   onCancel: () => void;
 }) {
   const [name, setName] = useState("");
-  const [province, setProvince] = useState<ProvinceCode>("ON");
   const [nameError, setNameError] = useState<string | null>(null);
   const nameRef = useRef<TextInputInstance>(null);
 
@@ -151,7 +176,7 @@ function BusinessForm({
       return;
     }
     setNameError(null);
-    onSubmit({ name: name.trim(), province });
+    onSubmit({ name: name.trim(), province: LAUNCH_PROVINCE });
   }
 
   return (
@@ -177,33 +202,12 @@ function BusinessForm({
         editable={!pending}
         autoFocus
       />
-      <View style={styles.provinceField}>
-        <Text variant="bodyStrong" style={styles.fieldLabel}>
-          Province or territory
-        </Text>
+      <View style={styles.provinceField} accessible>
+        <Text variant="bodyStrong">{PROVINCES[LAUNCH_PROVINCE].name}</Text>
         <Text variant="small" tone="muted">
-          Where you do most of your work.
+          Nevile is only in Nova Scotia for now. You'll set your exact service area when you add
+          your services.
         </Text>
-        <View
-          accessibilityRole="radiogroup"
-          accessibilityLabel="Province or territory"
-          style={styles.chips}
-        >
-          {PROVINCE_CODES.map((code) => {
-            const selected = code === province;
-            return (
-              <Chip
-                key={code}
-                label={PROVINCES[code].name}
-                selected={selected}
-                disabled={pending}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: selected, disabled: pending }}
-                onPress={() => setProvince(code)}
-              />
-            );
-          })}
-        </View>
         {errors?.province ? (
           <Text variant="small" tone="danger" accessibilityLiveRegion="polite">
             {errors.province}
@@ -228,6 +232,7 @@ function BusinessSection({
   creating,
   errors,
   onCreate,
+  verificationNeeded,
 }: {
   businesses?: readonly AccountBusiness[];
   error?: string | null;
@@ -235,6 +240,7 @@ function BusinessSection({
   creating: boolean;
   errors?: BusinessFormErrors;
   onCreate?: (input: BusinessFormInput) => void;
+  verificationNeeded: boolean;
 }) {
   const [formOpen, setFormOpen] = useState(false);
 
@@ -281,6 +287,13 @@ function BusinessSection({
           ))}
         </View>
       </>
+    );
+  } else if (verificationNeeded) {
+    content = (
+      <FormAlert
+        tone="info"
+        message="Confirm your email to switch to business mode. Use the link we sent you, or resend it above."
+      />
     );
   } else if (formOpen && onCreate) {
     content = (
@@ -332,6 +345,12 @@ export function AccountScreen({
   onSignOut,
   onOpenProfile,
   onOpenPaymentMethods,
+  verification,
+  preferences,
+  onOpenPreferences,
+  marketingConsent,
+  onOpenNeighbours,
+  onOpenLegal,
 }: AccountScreenProps) {
   const user = session?.user;
 
@@ -375,6 +394,8 @@ export function AccountScreen({
             Teams are free on every plan.
           </Text>
         </Card>
+
+        <MoreRows onOpenNeighbours={onOpenNeighbours} onOpenLegal={onOpenLegal} />
       </Screen>
     );
   }
@@ -383,8 +404,15 @@ export function AccountScreen({
     <Screen title="Account">
       <ProfileCard user={user} mode={mode} />
 
+      {verification ? (
+        <View style={styles.spaced}>
+          <VerificationBanner {...verification} />
+        </View>
+      ) : null}
+
       <View style={styles.spaced}>
         <BusinessSection
+          verificationNeeded={Boolean(verification)}
           businesses={businesses}
           error={businessesError}
           onRetry={onRetry}
@@ -410,7 +438,38 @@ export function AccountScreen({
           onPress={onOpenPaymentMethods}
           disabled={!onOpenPaymentMethods}
         />
+        <ListRow
+          divider
+          label="Your preferences"
+          description={
+            preferences?.postalCode
+              ? `${preferences.postalCode} · ${
+                  preferences.interests.length === 0
+                    ? "no services picked"
+                    : `${preferences.interests.length} service${preferences.interests.length === 1 ? "" : "s"} picked`
+                }`
+              : "Postal code and the services you need"
+          }
+          icon={preferencesIcon}
+          onPress={onOpenPreferences}
+          disabled={!onOpenPreferences}
+        />
       </Card>
+
+      {marketingConsent ? (
+        <Card style={[styles.section, styles.spaced]}>
+          <Text variant="heading">Email updates</Text>
+          <Checkbox
+            checked={marketingConsent.consented}
+            onChange={marketingConsent.onChange}
+            label={MARKETING_CONSENT_STATEMENT}
+            description={MARKETING_CONSENT_SENDER}
+            disabled={marketingConsent.saving}
+          />
+        </Card>
+      ) : null}
+
+      <MoreRows onOpenNeighbours={onOpenNeighbours} onOpenLegal={onOpenLegal} />
 
       <Card flush style={[styles.rows, styles.spaced]}>
         <ListRow
@@ -423,6 +482,51 @@ export function AccountScreen({
         />
       </Card>
     </Screen>
+  );
+}
+
+/** Nevile Neighbours and the legal pages (SPEC §15, §17), signed in or not. */
+function MoreRows({
+  onOpenNeighbours,
+  onOpenLegal,
+}: {
+  onOpenNeighbours?: () => void;
+  onOpenLegal?: (page: LegalPage) => void;
+}) {
+  return (
+    <Card flush style={[styles.rows, styles.spaced]}>
+      <ListRow
+        label={NEIGHBOURS_COPY.name}
+        description="Our community program"
+        icon={NEIGHBOURS_COPY.icon}
+        onPress={onOpenNeighbours}
+        disabled={!onOpenNeighbours}
+      />
+      <ListRow
+        divider
+        label="Privacy Policy"
+        icon={legalIcons.privacy}
+        onPress={() => onOpenLegal?.("privacy")}
+        disabled={!onOpenLegal}
+        accessibilityHint="Opens the page in your browser"
+      />
+      <ListRow
+        divider
+        label="Terms of Service"
+        icon={legalIcons.terms}
+        onPress={() => onOpenLegal?.("terms")}
+        disabled={!onOpenLegal}
+        accessibilityHint="Opens the page in your browser"
+      />
+      <ListRow
+        divider
+        label="Accessibility"
+        icon={legalIcons.accessibility}
+        onPress={() => onOpenLegal?.("accessibility")}
+        disabled={!onOpenLegal}
+        accessibilityHint="Opens the page in your browser"
+      />
+    </Card>
   );
 }
 
@@ -482,8 +586,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   businessForm: { gap: space.md },
-  provinceField: { gap: 6 },
-  fieldLabel: { fontSize: 14 },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: 4 },
+  provinceField: {
+    gap: 4,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.ground,
+  },
   rows: { overflow: "hidden" },
 });

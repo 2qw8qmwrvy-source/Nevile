@@ -6,12 +6,7 @@
 import { contactEmail, hasVerifiedContact } from "@nevile/auth/client";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import {
-  authClient,
-  authErrorMessage,
-  callAuth,
-  EMAIL_LINK_EXPIRES_IN_HOURS,
-} from "./auth.ts";
+import { authClient, authErrorMessage, callAuth, EMAIL_LINK_EXPIRES_IN_HOURS } from "./auth.ts";
 import type { FormAlertTone } from "./auth-ui.tsx";
 import { useMe } from "./me.ts";
 
@@ -92,7 +87,8 @@ export function useEmailVerification(): EmailVerification {
     const at = Date.now();
     setNow(at);
     sentStore.set(at);
-    const hours = EMAIL_LINK_EXPIRES_IN_HOURS === 1 ? "1 hour" : `${EMAIL_LINK_EXPIRES_IN_HOURS} hours`;
+    const hours =
+      EMAIL_LINK_EXPIRES_IN_HOURS === 1 ? "1 hour" : `${EMAIL_LINK_EXPIRES_IN_HOURS} hours`;
     setNotice({
       tone: "success",
       text: `Sent. Open the link we emailed to ${email} within ${hours}.`,

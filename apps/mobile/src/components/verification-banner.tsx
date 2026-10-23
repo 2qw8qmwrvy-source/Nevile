@@ -8,7 +8,10 @@ import { Button } from "./button.tsx";
 import { Icon, type IconName } from "./icon.tsx";
 import { Text } from "./text.tsx";
 
-const mailIcon = { ios: "envelope.badge", android: "mark_email_unread" } as const satisfies IconName;
+const mailIcon = {
+  ios: "envelope.badge",
+  android: "mark_email_unread",
+} as const satisfies IconName;
 
 export type VerificationBannerProps = {
   /** The address waiting for confirmation; null when there is no email to resend to. */

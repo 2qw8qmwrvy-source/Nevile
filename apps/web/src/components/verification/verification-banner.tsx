@@ -50,13 +50,14 @@ export function VerificationBanner({ hasSessionCookie }: { hasSessionCookie: boo
       aria-label="Confirm your email"
       className="nv-slide-up sticky bottom-0 z-40 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] shadow-pop backdrop-blur-sm"
     >
-      <Container className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
-        <p className="flex min-w-0 flex-1 basis-[220px] items-start gap-2.5 text-[15px] leading-snug">
+      <Container className="flex items-center gap-x-3 gap-y-2 py-1.5 sm:flex-wrap sm:gap-x-4 sm:py-2.5">
+        <p className="flex min-w-0 flex-1 items-start gap-2.5 text-[14px] leading-snug sm:basis-[220px] sm:text-[15px]">
           <MailIcon size={20} className="mt-px flex-none text-primary" />
           <span>
             <strong className="font-semibold">Confirm your email to book and message pros.</strong>{" "}
             {email ? (
-              <span className="text-muted">
+              // Phones keep the banner to one short line so it never hides form buttons.
+              <span className="hidden text-muted sm:inline">
                 We sent a link to <span className="break-all">{email}</span>.
               </span>
             ) : null}

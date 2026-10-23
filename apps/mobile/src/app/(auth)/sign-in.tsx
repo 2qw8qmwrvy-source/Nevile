@@ -1,4 +1,10 @@
-import { emailSchema, normalizeCanadianPhone } from "@nevile/core";
+import {
+  emailSchema,
+  launchPostalCodeSchema,
+  MARKETING_CONSENT_SENDER,
+  MARKETING_CONSENT_STATEMENT,
+  normalizeCanadianPhone,
+} from "@nevile/core";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, type TextInputInstance, View } from "react-native";
@@ -9,14 +15,15 @@ import {
   authClient,
   authErrorMessage,
   callAuth,
-  EMAIL_LINK_EXPIRES_IN_HOURS,
   formatPhone,
+  isPostalCodeError,
   OTP_EXPIRES_IN_MINUTES,
   OTP_LENGTH,
   useSession,
 } from "@/lib/auth.ts";
 import {
   AuthScreen,
+  Checkbox,
   closeAuthFlow,
   FormAlert,
   type FormAlertTone,
@@ -74,14 +81,7 @@ function EmailSignInForm({ initialEmail }: { initialEmail: string }) {
     if (error) {
       setPending(false);
       setPassword("");
-      setMessage(
-        error.code === "EMAIL_NOT_VERIFIED"
-          ? {
-              tone: "info",
-              text: `Confirm your email first. We've sent a new link to ${parsed.data}; it expires in ${EMAIL_LINK_EXPIRES_IN_HOURS} hour.`,
-            }
-          : { tone: "error", text: authErrorMessage(error) },
-      );
+      setMessage({ tone: "error", text: authErrorMessage(error) });
       return;
     }
     await finish();
@@ -120,9 +120,15 @@ function EmailSignInForm({ initialEmail }: { initialEmail: string }) {
   );
 }
 
+type VerifyBody = Parameters<typeof authClient.phoneNumber.verify>[0] & {
+  postalCode?: string;
+  marketingConsent?: boolean;
+};
+
 /**
- * Phone sign-in and sign-up in one: request a code, then enter it. Verifying a code for a
- * new number creates the account.
+ * Phone sign-in and sign-up in one: request a code, then enter it. For a number with no
+ * account yet the server asks for a Nova Scotia postal code (SPEC §2) without using up the
+ * code, so the person adds it and the same code creates the account.
  */
 function PhoneSignInForm() {
   const finish = useFinishSignIn();
@@ -133,7 +139,12 @@ function PhoneSignInForm() {
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [needsPostalCode, setNeedsPostalCode] = useState(false);
+  const [postalCode, setPostalCode] = useState("");
+  const [postalError, setPostalError] = useState<string | undefined>();
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const codeRef = useRef<TextInputInstance>(null);
+  const postalRef = useRef<TextInputInstance>(null);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -160,12 +171,14 @@ function PhoneSignInForm() {
     if (pending) return;
     const normalized = normalizeCanadianPhone(phoneInput);
     if (!normalized) {
-      setError("Enter a Canadian mobile number, like 416 555 0123.");
+      setError("Enter a Canadian mobile number, like 902 555 0123.");
       return;
     }
     if (await sendCode(normalized)) {
       setPhone(normalized);
       setCode("");
+      setNeedsPostalCode(false);
+      setPostalError(undefined);
       setNotice(`We texted a ${OTP_LENGTH}-digit code to ${formatPhone(normalized)}.`);
       setTimeout(() => codeRef.current?.focus(), 50);
     }
@@ -177,16 +190,47 @@ function PhoneSignInForm() {
       setError(`Enter the ${OTP_LENGTH}-digit code from the text message.`);
       return;
     }
+    const body: VerifyBody = { phoneNumber: phone, code: digits };
+    if (needsPostalCode) {
+      const parsed = launchPostalCodeSchema.safeParse(postalCode);
+      if (!parsed.success) {
+        setPostalError(
+          postalCode.trim()
+            ? (parsed.error.issues[0]?.message ?? "Enter a valid postal code.")
+            : "Enter your postal code.",
+        );
+        postalRef.current?.focus();
+        return;
+      }
+      body.postalCode = parsed.data;
+      body.marketingConsent = marketingConsent;
+    }
     setPending(true);
     setError(null);
-    const { error: verifyError } = await callAuth(() =>
-      authClient.phoneNumber.verify({ phoneNumber: phone, code: digits }),
-    );
+    setPostalError(undefined);
+    const { error: verifyError } = await callAuth(() => authClient.phoneNumber.verify(body));
     if (verifyError) {
       setPending(false);
+      if (verifyError.code === "POSTAL_CODE_REQUIRED") {
+        // New number: the code still works; ask for the postal code, then resubmit it.
+        setNeedsPostalCode(true);
+        setNotice(null);
+        setTimeout(() => postalRef.current?.focus(), 50);
+        return;
+      }
+      if (isPostalCodeError(verifyError)) {
+        setPostalError(authErrorMessage(verifyError));
+        postalRef.current?.focus();
+        return;
+      }
       setCode("");
       setError(authErrorMessage(verifyError, "We couldn't check that code. Please try again."));
       codeRef.current?.focus();
+      return;
+    }
+    if (body.postalCode) {
+      // A brand-new account: on to the optional welcome (SPEC §16).
+      router.replace("/welcome");
       return;
     }
     await finish();
@@ -195,8 +239,10 @@ function PhoneSignInForm() {
   function onChangeCode(value: string) {
     const digits = value.replace(/\D/g, "").slice(0, OTP_LENGTH);
     setCode(digits);
-    // Autofilled or fully typed codes go straight through.
-    if (digits.length === OTP_LENGTH && code.length < OTP_LENGTH) void verify(digits);
+    // Autofilled or fully typed codes go straight through (not while a postal code is needed).
+    if (digits.length === OTP_LENGTH && code.length < OTP_LENGTH && !needsPostalCode) {
+      void verify(digits);
+    }
   }
 
   if (!phone) {
@@ -206,7 +252,7 @@ function PhoneSignInForm() {
         <TextField
           label="Mobile number"
           hint="We'll text you a code. New to Nevile? This creates your account."
-          placeholder="416 555 0123"
+          placeholder="902 555 0123"
           value={phoneInput}
           onChangeText={setPhoneInput}
           keyboardType="phone-pad"
@@ -248,7 +294,47 @@ function PhoneSignInForm() {
         editable={!pending}
         inputStyle={styles.codeInput}
       />
-      <Button label="Sign in" fullWidth loading={pending} onPress={() => verify(code)} />
+      {needsPostalCode ? (
+        <>
+          <FormAlert
+            tone="info"
+            message="New to Nevile? Add your postal code to create your account. Your code still works."
+          />
+          <TextField
+            ref={postalRef}
+            label="Postal code"
+            hint="Nevile is only in Nova Scotia for now (postal codes start with B)."
+            placeholder="B3H 1A1"
+            value={postalCode}
+            onChangeText={(value) => {
+              setPostalCode(value);
+              if (postalError) setPostalError(undefined);
+            }}
+            error={postalError}
+            maxLength={7}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            autoComplete="postal-code"
+            textContentType="postalCode"
+            returnKeyType="go"
+            onSubmitEditing={() => verify(code)}
+            editable={!pending}
+          />
+          <Checkbox
+            checked={marketingConsent}
+            onChange={setMarketingConsent}
+            label={`${MARKETING_CONSENT_STATEMENT} (optional)`}
+            description={MARKETING_CONSENT_SENDER}
+            disabled={pending}
+          />
+        </>
+      ) : null}
+      <Button
+        label={needsPostalCode ? "Create account" : "Sign in"}
+        fullWidth
+        loading={pending}
+        onPress={() => verify(code)}
+      />
       <View style={styles.codeActions}>
         <Button
           variant="ghost"
@@ -272,6 +358,8 @@ function PhoneSignInForm() {
             setCode("");
             setError(null);
             setNotice(null);
+            setNeedsPostalCode(false);
+            setPostalError(undefined);
           }}
         />
       </View>
