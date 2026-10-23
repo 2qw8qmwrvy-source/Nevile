@@ -392,6 +392,7 @@ export const teamRouter = router({
       minNoticeDays: ctx.business.minNoticeDays,
       maxDaysAhead: ctx.business.maxDaysAhead,
       limits: BOOKING_NOTICE_LIMITS,
+      timezone: ctx.business.timezone,
     };
   }),
 

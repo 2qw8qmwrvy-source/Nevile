@@ -2,6 +2,7 @@ import {
   approximateLocation,
   boundingBox,
   CANCELLATION_POLICIES,
+  canTakeBookings,
   formatDistanceKm,
   haversineKm,
   isWithinBounds,
@@ -413,6 +414,8 @@ export const searchRouter = router({
           priceText: servicePrice(service),
           durationMinutes: service.durationMinutes,
           instantBook: isInstantBookable(business, service),
+          // Fixed-price services book online now; quotes come later (SPEC §19).
+          bookable: service.pricingType === "fixed",
         })),
         photos: photos.map((photo) => ({
           id: photo.id,
@@ -431,6 +434,12 @@ export const searchRouter = router({
         })),
         /** True when a member is looking at their unpublished page. */
         preview,
+        /** False while new bookings are paused (payout setup overdue, SPEC §19). */
+        bookingOpen: canTakeBookings({
+          payoutsEnabled: business.payoutsEnabled,
+          payoutSetupDueAt: business.payoutSetupDueAt,
+          now: ctx.now(),
+        }),
       };
     }),
 });

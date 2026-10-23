@@ -1,6 +1,6 @@
 import { formatDurationMinutes } from "@nevile/core";
 import { TRPCError } from "@trpc/server";
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { ProAvatar } from "@/components/pros/pro-avatar.tsx";
@@ -48,6 +48,9 @@ const reviewDate = new Intl.DateTimeFormat("en-CA", { month: "short", year: "num
 export default async function ProPage({ params }: ProPageProps) {
   const profile = await loadProfile((await params).slug);
   if (!profile) notFound();
+  // Members previewing their own page can't book themselves.
+  const canBook = profile.bookingOpen && !profile.preview;
+  const firstBookable = profile.services.find((service) => service.bookable);
 
   return (
     <Container className="pt-1 pb-16 sm:pb-24">
@@ -168,6 +171,17 @@ export default async function ProPage({ params }: ProPageProps) {
                       </span>
                       {service.instantBook ? <Badge variant="instant" /> : null}
                     </p>
+                    {canBook && service.bookable ? (
+                      <Button
+                        href={`/pros/${profile.slug}/book?service=${service.id}` as Route}
+                        size="sm"
+                        className="mt-3"
+                      >
+                        Book
+                      </Button>
+                    ) : !service.bookable ? (
+                      <p className="mt-3 text-sm text-muted">Quotes open on Nevile soon.</p>
+                    ) : null}
                   </Card>
                 </li>
               ))}
@@ -229,13 +243,28 @@ export default async function ProPage({ params }: ProPageProps) {
             <h2 className="font-display text-[20px] font-bold tracking-[-0.02em]">
               Book {profile.name}
             </h2>
-            <p className="mt-2 text-[15px] leading-relaxed text-muted">
-              Booking and quotes open on Nevile soon. You'll pay through Nevile, and the pro's
-              contact details are shared once a booking is paid.
-            </p>
-            <Button block size="lg" className="mt-4" disabled aria-disabled="true">
-              Booking coming soon
-            </Button>
+            {firstBookable && canBook ? (
+              <>
+                <p className="mt-2 text-[15px] leading-relaxed text-muted">
+                  Pick a day and an arrival window, then pay securely through Nevile. The pro&apos;s
+                  contact details are shared once your booking is paid.
+                </p>
+                <Button
+                  href={`/pros/${profile.slug}/book?service=${firstBookable.id}` as Route}
+                  block
+                  size="lg"
+                  className="mt-4"
+                >
+                  Book a time
+                </Button>
+              </>
+            ) : (
+              <p className="mt-2 text-[15px] leading-relaxed text-muted">
+                {firstBookable
+                  ? `${profile.name} isn't taking new bookings right now. Please check back soon.`
+                  : "This pro works by quote. Quotes open on Nevile soon."}
+              </p>
+            )}
           </Card>
           {profile.area ? (
             <Card>

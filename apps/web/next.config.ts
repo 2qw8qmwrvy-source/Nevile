@@ -59,6 +59,7 @@ const nextConfig: NextConfig = {
     "@nevile/auth",
     "@nevile/core",
     "@nevile/db",
+    "@nevile/payments",
     "@nevile/storage",
     "@nevile/tokens",
   ],

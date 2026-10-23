@@ -54,9 +54,14 @@ export function HeaderAccount({ hasSessionCookie }: { hasSessionCookie: boolean 
   }
   if (status === "signed-in") {
     return (
-      <Button href="/account" variant="secondary" prefetch>
-        Account
-      </Button>
+      <>
+        <Button href="/bookings" variant="ghost" className="hidden sm:inline-flex" prefetch>
+          Bookings
+        </Button>
+        <Button href="/account" variant="secondary" prefetch>
+          Account
+        </Button>
+      </>
     );
   }
   return (
@@ -134,6 +139,16 @@ export function MobileMenu({ hasSessionCookie }: { hasSessionCookie: boolean }) 
           >
             Nevile Neighbours
           </Link>
+          {status === "signed-in" ? (
+            <Link
+              href="/bookings"
+              onClick={() => setOpen(false)}
+              aria-current={pathname === "/bookings" ? "page" : undefined}
+              className="flex min-h-12 items-center rounded-input px-3 text-base font-medium text-ink no-underline hover:bg-hover hover:text-ink aria-[current=page]:bg-hover"
+            >
+              Your bookings
+            </Link>
+          ) : null}
           {status === "signed-out" ? (
             <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border pt-3">
               <Button

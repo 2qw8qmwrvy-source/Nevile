@@ -171,12 +171,14 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
                   </li>
                 ))}
               </ul>
-              <Button href="/business" size="lg" block className="mt-5">
-                Manage your listing
-              </Button>
-              <p className="mt-3 text-sm leading-relaxed text-muted">
-                Your calendar, crew and bookings are coming next.
-              </p>
+              <div className="mt-5 grid gap-2.5 sm:grid-cols-2">
+                <Button href="/business/calendar" size="lg" block>
+                  Calendar and bookings
+                </Button>
+                <Button href="/business" size="lg" variant="secondary" block>
+                  Manage your listing
+                </Button>
+              </div>
             </>
           ) : verified ? (
             <BusinessModeForm defaultOpen={intent === "business"} />

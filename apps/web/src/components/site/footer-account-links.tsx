@@ -14,6 +14,7 @@ const signedOutLinks: { href: Route; label: string }[] = [
 ];
 
 const signedInLinks: { href: Route; label: string }[] = [
+  { href: "/bookings" as Route, label: "Your bookings" },
   { href: "/account", label: "Your account" },
   { href: "/welcome", label: "Your preferences" },
 ];

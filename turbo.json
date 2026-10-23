@@ -13,6 +13,9 @@
         "NEVILE_*",
         "MEDIA_*",
         "S3_*",
+        "PAYMENTS_PROVIDER",
+        "STRIPE_*",
+        "CRON_SECRET",
         "SENTRY_DSN",
         "APP_VERSION"
       ]
@@ -33,6 +36,9 @@
         "NEVILE_*",
         "MEDIA_*",
         "S3_*",
+        "PAYMENTS_PROVIDER",
+        "STRIPE_*",
+        "CRON_SECRET",
         "SENTRY_DSN",
         "APP_VERSION",
         "PORT"

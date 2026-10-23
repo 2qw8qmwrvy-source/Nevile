@@ -1,5 +1,6 @@
 import type { Metadata, Route } from "next";
 import Link from "next/link";
+import { safeNextPath } from "@/lib/auth.ts";
 import { AuthCard } from "../_components/auth-card.tsx";
 import { SignUpForm } from "./sign-up-form.tsx";
 
@@ -11,12 +12,15 @@ export const metadata: Metadata = {
 type SignUpPageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 export default async function SignUpPage({ searchParams }: SignUpPageProps) {
-  const { intent } = await searchParams;
+  const { intent, next: requested } = await searchParams;
   const forBusiness = intent === "business";
-  // New accounts land on the optional welcome flow (SPEC §16); business sign-ups start it
-  // with "I run a business" picked.
-  const next = (forBusiness ? "/welcome?intent=business" : "/welcome") as Route;
-  const signInHref = `/sign-in?next=${encodeURIComponent(forBusiness ? "/account" : "/")}` as Route;
+  // A sign-up that started somewhere (an invite, a booking) goes back there; otherwise new
+  // accounts land on the optional welcome flow (SPEC §16), business sign-ups with
+  // "I run a business" picked.
+  const returnTo = requested ? safeNextPath(requested, "") : "";
+  const next = (returnTo || (forBusiness ? "/welcome?intent=business" : "/welcome")) as Route;
+  const signInHref =
+    `/sign-in?next=${encodeURIComponent(returnTo || (forBusiness ? "/account" : "/"))}` as Route;
   const phoneHref = `/sign-in?method=phone&next=${encodeURIComponent(next)}` as Route;
 
   return (
