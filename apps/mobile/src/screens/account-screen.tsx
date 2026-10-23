@@ -73,6 +73,8 @@ export type AccountScreenProps = {
   creatingBusiness?: boolean;
   businessErrors?: BusinessFormErrors;
   onCreateBusiness?: (input: BusinessFormInput) => void;
+  /** Opens the listing dashboard on the website (SPEC §18: managed there for now). */
+  onManageListing?: () => void;
   onSignIn?: () => void;
   onCreateAccount?: () => void;
   onSignOut?: () => void;
@@ -232,6 +234,7 @@ function BusinessSection({
   creating,
   errors,
   onCreate,
+  onManageListing,
   verificationNeeded,
 }: {
   businesses?: readonly AccountBusiness[];
@@ -240,6 +243,7 @@ function BusinessSection({
   creating: boolean;
   errors?: BusinessFormErrors;
   onCreate?: (input: BusinessFormInput) => void;
+  onManageListing?: () => void;
   verificationNeeded: boolean;
 }) {
   const [formOpen, setFormOpen] = useState(false);
@@ -264,7 +268,8 @@ function BusinessSection({
     content = (
       <>
         <Text tone="muted">
-          Managing your services, calendar and crew from the app is coming soon.
+          Edit your profile, photos, service area and services on the website. Your calendar and
+          crew are coming next.
         </Text>
         <View style={styles.businessList}>
           {businesses.map((business) => (
@@ -286,6 +291,15 @@ function BusinessSection({
             </View>
           ))}
         </View>
+        {onManageListing ? (
+          <Button
+            label="Manage your listing"
+            icon={icons.business}
+            fullWidth
+            onPress={onManageListing}
+            accessibilityHint="Opens the Nevile website"
+          />
+        ) : null}
       </>
     );
   } else if (verificationNeeded) {
@@ -340,6 +354,7 @@ export function AccountScreen({
   creatingBusiness = false,
   businessErrors,
   onCreateBusiness,
+  onManageListing,
   onSignIn,
   onCreateAccount,
   onSignOut,
@@ -419,6 +434,7 @@ export function AccountScreen({
           creating={creatingBusiness}
           errors={businessErrors}
           onCreate={onCreateBusiness}
+          onManageListing={onManageListing}
         />
       </View>
 

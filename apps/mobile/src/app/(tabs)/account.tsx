@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { AccessibilityInfo, Alert } from "react-native";
 
 import { authClient, callAuth, contactEmail, formatPhone, useSession } from "@/lib/auth.ts";
-import { openLegalPage } from "@/lib/links.ts";
+import { openLegalPage, openWebsitePage } from "@/lib/links.ts";
 import { useUpdateMe } from "@/lib/me.ts";
 import { useTRPC } from "@/lib/trpc.tsx";
 import {
@@ -153,6 +153,7 @@ export default function AccountRoute() {
       creatingBusiness={createBusiness.isPending}
       businessErrors={businessErrors}
       onCreateBusiness={(input) => createBusiness.mutate(input)}
+      onManageListing={() => void openWebsitePage("/business")}
       onSignIn={() => router.push("/sign-in")}
       onCreateAccount={() => router.push("/sign-up")}
       onSignOut={confirmSignOut}

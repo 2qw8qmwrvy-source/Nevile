@@ -63,6 +63,7 @@ export default function RootLayout() {
           <Stack.Screen name="(auth)" options={{ presentation: "modal" }} />
           <Stack.Screen name="welcome" options={{ presentation: "fullScreenModal" }} />
           <Stack.Screen name="neighbours" />
+          <Stack.Screen name="pros/[slug]" />
         </Stack>
         <OnboardingGate />
       </ThemeProvider>
