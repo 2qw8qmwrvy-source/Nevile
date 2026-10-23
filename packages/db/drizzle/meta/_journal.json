@@ -50,6 +50,13 @@
       "when": 1792621017118,
       "tag": "0006_community_fund_ledger_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792772004721,
+      "tag": "0007_listings_and_postal_areas",
+      "breakpoints": true
     }
   ]
 }

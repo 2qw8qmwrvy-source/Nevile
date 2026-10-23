@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import pg from "pg";
 import { createDb } from "./client.ts";
 import { runMigrations } from "./migrate.ts";
-import { seedCategories } from "./seed.ts";
+import { seedCategories, seedPostalAreas } from "./seed.ts";
 
 /** Postgres "database does not exist". */
 const INVALID_CATALOG_NAME = "3D000";
@@ -61,6 +61,7 @@ export async function resetE2eDatabase(url: string): Promise<void> {
   const db = createDb(url, { max: 1 });
   try {
     await seedCategories(db);
+    await seedPostalAreas(db);
   } finally {
     await db.$client.end();
   }

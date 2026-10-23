@@ -26,6 +26,7 @@ import {
 } from "./community.ts";
 import { addresses, profiles } from "./customers.ts";
 import { disputes } from "./disputes.ts";
+import { businessPhotos } from "./listings.ts";
 import { conversations, messages } from "./messaging.ts";
 import { notifications, pushTokens } from "./notifications.ts";
 import { payments, payouts, refunds, tips } from "./payments.ts";
@@ -89,6 +90,7 @@ export const businessRelations = relations(businesses, ({ one, many }) => ({
   invites: many(businessInvites),
   insuranceDocuments: many(insuranceDocuments),
   serviceAreas: many(serviceAreas),
+  photos: many(businessPhotos),
   services: many(services),
   categoryRequests: many(categoryRequests),
   quoteRequests: many(quoteRequests),
@@ -137,6 +139,10 @@ export const insuranceDocumentRelations = relations(insuranceDocuments, ({ one }
 
 export const serviceAreaRelations = relations(serviceAreas, ({ one }) => ({
   business: one(businesses, { fields: [serviceAreas.businessId], references: [businesses.id] }),
+}));
+
+export const businessPhotoRelations = relations(businessPhotos, ({ one }) => ({
+  business: one(businesses, { fields: [businessPhotos.businessId], references: [businesses.id] }),
 }));
 
 // ── Catalog ────────────────────────────────────────────────────────────────────

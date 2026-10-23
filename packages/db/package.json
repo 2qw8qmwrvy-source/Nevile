@@ -16,7 +16,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "node --env-file-if-exists=../../.env src/migrate.ts",
     "seed": "node --env-file-if-exists=../../.env src/seed.ts",
-    "reset:e2e": "node src/reset-e2e.ts"
+    "reset:e2e": "node src/reset-e2e.ts",
+    "import-postal-areas": "node --env-file-if-exists=../../.env src/import-postal-areas.ts"
   },
   "dependencies": {
     "@nevile/core": "workspace:*",

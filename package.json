@@ -16,7 +16,8 @@
     "db:generate": "pnpm --filter @nevile/db run generate",
     "db:migrate": "pnpm --filter @nevile/db run migrate",
     "db:seed": "pnpm --filter @nevile/db run seed",
-    "test:e2e": "playwright test -c e2e/playwright.config.ts"
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "db:import-postal-areas": "pnpm --filter @nevile/db run import-postal-areas"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

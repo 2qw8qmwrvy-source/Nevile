@@ -8,6 +8,7 @@ export * from "./community.ts";
 export * from "./customers.ts";
 export * from "./disputes.ts";
 export * from "./enums.ts";
+export * from "./listings.ts";
 export * from "./messaging.ts";
 export * from "./notifications.ts";
 export * from "./payments.ts";

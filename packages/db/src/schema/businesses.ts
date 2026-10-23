@@ -64,10 +64,17 @@ export const businesses = pgTable(
     verifiedInsuranceAt: tstz("verified_insurance_at"),
     plan: businessPlan("plan").notNull().default("free"),
     suspendedAt: tstz("suspended_at"),
+    // Processed square logo in media storage (SPEC §18); null shows initials.
+    logoKey: text("logo_key").unique(),
+    // Listed in search while set (SPEC §18); publishing checks readiness first.
+    publishedAt: tstz("published_at"),
     ...timestamps(),
   },
   (t) => [
     index("businesses_owner_user_id_idx").on(t.ownerUserId),
+    index("businesses_published_idx")
+      .on(t.publishedAt)
+      .where(sql`${t.publishedAt} IS NOT NULL AND ${t.suspendedAt} IS NULL`),
     slugCheck("businesses", t.slug),
     check(
       "businesses_gst_hst_number_format",
@@ -187,6 +194,7 @@ export const serviceAreas = pgTable(
     businessId: uuid("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade" }),
+    // Nearest postal-area place name, e.g. "Bedford", for "Serves about 25 km around …".
     label: text("label"),
     lat: doublePrecision("lat").notNull(),
     lng: doublePrecision("lng").notNull(),
@@ -194,7 +202,8 @@ export const serviceAreas = pgTable(
     ...timestamps(),
   },
   (t) => [
-    index("service_areas_business_id_idx").on(t.businessId),
+    // One area per business for now (SPEC §18); the API upserts it.
+    uniqueIndex("service_areas_business_id_uidx").on(t.businessId),
     index("service_areas_lat_lng_idx").on(t.lat, t.lng),
     latitudeCheck("service_areas", t.lat),
     longitudeCheck("service_areas", t.lng),

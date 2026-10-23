@@ -1,9 +1,10 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DEFAULT_CATEGORIES } from "@nevile/core";
 import { sql } from "drizzle-orm";
 import { createDb, type DbExecutor } from "./client.ts";
-import { serviceCategories } from "./schema/index.ts";
+import { postalAreas, serviceCategories } from "./schema/index.ts";
 
 export interface CategorySeed {
   slug: string;
@@ -43,6 +44,48 @@ export async function seedCategories(
   return changed.length;
 }
 
+export interface PostalAreaSeed {
+  code: string;
+  placeName: string;
+  lat: number;
+  lng: number;
+}
+
+type StarterFile = { source: string; province: "NS"; areas: PostalAreaSeed[] };
+
+/** The approximate Nova Scotia starter list (SPEC §18), from `data/`. */
+export function starterPostalAreas(): StarterFile {
+  const file = new URL("../data/postal-areas-ns-starter.json", import.meta.url);
+  return JSON.parse(readFileSync(file, "utf8")) as StarterFile;
+}
+
+/**
+ * Adds starter postal areas that don't exist yet. Never overwrites a row, so data imported
+ * from Statistics Canada (`pnpm db:import-postal-areas`) always wins.
+ */
+export async function seedPostalAreas(
+  db: DbExecutor,
+  starter: StarterFile = starterPostalAreas(),
+): Promise<number> {
+  if (starter.areas.length === 0) return 0;
+  const inserted = await db
+    .insert(postalAreas)
+    .values(
+      starter.areas.map((area) => ({
+        code: area.code,
+        province: starter.province,
+        placeName: area.placeName,
+        lat: area.lat,
+        lng: area.lng,
+        approximate: true,
+        source: starter.source,
+      })),
+    )
+    .onConflictDoNothing({ target: postalAreas.code })
+    .returning({ code: postalAreas.code });
+  return inserted.length;
+}
+
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set.");
@@ -52,6 +95,8 @@ async function main(): Promise<void> {
     console.log(
       `Service categories: ${changed} inserted or updated (${DEFAULT_CATEGORIES.length} defined).`,
     );
+    const areas = await seedPostalAreas(db);
+    console.log(`Postal areas: ${areas} starter rows added (existing rows are never changed).`);
   } finally {
     await db.$client.end();
   }
