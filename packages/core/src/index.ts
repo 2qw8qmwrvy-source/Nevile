@@ -10,6 +10,7 @@ export * from "./geo.ts";
 export * from "./listing.ts";
 export * from "./money.ts";
 export * from "./onboarding.ts";
+export * from "./quotes.ts";
 export * from "./ratings.ts";
 export * from "./recurrence.ts";
 export * from "./region.ts";

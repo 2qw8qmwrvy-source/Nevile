@@ -53,8 +53,13 @@ export async function customerEmail(db: DbExecutor, customerId: string): Promise
   return email ? [email] : [];
 }
 
-const to = (addresses: readonly string[], subject: string, text: string): EmailMessage[] =>
-  addresses.map((address) => ({ to: address, subject, text: text + signOff }));
+/** One message per recipient, with Nevile's sign-off. */
+export const emailsTo = (
+  addresses: readonly string[],
+  subject: string,
+  text: string,
+): EmailMessage[] => addresses.map((address) => ({ to: address, subject, text: text + signOff }));
+const to = emailsTo;
 
 const bookingsLink = (facts: BookingMailFacts) => `${facts.siteUrl}/bookings/${facts.bookingId}`;
 const calendarLink = (facts: BookingMailFacts) => `${facts.siteUrl}/business/calendar`;

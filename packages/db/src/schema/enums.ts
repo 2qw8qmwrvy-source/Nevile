@@ -180,6 +180,27 @@ export const QUOTE_REQUEST_STATUSES = [
 export type QuoteRequestStatus = (typeof QUOTE_REQUEST_STATUSES)[number];
 export const quoteRequestStatus = pgEnum("quote_request_status", QUOTE_REQUEST_STATUSES);
 
+/** How soon the customer would like a quoted job done (SPEC §20). */
+export const QUOTE_TIMINGS = ["asap", "within_week", "within_month", "flexible"] as const;
+export type QuoteTimingValue = (typeof QUOTE_TIMINGS)[number];
+export const quoteTiming = pgEnum("quote_timing", QUOTE_TIMINGS);
+
+/**
+ * Why a pro's copy of a quote request closed without a booking: the customer closed it,
+ * booked another pro, the pro didn't reply in 3 days, or the pro's quote expired.
+ */
+export const QUOTE_REQUEST_CLOSE_REASONS = [
+  "customer_closed",
+  "chose_another",
+  "no_reply",
+  "quote_expired",
+] as const;
+export type QuoteRequestCloseReason = (typeof QUOTE_REQUEST_CLOSE_REASONS)[number];
+export const quoteRequestCloseReason = pgEnum(
+  "quote_request_close_reason",
+  QUOTE_REQUEST_CLOSE_REASONS,
+);
+
 /** Quotes expire 7 days after being sent if not accepted (SPEC §3). */
 export const QUOTE_STATUSES = ["pending", "accepted", "declined", "expired", "withdrawn"] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];

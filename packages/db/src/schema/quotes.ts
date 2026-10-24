@@ -13,22 +13,61 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth.ts";
 import { businesses } from "./businesses.ts";
-import { services } from "./catalog.ts";
+import { serviceCategories, services } from "./catalog.ts";
 import { cents, id, nonNegative, timestamps, tstz } from "./columns.ts";
-import { addresses } from "./customers.ts";
 import {
   bookingKind,
+  quoteRequestCloseReason,
   quoteRequestStatus,
   quoteStatus,
+  quoteTiming,
   recurrenceFrequency,
   snowPriceBasis,
 } from "./enums.ts";
 
-/** "Request a quote": the customer describes the job; nothing is held on the calendar. */
+/**
+ * One customer request for quotes, sent to up to 3 pros (SPEC §20). Holds what every pro
+ * sees: the description, photos (`private_photos`), the job's postal code and timing.
+ * Each pro's copy is a `quote_requests` row. Nothing is held on the calendar.
+ */
+export const quoteRequestGroups = pgTable(
+  "quote_request_groups",
+  {
+    id: id(),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => serviceCategories.id),
+    kind: bookingKind("kind").notNull().default("one_off"),
+    details: text("details").notNull(),
+    // The full postal code (normalized, "B3H 1A1"); businesses only see its area.
+    postalCode: text("postal_code").notNull(),
+    postalArea: text("postal_area").notNull(),
+    timing: quoteTiming("timing").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    index("quote_request_groups_customer_created_idx").on(t.customerId, t.createdAt),
+    index("quote_request_groups_category_id_idx").on(t.categoryId),
+    check("quote_request_groups_details_length", sql`char_length(${t.details}) BETWEEN 1 AND 2000`),
+    check("quote_request_groups_postal_area", sql`${t.postalArea} ~ '^[A-Z][0-9][A-Z]$'`),
+  ],
+);
+
+/**
+ * A pro's copy of a quote request. `service_id` is the business's service in the
+ * requested category (a quote-priced one if it has one); the quote sets the price.
+ * `expires_at` is the reply deadline while open, then the quote's expiry.
+ */
 export const quoteRequests = pgTable(
   "quote_requests",
   {
     id: id(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => quoteRequestGroups.id, { onDelete: "cascade" }),
     customerId: text("customer_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -38,27 +77,34 @@ export const quoteRequests = pgTable(
     serviceId: uuid("service_id")
       .notNull()
       .references(() => services.id),
-    addressId: uuid("address_id")
-      .notNull()
-      .references(() => addresses.id),
     kind: bookingKind("kind").notNull().default("one_off"),
-    details: text("details").notNull(),
-    // Local calendar dates (YYYY-MM-DD) the customer would prefer.
-    preferredDays: date("preferred_days", { mode: "string" }).array().notNull().default([]),
     status: quoteRequestStatus("status").notNull().default("open"),
+    closeReason: quoteRequestCloseReason("close_reason"),
+    declineReason: text("decline_reason"),
     expiresAt: tstz("expires_at").notNull(),
+    // The business's first reply (quote, decline or message), for its response time.
+    respondedAt: tstz("responded_at"),
+    closedAt: tstz("closed_at"),
     ...timestamps(),
   },
   (t) => [
     // Target of the quotes (quote_request_id, kind) FK.
     unique("quote_requests_id_kind_unique").on(t.id, t.kind),
+    unique("quote_requests_group_business_unique").on(t.groupId, t.businessId),
     index("quote_requests_business_status_created_idx").on(t.businessId, t.status, t.createdAt),
     index("quote_requests_customer_created_idx").on(t.customerId, t.createdAt),
     index("quote_requests_open_expires_idx")
       .on(t.expiresAt)
       .where(sql`${t.status} IN ('open', 'quoted')`),
     index("quote_requests_service_id_idx").on(t.serviceId),
-    index("quote_requests_address_id_idx").on(t.addressId),
+    check(
+      "quote_requests_decline_reason",
+      sql`(${t.status} = 'declined') = (${t.declineReason} IS NOT NULL)`,
+    ),
+    check(
+      "quote_requests_close_reason",
+      sql`(${t.status} IN ('expired', 'cancelled')) = (${t.closeReason} IS NOT NULL)`,
+    ),
   ],
 );
 

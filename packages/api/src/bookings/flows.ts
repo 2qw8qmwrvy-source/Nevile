@@ -18,9 +18,11 @@ import {
   parseIsoDate,
   payoutSetupDueAt,
   planDay,
+  postalAreaOf,
   type RefundBreakdown,
   refundForBusinessCancellation,
   refundForCustomerCancellation,
+  sameQuoteArea,
   toLocal,
   transition,
 } from "@nevile/core";
@@ -44,6 +46,8 @@ import {
   lte,
   type Payment,
   payments,
+  quoteRequests,
+  quotes,
   refunds,
   type Service,
   serviceAreas,
@@ -53,10 +57,12 @@ import {
 } from "@nevile/db";
 import type { PaymentProvider } from "@nevile/payments";
 import { TRPCError } from "@trpc/server";
+import { openConversation } from "../chat/flows.ts";
 import type { ApiConfig } from "../config.ts";
 import { isInstantBookable } from "../listing-state.ts";
 import { sendAll } from "../notify.ts";
 import { lookupPostalArea } from "../postal.ts";
+import { acceptQuoteInTx, bookableQuote } from "../quotes/flows.ts";
 import {
   type BookingMailFacts,
   bookingEmails,
@@ -153,7 +159,7 @@ export function mailFacts(parts: BookingParts, config: ApiConfig): BookingMailFa
   return {
     bookingId: booking.id,
     businessName: parts.business.name,
-    serviceTitle: parts.service.title,
+    serviceTitle: booking.title,
     when: whenLabel(startsAt, endsAt, booking.timezone),
     totalCents: booking.totalCents,
     siteUrl: config.siteUrl,
@@ -265,6 +271,22 @@ export async function bookableService(db: DbExecutor, serviceId: string) {
   return { service, business, area, priceCents: service.priceCents };
 }
 
+/** What is being booked: a fixed-price service, or an accepted quote (SPEC §20). */
+type CheckoutTarget = {
+  business: Business;
+  area: { lat: number; lng: number; radiusKm: number };
+  serviceId: string;
+  quoteId: string | null;
+  title: string;
+  priceCents: number;
+  workMinutes: number;
+  instantBook: boolean;
+  /** The address must be in this postal code area (quotes), if set. */
+  requiredArea: string | null;
+  /** Where the payment page's Cancel button goes. */
+  cancelUrl: string;
+};
+
 /**
  * Starts paying for a one-off booking (SPEC §19): validates the window and address,
  * prices it on the server, holds the time for 30 minutes and opens the provider's checkout.
@@ -274,8 +296,81 @@ export async function startCheckout(
   customer: { id: string; email: string | null },
   input: CheckoutRequest,
 ): Promise<{ checkoutId: string; url: string }> {
-  const now = deps.now();
   const { service, business, area, priceCents } = await bookableService(deps.db, input.serviceId);
+  return openCheckout(deps, customer, input, {
+    business,
+    area,
+    serviceId: service.id,
+    quoteId: null,
+    title: service.title,
+    priceCents,
+    workMinutes: service.durationMinutes,
+    instantBook: isInstantBookable(business, service),
+    requiredArea: null,
+    cancelUrl: `${deps.config.siteUrl}/pros/${business.slug}/book?service=${service.id}`,
+  });
+}
+
+export type QuoteCheckoutRequest = Omit<CheckoutRequest, "serviceId"> & { quoteId: string };
+
+/**
+ * Books an accepted quote (SPEC §20): the quoted price and duration, the business's
+ * windows and notice rules, an address in the request's postal code area. Always confirmed
+ * on payment: the business already agreed.
+ */
+export async function startQuoteCheckout(
+  deps: BookingDeps,
+  customer: { id: string; email: string | null },
+  input: QuoteCheckoutRequest,
+): Promise<{ checkoutId: string; url: string }> {
+  const { quote, request, group, category } = await bookableQuote(
+    deps.db,
+    customer.id,
+    input.quoteId,
+    deps.now(),
+  );
+  const [row] = await deps.db
+    .select({ business: businesses, area: serviceAreas })
+    .from(businesses)
+    .innerJoin(serviceAreas, eq(serviceAreas.businessId, businesses.id))
+    .where(eq(businesses.id, request.businessId))
+    .limit(1);
+  if (!row?.business.publishedAt || row.business.suspendedAt) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "This pro isn't on Nevile right now." });
+  }
+  return openCheckout(
+    deps,
+    customer,
+    { ...input, serviceId: request.serviceId },
+    {
+      business: row.business,
+      area: row.area,
+      serviceId: request.serviceId,
+      quoteId: quote.id,
+      title: `${category.name} (quoted)`,
+      priceCents: quote.priceCents,
+      workMinutes: quote.durationMinutes ?? 60,
+      instantBook: true,
+      requiredArea: group.postalCode,
+      cancelUrl: `${deps.config.siteUrl}/quotes/${group.id}`,
+    },
+  );
+}
+
+async function openCheckout(
+  deps: BookingDeps,
+  customer: { id: string; email: string | null },
+  input: CheckoutRequest,
+  target: CheckoutTarget,
+): Promise<{ checkoutId: string; url: string }> {
+  const now = deps.now();
+  const { business, area, priceCents, instantBook } = target;
+  if (target.requiredArea && !sameQuoteArea(target.requiredArea, input.address.postalCode)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `The quote is for ${postalAreaOf(target.requiredArea)}. Use an address with a postal code starting ${postalAreaOf(target.requiredArea)}, or ask for a new quote.`,
+    });
+  }
   if (
     !canTakeBookings({
       payoutsEnabled: business.payoutsEnabled,
@@ -321,7 +416,6 @@ export async function startCheckout(
     businessTaxRegistered: business.taxRegistered,
     at: now,
   });
-  const instantBook = isInstantBookable(business, service);
   // A minute over Stripe's 30-minute minimum, so the session is always accepted.
   const expiresAt = new Date(now.getTime() + (CHECKOUT_HOLD_MINUTES + 1) * MS_PER_MINUTE);
 
@@ -357,7 +451,7 @@ export async function startCheckout(
       windows: schedule.windows,
       members: schedule.members,
       placed: schedule.placed,
-      workMinutes: service.durationMinutes,
+      workMinutes: target.workMinutes,
       date,
       startMinute: input.windowStart,
       timeZone: business.timezone,
@@ -381,11 +475,13 @@ export async function startCheckout(
       .values({
         customerId: customer.id,
         businessId: business.id,
-        serviceId: service.id,
+        serviceId: target.serviceId,
+        quoteId: target.quoteId,
+        title: target.title,
         addressId: address?.id ?? "",
         startsAt: check.slot.startsAt,
         endsAt: check.slot.endsAt,
-        workMinutes: service.durationMinutes,
+        workMinutes: target.workMinutes,
         timezone: business.timezone,
         instantBook,
         priceCents: charge.priceCents,
@@ -411,15 +507,15 @@ export async function startCheckout(
     const session = await deps.payments.createCheckout({
       reference: checkout.id,
       lines: [
-        { name: `${service.title} · ${when}`, amountCents: checkout.priceCents },
+        { name: `${target.title} · ${when}`, amountCents: checkout.priceCents },
         { name: "Service fee", amountCents: checkout.serviceFeeCents },
         ...(tax > 0 ? [{ name: "HST", amountCents: tax }] : []),
       ],
       capture: instantBook ? "now" : "hold",
       customerEmail: customer.email,
-      description: `${business.name}: ${service.title}, ${when}`,
+      description: `${business.name}: ${target.title}, ${when}`,
       successUrl: `${deps.config.siteUrl}/bookings/return?session={SESSION_ID}`,
-      cancelUrl: `${deps.config.siteUrl}/pros/${business.slug}/book?service=${service.id}`,
+      cancelUrl: target.cancelUrl,
       expiresAt,
       metadata: { checkoutId: checkout.id, businessId: business.id },
     });
@@ -513,6 +609,18 @@ export async function completeCheckout(
       return { status: "refunded", message: "That time was taken while you paid." };
     }
 
+    // A quote the business revised (or that closed) while the customer paid isn't booked.
+    if (checkout.quoteId && !(await quoteStillPending(tx, checkout.quoteId))) {
+      await tx
+        .update(bookingCheckouts)
+        .set({ status: "cancelled" })
+        .where(eq(bookingCheckouts.id, checkout.id));
+      return {
+        status: "refunded",
+        message: "The pro changed their quote while you were paying. Check the new quote.",
+      };
+    }
+
     const confirmed = state.payment === "paid";
     const [booking] = await tx
       .insert(bookings)
@@ -520,6 +628,8 @@ export async function completeCheckout(
         customerId: checkout.customerId,
         businessId: checkout.businessId,
         serviceId: checkout.serviceId,
+        quoteId: checkout.quoteId,
+        title: checkout.title,
         addressId: checkout.addressId,
         kind: "one_off",
         status: confirmed ? "confirmed" : "requested",
@@ -595,6 +705,17 @@ export async function completeCheckout(
       },
     );
 
+    // Chat carries on from the quote, or opens with the booking (SPEC §20).
+    if (checkout.quoteId) {
+      mail.push(...((await acceptQuoteInTx(tx, deps, checkout.quoteId, booking.id, now)) ?? []));
+    } else {
+      await openConversation(tx, {
+        customerId: booking.customerId,
+        businessId: booking.businessId,
+        bookingId: booking.id,
+      });
+    }
+
     const parts: BookingParts = {
       booking,
       visit: null,
@@ -639,6 +760,18 @@ export async function completeCheckout(
   }
   await sendAll(deps.email, mail);
   return outcome;
+}
+
+/** Whether a quote is still the pending one for an open request (locks both rows). */
+async function quoteStillPending(tx: DbExecutor, quoteId: string): Promise<boolean> {
+  const [quote] = await tx.select().from(quotes).where(eq(quotes.id, quoteId)).for("update");
+  if (quote?.status !== "pending") return false;
+  const [request] = await tx
+    .select({ status: quoteRequests.status })
+    .from(quoteRequests)
+    .where(eq(quoteRequests.id, quote.quoteRequestId))
+    .for("update");
+  return request?.status === "quoted";
 }
 
 async function checkoutStillFits(

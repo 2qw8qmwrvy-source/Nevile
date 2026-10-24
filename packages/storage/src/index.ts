@@ -23,4 +23,6 @@ export {
   contentTypeOfKey,
   isSafeKey,
   type MediaKind,
+  type PrivatePhotoPurpose,
+  privatePhotoKey,
 } from "./keys.ts";

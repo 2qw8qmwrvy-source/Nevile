@@ -43,6 +43,8 @@ export type ArrivalWindowRow = InferSelectModel<typeof s.arrivalWindows>;
 export type TimeOff = InferSelectModel<typeof s.timeOff>;
 export type NewTimeOff = InferInsertModel<typeof s.timeOff>;
 
+export type QuoteRequestGroup = InferSelectModel<typeof s.quoteRequestGroups>;
+export type NewQuoteRequestGroup = InferInsertModel<typeof s.quoteRequestGroups>;
 export type QuoteRequest = InferSelectModel<typeof s.quoteRequests>;
 export type NewQuoteRequest = InferInsertModel<typeof s.quoteRequests>;
 export type Quote = InferSelectModel<typeof s.quotes>;
@@ -81,6 +83,8 @@ export type Conversation = InferSelectModel<typeof s.conversations>;
 export type NewConversation = InferInsertModel<typeof s.conversations>;
 export type Message = InferSelectModel<typeof s.messages>;
 export type NewMessage = InferInsertModel<typeof s.messages>;
+export type PrivatePhoto = InferSelectModel<typeof s.privatePhotos>;
+export type NewPrivatePhoto = InferInsertModel<typeof s.privatePhotos>;
 export type Notification = InferSelectModel<typeof s.notifications>;
 export type NewNotification = InferInsertModel<typeof s.notifications>;
 export type PushToken = InferSelectModel<typeof s.pushTokens>;

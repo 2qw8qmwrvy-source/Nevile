@@ -18,6 +18,8 @@ const journal = JSON.parse(
 
 /** The last migration before SPEC v1.1 (community program, onboarding). */
 const PRE_V11_TAG = "0004_money_and_slot_guards";
+/** The last migration before SPEC v1.4 (quotes and chat). */
+const PRE_V14_TAG = "0008_bookings_v1_3";
 
 const V11_TABLES = [
   "community_fund_ledger",
@@ -156,6 +158,51 @@ describe.skipIf(!TEST_DATABASE_URL)("migrations", () => {
       `UPDATE profiles SET postal_code = 'B3H 1A1', onboarding_intent = 'both',
          interests = ARRAY['lawn-mowing', 'snow-ice-removal'], onboarded_at = now()
        WHERE user_id = 'legacy-user'`,
+    );
+  });
+  it("upgrades a v1.3 database: bookings keep their service's title", async () => {
+    const folder = migrationsThrough(PRE_V14_TAG);
+    folders.push(folder);
+    await runMigrations(url, folder);
+    await client.query(
+      `INSERT INTO "user" (id, name, email) VALUES ('owner', 'Bea Owner', 'bea@example.com'),
+         ('customer', 'Cora Customer', 'cora@example.com')`,
+    );
+    const [business] = await rows<{ id: string }>(
+      `INSERT INTO businesses (owner_user_id, name, slug, province)
+       VALUES ('owner', 'Bedford Lawns', 'bedford-lawns', 'NS') RETURNING id`,
+    );
+    const [category] = await rows<{ id: string }>(
+      `INSERT INTO service_categories (slug, name) VALUES ('lawn-mowing', 'Lawn Mowing')
+       ON CONFLICT (slug) DO UPDATE SET name = excluded.name RETURNING id`,
+    );
+    const [service] = await rows<{ id: string }>(
+      `INSERT INTO services (business_id, category_id, title, pricing_type, price_cents, duration_minutes)
+       VALUES ($1, $2, 'Weekly mowing', 'fixed', 6000, 60) RETURNING id`,
+      [business?.id, category?.id],
+    );
+    const [address] = await rows<{ id: string }>(
+      `INSERT INTO addresses (user_id, line1, city, province, postal_code)
+       VALUES ('customer', '1 Spring Garden Rd', 'Halifax', 'NS', 'B3H 1A1') RETURNING id`,
+    );
+    await client.query(
+      `INSERT INTO bookings (customer_id, business_id, service_id, address_id, kind, status,
+         price_cents, service_fee_cents, fee_tax_cents, total_cents, tax_province,
+         cancellation_policy, cancelled_at)
+       VALUES ('customer', $1, $2, $3, 'one_off', 'cancelled_by_customer', 6000, 397, 56, 6453,
+         'NS', 'flexible', now())`,
+      [business?.id, service?.id, address?.id],
+    );
+
+    await runMigrations(url);
+
+    expect(await rows("SELECT title FROM bookings")).toEqual([{ title: "Weekly mowing" }]);
+    const [switched] = await rows<{ accepts_quote_requests: boolean }>(
+      "SELECT accepts_quote_requests FROM businesses",
+    );
+    expect(switched?.accepts_quote_requests).toBe(true);
+    expect(await publicTables()).toEqual(
+      expect.arrayContaining(["quote_request_groups", "private_photos"]),
     );
   });
 });

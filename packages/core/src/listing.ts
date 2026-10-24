@@ -82,6 +82,8 @@ export const businessProfileSchema = z.object({
     }),
   cancellationPolicy: z.enum(CANCELLATION_POLICY_IDS),
   instantBook: z.boolean(),
+  /** "Take quote requests" (SPEC §20); left unchanged when omitted. */
+  acceptsQuoteRequests: z.boolean().optional(),
 });
 export type BusinessProfileInput = z.input<typeof businessProfileSchema>;
 

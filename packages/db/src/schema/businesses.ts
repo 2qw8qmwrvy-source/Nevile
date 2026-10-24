@@ -58,6 +58,8 @@ export const businesses = pgTable(
     cancellationPolicy: cancellationPolicy("cancellation_policy").notNull().default("flexible"),
     // Fixed-price bookings confirm instantly instead of waiting for approval.
     instantBook: boolean("instant_book").notNull().default(false),
+    // "Take quote requests" (SPEC §20): on by default; off hides Request a quote.
+    acceptsQuoteRequests: boolean("accepts_quote_requests").notNull().default(true),
     stripeAccountId: text("stripe_account_id").unique(),
     // Set from Stripe Connect once identity verification passes (SPEC §1).
     payoutsEnabled: boolean("payouts_enabled").notNull().default(false),

@@ -148,6 +148,7 @@ describe.skipIf(!TEST_DATABASE_URL)("listings and search", () => {
         customerId,
         businessId: id,
         serviceId: service?.id ?? "",
+        title: "Weekly mowing",
         addressId: address?.id ?? "",
         kind: "one_off",
         status: "completed",

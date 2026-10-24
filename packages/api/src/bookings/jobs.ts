@@ -18,7 +18,11 @@ import {
   refunds,
   sql,
 } from "@nevile/db";
+import { lazyStorage, type MediaStorage } from "@nevile/storage";
+import { emailUnreadMessages } from "../chat/flows.ts";
 import { sendAll } from "../notify.ts";
+import { cleanUpUnattachedPhotos } from "../photos.ts";
+import { expireQuoteRequests } from "../quotes/flows.ts";
 import { businessEmails, businessTeamEmails } from "./emails.ts";
 import {
   autoConfirmJobs,
@@ -272,7 +276,10 @@ export type JobsReport = Record<string, number | string>;
  * Every timer in one idempotent pass (SPEC §19), run every few minutes by the host's
  * scheduler. One failing step doesn't stop the others; its error is reported.
  */
-export async function runScheduledJobs(deps: BookingDeps): Promise<JobsReport> {
+export async function runScheduledJobs(
+  deps: BookingDeps,
+  storage: MediaStorage = lazyStorage,
+): Promise<JobsReport> {
   const report: JobsReport = {};
   const steps: Array<[string, () => Promise<number | Record<string, number>>]> = [
     ["checkoutsExpired", () => expireCheckouts(deps)],
@@ -281,6 +288,10 @@ export async function runScheduledJobs(deps: BookingDeps): Promise<JobsReport> {
     ["disputesEscalated", () => escalateDisputes(deps)],
     ["payoutSetup", () => enforcePayoutSetup(deps)],
     ["payouts", () => runPayouts(deps)],
+    // Quotes and chat (SPEC §20).
+    ["quoteRequestsClosed", () => expireQuoteRequests(deps)],
+    ["unreadChatEmails", () => emailUnreadMessages(deps)],
+    ["photosCleanedUp", () => cleanUpUnattachedPhotos(deps.db, storage, deps.now())],
   ];
   for (const [name, step] of steps) {
     try {

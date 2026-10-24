@@ -83,7 +83,7 @@ export async function customerBookingView(
   address: Address,
   now: Date,
 ) {
-  const { booking, business, service, payment, visit } = parts;
+  const { booking, business, payment, visit } = parts;
   const status = (visit?.status ?? booking.status) as BookingState;
   const allowed = allowedEvents(parts, now);
   const quote = allowed.has("cancel_by_customer") ? customerCancellationQuote(parts, now) : null;
@@ -93,7 +93,9 @@ export async function customerBookingView(
     status,
     statusLabel: CUSTOMER_STATUS_LABELS[status],
     business: { name: business.name, slug: business.slug },
-    service: { title: service.title },
+    service: { title: booking.title },
+    /** Booked from a quote (SPEC §20). */
+    fromQuote: booking.quoteId !== null,
     window: windowOf(parts),
     address: addressLines(address),
     notes: booking.customerNotes,
@@ -157,7 +159,7 @@ export function businessBookingView(
     id: booking.id,
     status,
     statusLabel: BUSINESS_STATUS_LABELS[status],
-    service: { id: parts.service.id, title: parts.service.title },
+    service: { id: parts.service.id, title: booking.title },
     window: windowOf(parts),
     workMinutes: extra.workMinutes,
     customer: {

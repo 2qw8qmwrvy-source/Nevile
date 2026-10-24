@@ -342,6 +342,7 @@ describe.skipIf(!TEST_DATABASE_URL)("community (Nevile Neighbours)", () => {
           customerId: staffUserId,
           businessId: business.id,
           serviceId: service?.id ?? "",
+          title: "Weekly mowing",
           addressId: address?.id ?? "",
           kind: "one_off",
           status: "completed",

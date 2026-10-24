@@ -64,6 +64,8 @@ export const bookings = pgTable(
     quoteId: uuid("quote_id")
       .unique()
       .references(() => quotes.id, { onDelete: "restrict" }),
+    // What the job is called, as booked (the service's title, or "Lawn Mowing (quoted)").
+    title: text("title").notNull(),
     // Default crew member for generated visits (owner/manager assigns, SPEC §1). Must be
     // a member of this booking's business: composite FK (business_id, assigned_member_id)
     // with ON DELETE SET NULL (assigned_member_id), added in custom SQL because Drizzle
@@ -347,6 +349,9 @@ export const bookingCheckouts = pgTable(
     addressId: uuid("address_id")
       .notNull()
       .references(() => addresses.id, { onDelete: "cascade" }),
+    // Booking an accepted quote (SPEC §20): its price and duration are used.
+    quoteId: uuid("quote_id").references(() => quotes.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
     // The arrival window and the work it needs.
     startsAt: tstz("starts_at").notNull(),
     endsAt: tstz("ends_at").notNull(),

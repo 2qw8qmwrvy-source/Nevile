@@ -13,7 +13,7 @@ import {
   parseIsoDate,
   priceSummary,
 } from "@nevile/core";
-import { addresses, bookingCheckouts, bookings, desc, eq } from "@nevile/db";
+import { addresses, type Business, bookingCheckouts, bookings, desc, eq } from "@nevile/db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -55,6 +55,44 @@ async function ownBooking(ctx: Context & { user: { id: string } }, bookingId: st
   return customerBookingView(ctx.db, parts, address, ctx.now());
 }
 
+/** Open arrival windows for a job of `workMinutes` at a business, from a day (or its first). */
+export async function openWindows(
+  ctx: Pick<Context, "db" | "now">,
+  business: Business,
+  workMinutes: number,
+  input: { from?: string; days: number },
+) {
+  const now = ctx.now();
+  const rules = noticeRules(business);
+  const range = bookableRange(now, rules, business.timezone);
+  const requested = input.from ? parseIsoDate(input.from) : null;
+  const from = requested ?? range.first;
+  const schedule = await loadSchedule(ctx.db, business, from, input.days, now);
+  const days = availableDays({
+    now,
+    rules,
+    windows: schedule.windows,
+    members: schedule.members,
+    placed: schedule.placed,
+    workMinutes,
+    from,
+    days: input.days,
+    timeZone: business.timezone,
+  });
+  return {
+    firstDate: formatIsoDate(range.first),
+    lastDate: formatIsoDate(range.last),
+    days: days.map((day) => ({
+      date: day.date,
+      windows: day.windows.map((window) => ({
+        startMinute: window.startMinute,
+        label: formatArrivalWindow(window),
+        available: window.available,
+      })),
+    })),
+  };
+}
+
 /** Booking one-off, fixed-price jobs as a customer (SPEC §19). */
 export const bookingsRouter = router({
   /** Which arrival windows are open for a service, plus the price breakdown. Public. */
@@ -69,22 +107,7 @@ export const bookingsRouter = router({
     .query(async ({ ctx, input }) => {
       const now = ctx.now();
       const { service, business, priceCents } = await bookableService(ctx.db, input.serviceId);
-      const rules = noticeRules(business);
-      const range = bookableRange(now, rules, business.timezone);
-      const requested = input.from ? parseIsoDate(input.from) : null;
-      const from = requested ?? range.first;
-      const schedule = await loadSchedule(ctx.db, business, from, input.days, now);
-      const days = availableDays({
-        now,
-        rules,
-        windows: schedule.windows,
-        members: schedule.members,
-        placed: schedule.placed,
-        workMinutes: service.durationMinutes,
-        from,
-        days: input.days,
-        timeZone: business.timezone,
-      });
+      const windows = await openWindows(ctx, business, service.durationMinutes, input);
       const charge = calculateCharge({
         priceCents,
         province: business.province,
@@ -114,16 +137,7 @@ export const bookingsRouter = router({
           taxCents: charge.taxCents,
           totalCents: charge.totalCents,
         },
-        firstDate: formatIsoDate(range.first),
-        lastDate: formatIsoDate(range.last),
-        days: days.map((day) => ({
-          date: day.date,
-          windows: day.windows.map((window) => ({
-            startMinute: window.startMinute,
-            label: formatArrivalWindow(window),
-            available: window.available,
-          })),
-        })),
+        ...windows,
       };
     }),
 

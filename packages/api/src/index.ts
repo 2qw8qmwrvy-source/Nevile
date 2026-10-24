@@ -17,6 +17,7 @@ export {
   type UploadResult,
 } from "./media.ts";
 export { defaultEmailSender } from "./notify.ts";
+export { type PrivateUploadResult, privatePhotoKeyFor, savePrivatePhoto } from "./photos.ts";
 export type {
   MarketingConsentState,
   OnboardingState,

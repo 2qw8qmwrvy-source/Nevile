@@ -9,9 +9,13 @@ import {
   type LatLng,
   LISTING_ABOUT_MIN_LENGTH,
   MIN_RATING_FILTER,
+  MS_PER_DAY,
+  medianResponseMinutes,
   OUTSIDE_LAUNCH_REGION_MESSAGE,
   type RatingSummary,
+  RESPONSE_TIME_WINDOW_DAYS,
   rankResults,
+  responseTimeLabel,
   SEARCH_PAGE_SIZE,
   SERVICE_RADIUS_MAX_KM,
   type SearchQuery,
@@ -31,9 +35,11 @@ import {
   type DbExecutor,
   desc,
   eq,
+  gte,
   inArray,
   isNotNull,
   isNull,
+  quoteRequests,
   reviews,
   type Service,
   type ServiceArea,
@@ -154,6 +160,40 @@ function representative(candidates: readonly Service[]): Service | undefined {
   )[0];
 }
 
+/** Published businesses that take quote requests and new work (SPEC §20). */
+function takesQuotes(business: Business, now: Date): boolean {
+  return (
+    business.acceptsQuoteRequests &&
+    canTakeBookings({
+      payoutsEnabled: business.payoutsEnabled,
+      payoutSetupDueAt: business.payoutSetupDueAt,
+      now,
+    })
+  );
+}
+
+/** Median minutes to a first reply over the last 90 days, once there are 3+ replies. */
+async function medianReplyMinutes(db: DbExecutor, businessId: string, now: Date) {
+  const rows = await db
+    .select({ createdAt: quoteRequests.createdAt, respondedAt: quoteRequests.respondedAt })
+    .from(quoteRequests)
+    .where(
+      and(
+        eq(quoteRequests.businessId, businessId),
+        isNotNull(quoteRequests.respondedAt),
+        gte(
+          quoteRequests.createdAt,
+          new Date(now.getTime() - RESPONSE_TIME_WINDOW_DAYS * MS_PER_DAY),
+        ),
+      ),
+    );
+  return medianResponseMinutes(
+    rows.map((row) =>
+      Math.max(0, ((row.respondedAt?.getTime() ?? 0) - row.createdAt.getTime()) / 60_000),
+    ),
+  );
+}
+
 function badgesOf(business: Business, instantBook: boolean) {
   return {
     verified: business.verifiedInsuranceAt !== null,
@@ -167,7 +207,7 @@ function logoUrl(storage: MediaStorage, business: Business): string | null {
   return business.logoKey ? storage.publicUrl(business.logoKey) : null;
 }
 
-async function runSearch(db: DbExecutor, storage: MediaStorage, query: SearchQuery) {
+async function runSearch(db: DbExecutor, storage: MediaStorage, query: SearchQuery, now: Date) {
   const { location, point } = await resolveLocation(db, query);
   const empty = { location, results: [], total: 0, page: query.page, pageSize: SEARCH_PAGE_SIZE };
   if (location.kind === "outside") return { ...empty, hasMore: false };
@@ -271,6 +311,8 @@ async function runSearch(db: DbExecutor, storage: MediaStorage, query: SearchQue
       distanceKm: item.distanceKm === null ? null : Math.round(item.distanceKm * 10) / 10,
       distanceText: item.distanceKm === null ? null : formatDistanceKm(item.distanceKm),
       cancellationPolicy: CANCELLATION_POLICIES[item.business.cancellationPolicy].label,
+      /** Can be asked for a quote (SPEC §20). */
+      takesQuotes: takesQuotes(item.business, now),
       areaText: serviceAreaDescription(item.area.radiusKm, item.area.label),
       // About 1 km off the real base, so a sole operator's home is never shown (SPEC §18).
       pin: approximateLocation(item.area),
@@ -308,7 +350,7 @@ export const searchRouter = router({
   /** Public search (SPEC §18). Never stores the customer's location. */
   query: publicProcedure
     .input(searchInputSchema)
-    .query(({ ctx, input }) => runSearch(ctx.db, ctx.storage, input)),
+    .query(({ ctx, input }) => runSearch(ctx.db, ctx.storage, input, ctx.now())),
 
   /** Where a postal code puts the customer, for "Showing pros near …". */
   area: publicProcedure
@@ -390,10 +432,22 @@ export const searchRouter = router({
         .limit(PROFILE_REVIEW_LIMIT);
 
       const instantBook = serviceRows.some(({ service }) => isInstantBookable(business, service));
+      const categories = [
+        ...new Map(
+          serviceRows.map(({ categorySlug, categoryName }) => [
+            categorySlug,
+            { slug: categorySlug, name: categoryName },
+          ]),
+        ).values(),
+      ];
       return {
         id: business.id,
         slug: business.slug,
         name: business.name,
+        /** Categories it can be asked to quote for (SPEC §20). */
+        categories,
+        takesQuotes: takesQuotes(business, ctx.now()),
+        responseTime: responseTimeLabel(await medianReplyMinutes(ctx.db, business.id, ctx.now())),
         about: business.description ?? "",
         logoUrl: logoUrl(ctx.storage, business),
         badges: badgesOf(business, instantBook),

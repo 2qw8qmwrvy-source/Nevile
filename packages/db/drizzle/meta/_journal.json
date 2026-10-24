@@ -64,6 +64,13 @@
       "when": 1792780271509,
       "tag": "0008_bookings_v1_3",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792799043676,
+      "tag": "0009_quotes_chat_v1_4",
+      "breakpoints": true
     }
   ]
 }

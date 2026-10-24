@@ -310,6 +310,7 @@ describe.skipIf(!TEST_DATABASE_URL)("listing tables", () => {
         businessId,
         serviceId: service?.id ?? "",
         addressId: address?.id ?? "",
+        title: "Weekly mowing",
         startsAt: new Date("2026-11-02T12:00:00Z"),
         endsAt: new Date("2026-11-02T15:00:00Z"),
         workMinutes: 60,

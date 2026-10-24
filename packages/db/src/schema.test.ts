@@ -18,11 +18,15 @@ import {
   communityPartnerMembers,
   communityPartners,
   communityReferrals,
+  conversations,
   disputes,
   donations,
+  messages,
   payments,
   payouts,
+  privatePhotos,
   profiles,
+  quoteRequestGroups,
   quoteRequests,
   quotes,
   refunds,
@@ -117,6 +121,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
         businessId: ids.businessId,
         serviceId: ids.serviceId,
         addressId: ids.addressId,
+        title: "Weekly mowing",
         kind,
         status: "confirmed",
         priceCents: 10_000,
@@ -262,6 +267,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
         businessId: ids.businessId,
         serviceId: ids.serviceId,
         addressId: ids.addressId,
+        title: "Weekly mowing",
         kind: "recurring",
         status: "confirmed",
         priceCents: 10_000,
@@ -412,6 +418,7 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
             businessId: ids.businessId,
             serviceId: ids.serviceId,
             addressId: ids.addressId,
+            title: "Weekly mowing",
             kind: "one_off",
             status: "confirmed",
             priceCents: 10_000,
@@ -933,15 +940,26 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
 
   describe("quote terms", () => {
     const request = async (kind: "one_off" | "recurring" | "snow_contract") => {
+      const [group] = await db
+        .insert(quoteRequestGroups)
+        .values({
+          customerId: ids.customer,
+          categoryId: ids.categoryId,
+          kind,
+          details: "Front and back lawn",
+          postalCode: "B3H 1A1",
+          postalArea: "B3H",
+          timing: "flexible",
+        })
+        .returning({ id: quoteRequestGroups.id });
       const [row] = await db
         .insert(quoteRequests)
         .values({
+          groupId: group?.id ?? "",
           customerId: ids.customer,
           businessId: ids.businessId,
           serviceId: ids.serviceId,
-          addressId: ids.addressId,
           kind,
-          details: "Front and back lawn",
           expiresAt: at("2027-01-08T00:00:00Z"),
         })
         .returning({ id: quoteRequests.id });
@@ -1015,6 +1033,123 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
       await expect(
         db.insert(quotes).values(quote(id, "one_off")).returning({ id: quotes.id }),
       ).resolves.toHaveLength(1);
+    });
+  });
+
+  describe("quote requests and private photos (SPEC §20)", () => {
+    const group = async () => {
+      const [row] = await db
+        .insert(quoteRequestGroups)
+        .values({
+          customerId: ids.customer,
+          categoryId: ids.categoryId,
+          details: "Gutters on a two-storey house",
+          postalCode: "B3H 1A1",
+          postalArea: "B3H",
+          timing: "asap",
+        })
+        .returning({ id: quoteRequestGroups.id });
+      return row?.id ?? "";
+    };
+    const copy = (groupId: string) => ({
+      groupId,
+      customerId: ids.customer,
+      businessId: ids.businessId,
+      serviceId: ids.serviceId,
+      expiresAt: at("2027-01-04T00:00:00Z"),
+    });
+
+    it("sends each pro one copy of a request", async () => {
+      const groupId = await group();
+      await db.insert(quoteRequests).values(copy(groupId));
+      expect(await violation(db.insert(quoteRequests).values(copy(groupId)))).toEqual({
+        code: "23505",
+        constraint: "quote_requests_group_business_unique",
+      });
+    });
+
+    it("keeps a decline reason exactly on declined requests and a close reason on closed ones", async () => {
+      expect(
+        await violation(
+          db.insert(quoteRequests).values({ ...copy(await group()), status: "declined" }),
+        ),
+      ).toEqual({ code: "23514", constraint: "quote_requests_decline_reason" });
+      expect(
+        await violation(
+          db.insert(quoteRequests).values({ ...copy(await group()), declineReason: "Too far" }),
+        ),
+      ).toEqual({ code: "23514", constraint: "quote_requests_decline_reason" });
+      expect(
+        await violation(
+          db.insert(quoteRequests).values({ ...copy(await group()), status: "expired" }),
+        ),
+      ).toEqual({ code: "23514", constraint: "quote_requests_close_reason" });
+      await expect(
+        db
+          .insert(quoteRequests)
+          .values({ ...copy(await group()), status: "expired", closeReason: "no_reply" })
+          .returning({ id: quoteRequests.id }),
+      ).resolves.toHaveLength(1);
+    });
+
+    it("stores only area-shaped postal areas", async () => {
+      expect(
+        await violation(
+          db.insert(quoteRequestGroups).values({
+            customerId: ids.customer,
+            categoryId: ids.categoryId,
+            details: "Leaves",
+            postalCode: "B3H 1A1",
+            postalArea: "B3H 1A1",
+            timing: "flexible",
+          }),
+        ),
+      ).toEqual({ code: "23514", constraint: "quote_request_groups_postal_area" });
+    });
+
+    it("attaches a private photo to at most one request or message", async () => {
+      const groupId = await group();
+      const photo = {
+        ownerUserId: ids.customer,
+        width: 800,
+        height: 600,
+        quoteRequestGroupId: groupId,
+      };
+      await expect(
+        db
+          .insert(privatePhotos)
+          .values({ ...photo, storageKey: `private/quotes/${randomUUID()}.webp` })
+          .returning({ id: privatePhotos.id }),
+      ).resolves.toHaveLength(1);
+      const [conversation] = await db
+        .insert(conversations)
+        .values({
+          customerId: ids.customer,
+          businessId: ids.businessId,
+          quoteRequestId: (
+            await db.insert(quoteRequests).values(copy(groupId)).returning({ id: quoteRequests.id })
+          )[0]?.id,
+        })
+        .returning({ id: conversations.id });
+      const [message] = await db
+        .insert(messages)
+        .values({
+          conversationId: conversation?.id ?? "",
+          senderUserId: ids.customer,
+          senderRole: "customer",
+          body: "",
+          maskedBody: "",
+        })
+        .returning({ id: messages.id });
+      expect(
+        await violation(
+          db.insert(privatePhotos).values({
+            ...photo,
+            storageKey: `private/chat/${randomUUID()}.webp`,
+            messageId: message?.id,
+          }),
+        ),
+      ).toEqual({ code: "23514", constraint: "private_photos_one_owner" });
     });
   });
 

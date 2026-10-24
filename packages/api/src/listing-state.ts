@@ -165,6 +165,7 @@ export async function listingView(
       gstHstNumber: canEdit ? (business.gstHstNumber ?? "") : null,
       cancellationPolicy: business.cancellationPolicy,
       instantBook: business.instantBook,
+      acceptsQuoteRequests: business.acceptsQuoteRequests,
       plan: business.plan,
       verified: business.verifiedInsuranceAt !== null,
       suspended: business.suspendedAt !== null,

@@ -27,10 +27,10 @@ import {
 import { addresses, profiles } from "./customers.ts";
 import { disputes } from "./disputes.ts";
 import { businessPhotos } from "./listings.ts";
-import { conversations, messages } from "./messaging.ts";
+import { conversations, messages, privatePhotos } from "./messaging.ts";
 import { notifications, pushTokens } from "./notifications.ts";
 import { payments, payouts, refunds, tips } from "./payments.ts";
-import { quoteRequests, quotes } from "./quotes.ts";
+import { quoteRequestGroups, quoteRequests, quotes } from "./quotes.ts";
 import { reviews } from "./reviews.ts";
 import { availabilityRules, timeOff } from "./scheduling.ts";
 
@@ -194,11 +194,24 @@ export const timeOffRelations = relations(timeOff, ({ one }) => ({
 
 // ── Quotes ─────────────────────────────────────────────────────────────────────
 
+export const quoteRequestGroupRelations = relations(quoteRequestGroups, ({ one, many }) => ({
+  customer: one(user, { fields: [quoteRequestGroups.customerId], references: [user.id] }),
+  category: one(serviceCategories, {
+    fields: [quoteRequestGroups.categoryId],
+    references: [serviceCategories.id],
+  }),
+  requests: many(quoteRequests),
+  photos: many(privatePhotos),
+}));
+
 export const quoteRequestRelations = relations(quoteRequests, ({ one, many }) => ({
+  group: one(quoteRequestGroups, {
+    fields: [quoteRequests.groupId],
+    references: [quoteRequestGroups.id],
+  }),
   customer: one(user, { fields: [quoteRequests.customerId], references: [user.id] }),
   business: one(businesses, { fields: [quoteRequests.businessId], references: [businesses.id] }),
   service: one(services, { fields: [quoteRequests.serviceId], references: [services.id] }),
-  address: one(addresses, { fields: [quoteRequests.addressId], references: [addresses.id] }),
   quotes: many(quotes),
   conversation: one(conversations),
 }));
@@ -401,12 +414,22 @@ export const conversationRelations = relations(conversations, ({ one, many }) =>
   messages: many(messages),
 }));
 
-export const messageRelations = relations(messages, ({ one }) => ({
+export const messageRelations = relations(messages, ({ one, many }) => ({
   conversation: one(conversations, {
     fields: [messages.conversationId],
     references: [conversations.id],
   }),
   sender: one(user, { fields: [messages.senderUserId], references: [user.id] }),
+  photos: many(privatePhotos),
+}));
+
+export const privatePhotoRelations = relations(privatePhotos, ({ one }) => ({
+  owner: one(user, { fields: [privatePhotos.ownerUserId], references: [user.id] }),
+  quoteRequestGroup: one(quoteRequestGroups, {
+    fields: [privatePhotos.quoteRequestGroupId],
+    references: [quoteRequestGroups.id],
+  }),
+  message: one(messages, { fields: [privatePhotos.messageId], references: [messages.id] }),
 }));
 
 export const notificationRelations = relations(notifications, ({ one }) => ({

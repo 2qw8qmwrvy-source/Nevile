@@ -93,6 +93,9 @@ export const listingRouter = router({
           taxRegistered: input.gstHstNumber !== null,
           cancellationPolicy: input.cancellationPolicy,
           instantBook: input.instantBook,
+          ...(input.acceptsQuoteRequests === undefined
+            ? {}
+            : { acceptsQuoteRequests: input.acceptsQuoteRequests }),
         })
         .where(eq(businesses.id, ctx.business.id));
       return unpublishIfNotReady(tx, ctx.business.id);

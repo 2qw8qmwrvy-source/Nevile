@@ -274,8 +274,9 @@ cleanup; May: lawn-mowing season; August: book fall gutter and leaf cleanup).
 4. ~~Listings & search (v1.2, §18).~~
 5. ~~One-off booking, crew calendar & payments (v1.3, §19).~~ The app shows bookings; its
    Book buttons open the website's booking page for now.
-6. Quotes & chat, recurring jobs, snow contracts (v1.4) → booking and paying inside the
-   app, tips, donations at checkout → ratings → subscription → admin.
+6. Quotes & chat, booking and paying in the app, business mode in the app (v1.4, §20) →
+   recurring jobs & snow contracts (v1.5) → tips, donations at checkout → ratings →
+   subscription → admin.
 
 ## 15. Nevile Neighbours (community program)
 
@@ -489,3 +490,85 @@ customer's bookings (confirm, cancel, report a problem) and opens the website to
 - A protected endpoint, called every 5 minutes by the host's scheduler, runs the timers:
   expiring checkouts and requests, auto-confirming jobs, escalating disputes, payout-setup
   reminders and deadlines, and the Monday payouts. Every step can safely run twice.
+
+## 20. Quotes, chat & the app (v1.4)
+
+Second slice, built in stages: **quotes and chat** on the website, then the **phone app**
+gets booking and paying (Stripe's payment sheet), quote requests and chat for customers,
+and **full business mode**. Recurring jobs and snow contracts come in v1.5.
+
+### Asking for a quote
+
+- From search or a pro's page, a customer asks **up to 3 pros** in one category for a
+  quote with one request: a **description** (20–2,000 characters, required), up to **6
+  photos** (optional; re-encoded with location and camera data removed), the job's
+  **postal code** (Nova Scotia), and a rough **timing** (as soon as possible, within a
+  week, within a month, or flexible). The street address is shared only once a job is
+  booked.
+- **Any published pro in that category** whose service area covers the postal code area
+  can be asked, even if it lists only fixed prices, unless it has switched **"Take quote
+  requests"** off in its listing (on by default). Pros that are switched off don't show a
+  Request a quote button and can't be picked.
+- A customer can have at most **5 open requests** at a time (each to up to 3 pros).
+- Each pro gets its own copy of the request and its **own conversation**; pros never see
+  each other or each other's prices.
+
+### Replying
+
+- A business replies within **3 days**, or that pro's request closes and counts as
+  unanswered. When every pro on a request has closed without a quote, the customer is
+  told. The business page shows how quickly the business usually replies (median first
+  reply over the last 90 days, once it has 3 or more requests).
+- A **quote** is one price for the job, how long the job takes (same choices as a
+  service's duration), and a note on what's included (up to 1,000 characters). Price: $5
+  to $20,000. The business can send a **revised quote**, which replaces the old one and
+  restarts its clock, until the customer books. Or it **declines** with a short reason.
+- A quote **expires 7 days** after it is sent (§3). The customer can close their request
+  at any time before booking.
+- Only the business's **owner and managers** see quote requests and chat; crew don't.
+
+### Booking from a quote
+
+- The customer presses **Book** on a quote, then picks a day and an **arrival window**
+  exactly like a fixed-price booking (§19): capacity uses the quote's duration, and the
+  business's notice rules and windows apply. They enter the street address, which must be
+  in the request's postal code area, and pay.
+- The quoted price is locked. Fees, HST and the cancellation policy work as for any
+  one-off job (§5, §7). Booking a quote is always **confirmed on payment**: the business
+  already agreed, so there is no approval step.
+- When the customer books one pro, that pro's request is marked accepted, and the other
+  pros' requests close ("the customer chose another pro") and their quotes are withdrawn.
+
+### Chat
+
+- A conversation opens with every quote request (one per pro) and with every booking,
+  and carries on from the quote into the booking. The customer and the business's owner
+  and managers can write **text** (up to 2,000 characters) and add up to **6 photos** per
+  message. Messages can't be edited or deleted, which keeps a fair record for problems.
+- **Phone numbers and email addresses are hidden** from the other side until a booking
+  between them is paid (§7). The sender always sees what they wrote.
+- Private photos (quote requests and chat) are stored separately from public listing
+  photos and are only shown to the people in that request or conversation.
+- Limits: 30 messages a minute per person; requests and messages are checked for the same
+  control characters as listings.
+
+### Notifications
+
+- **In-app:** an Inbox (website and app) with conversations and their unread counts, and
+  notifications for new requests, quotes, declines and closed requests.
+- **Email:** sent right away for a new request (to the business's owner and managers), a
+  new or revised quote, a decline and a closed request. For chat, **one email per
+  conversation** when a message is still unread after **10 minutes**, not one per message.
+- **Push:** the phone app gets push notifications for the same events (stage 2). Browser
+  push comes later.
+
+### The app (stages 2 and 3)
+
+- Customers book fixed-price services and accepted quotes and **pay inside the app** with
+  Stripe's payment sheet (cards, Apple Pay, Google Pay); request quotes with photos from
+  the camera or library; and chat.
+- **Business mode** in the app: calendar, requests and quotes, chat, team, listing,
+  photos and payouts. The service area is set by postal code and distance (the map editor
+  stays on the website); payout setup opens Stripe's secure page.
+- Development and tests use the built-in fake payment provider with a test payment
+  screen; testing Stripe's payment sheet needs a development build of the app.

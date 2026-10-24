@@ -21,6 +21,19 @@ export function businessMediaKey(businessId: string, kind: MediaKind): string {
   return key;
 }
 
+/** Where a private photo is for (SPEC §20): a quote request or a chat message. */
+export type PrivatePhotoPurpose = "quotes" | "chat";
+
+/**
+ * `private/<purpose>/<uuid>.webp`. Private photos are never served from the public media
+ * URL; the app streams them to the people allowed to see them.
+ */
+export function privatePhotoKey(purpose: PrivatePhotoPurpose): string {
+  const key = `private/${purpose}/${randomUUID()}.webp`;
+  assertSafeKey(key);
+  return key;
+}
+
 /** The business id a key belongs to, or null. */
 export function businessIdOfKey(key: string): string | null {
   const match = /^businesses\/([0-9a-f-]{36})\//.exec(key);
