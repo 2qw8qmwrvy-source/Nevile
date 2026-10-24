@@ -43,7 +43,9 @@ test.describe("quotes and chat (SPEC §20)", () => {
     await customer.getByRole("checkbox", { name: `Ask ${benName} for a quote` }).check();
     await customer.getByRole("link", { name: /Ask 2 pros for a quote/ }).click();
 
-    await expect(customer.getByRole("heading", { name: "Ask for a quote", level: 1 })).toBeVisible();
+    await expect(
+      customer.getByRole("heading", { name: "Ask for a quote", level: 1 }),
+    ).toBeVisible();
     await expect(customer.getByText(annName)).toBeVisible();
     await expect(customer.getByText(benName)).toBeVisible();
     await customer
@@ -55,7 +57,9 @@ test.describe("quotes and chat (SPEC §20)", () => {
       mimeType: "image/png",
       buffer: TINY_PNG,
     });
-    await expect(customer.getByRole("list", { name: "Photos added" }).getByRole("listitem")).toHaveCount(1);
+    await expect(
+      customer.getByRole("list", { name: "Photos added" }).getByRole("listitem"),
+    ).toHaveCount(1);
     expect(await seriousViolations(customer)).toEqual([]);
     await customer.getByRole("button", { name: "Ask 2 pros for a quote" }).click();
     await expect(customer).toHaveURL(/\/quotes\/[0-9a-f-]+\?new=1/);
@@ -65,12 +69,16 @@ test.describe("quotes and chat (SPEC §20)", () => {
     // Ann replies with a quote.
     await messageWith(annEmail, /^Quote request: Lawn Mowing near B3H/);
     await page.goto("/business/quotes");
-    await expect(page.getByRole("region", { name: "Needs a reply" })).toContainText("Lawn Mowing · Cora");
+    await expect(page.getByRole("region", { name: "Needs a reply" })).toContainText(
+      "Lawn Mowing · Cora",
+    );
     await page.getByRole("link", { name: /Lawn Mowing · Cora/ }).click();
     await expect(page.getByRole("img", { name: "Attachment 1 of 1" })).toBeVisible();
     await page.getByLabel("Price for the job ($)").fill("120");
     await page.getByLabel("How long the job takes").selectOption("120");
-    await page.getByLabel("What's included (optional)").fill("Mowing, edging and clippings taken away.");
+    await page
+      .getByLabel("What's included (optional)")
+      .fill("Mowing, edging and clippings taken away.");
     await page.getByRole("button", { name: "Send quote" }).click();
     await expect(page.getByText("Quote sent. We've emailed the customer.")).toBeVisible();
     expect(await seriousViolations(page)).toEqual([]);
@@ -94,7 +102,9 @@ test.describe("quotes and chat (SPEC §20)", () => {
     );
     expect(await seriousViolations(customer)).toEqual([]);
     await annCard.getByRole("link", { name: "Message" }).click();
-    await customer.getByRole("textbox", { name: "Message" }).fill("Could you come Tuesday? Call me at 902-555-0142.");
+    await customer
+      .getByRole("textbox", { name: "Message" })
+      .fill("Could you come Tuesday? Call me at 902-555-0142.");
     await customer.getByRole("button", { name: "Send" }).click();
     await expect(customer.getByRole("list", { name: "Messages" })).toContainText("902-555-0142");
     expect(await seriousViolations(customer)).toEqual([]);
@@ -110,7 +120,10 @@ test.describe("quotes and chat (SPEC §20)", () => {
 
     // Book the quote: a window, an address in B3H, the test payment page.
     await customer.goto(quotePage);
-    await customer.getByRole("article", { name: annName }).getByRole("link", { name: "Book this quote" }).click();
+    await customer
+      .getByRole("article", { name: annName })
+      .getByRole("link", { name: "Book this quote" })
+      .click();
     // First visit compiles the page in development, so allow it time.
     await expect(customer).toHaveURL(/\/book\?quote=/, { timeout: 60_000 });
     await expect(customer.getByRole("heading", { name: "When" })).toBeVisible({ timeout: 60_000 });
