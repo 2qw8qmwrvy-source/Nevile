@@ -14,7 +14,7 @@ import {
 } from "@nevile/db";
 import type { PaymentEvent } from "@nevile/payments";
 import { TRPCError } from "@trpc/server";
-import { type BookingDeps, completeCheckout } from "./flows.ts";
+import { type BookingDeps, completeAppCheckout, completeCheckout } from "./flows.ts";
 
 /** Acts on a verified provider notification (webhook, or the fake provider's pages). */
 export async function handlePaymentEvent(deps: BookingDeps, event: PaymentEvent): Promise<void> {
@@ -33,6 +33,17 @@ export async function handlePaymentEvent(deps: BookingDeps, event: PaymentEvent)
           ),
         );
       return;
+    case "payment_succeeded":
+    case "payment_authorized": {
+      // In-app payments (SPEC §20); Checkout's own intents have no checkout row yet.
+      const [checkout] = await deps.db
+        .select({ id: bookingCheckouts.id })
+        .from(bookingCheckouts)
+        .where(eq(bookingCheckouts.providerPaymentIntentId, event.paymentIntentId))
+        .limit(1);
+      if (checkout) await completeAppCheckout(deps, checkout.id);
+      return;
+    }
     case "account_updated":
       await deps.db
         .update(businesses)

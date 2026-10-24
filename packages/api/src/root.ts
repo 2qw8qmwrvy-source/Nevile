@@ -11,6 +11,7 @@ import { meRouter } from "./routers/me.ts";
 import { onboardingRouter } from "./routers/onboarding.ts";
 import { payoutsRouter } from "./routers/payouts.ts";
 import { profileRouter } from "./routers/profile.ts";
+import { pushRouter } from "./routers/push.ts";
 import { quotesRouter } from "./routers/quotes.ts";
 import { searchRouter } from "./routers/search.ts";
 import { teamRouter } from "./routers/team.ts";
@@ -33,6 +34,7 @@ export const appRouter = router({
   quotes: quotesRouter,
   businessQuotes: businessQuotesRouter,
   chat: chatRouter,
+  push: pushRouter,
 });
 
 export type AppRouter = typeof appRouter;

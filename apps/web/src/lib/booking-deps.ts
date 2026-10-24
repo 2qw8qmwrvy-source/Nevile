@@ -1,5 +1,5 @@
 import "server-only";
-import { type BookingDeps, defaultEmailSender, getApiConfig } from "@nevile/api";
+import { type BookingDeps, defaultEmailSender, defaultPushSender, getApiConfig } from "@nevile/api";
 import { db } from "@nevile/db";
 import { FakePaymentProvider, getPaymentProvider, lazyPaymentProvider } from "@nevile/payments";
 
@@ -9,6 +9,7 @@ export function serverBookingDeps(): BookingDeps {
     db,
     payments: lazyPaymentProvider,
     email: defaultEmailSender,
+    push: defaultPushSender,
     config: getApiConfig(),
     now: () => new Date(),
   };

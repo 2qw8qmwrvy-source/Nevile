@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type {
   AccountState,
+  AppPayment,
+  CaptureMode,
   CheckoutSession,
   CheckoutState,
   CreateCheckoutInput,
+  CreatePaymentIntentInput,
   PaymentEvent,
+  PaymentIntentState,
   PaymentProvider,
 } from "./types.ts";
 
@@ -17,8 +21,10 @@ type FakeSession = {
 
 type FakeIntent = {
   amountCents: number;
-  status: "requires_capture" | "succeeded" | "canceled";
+  status: "requires_payment_method" | "requires_capture" | "succeeded" | "canceled";
   refundedCents: number;
+  /** In-app payments (SPEC §20) carry what the test payment screen shows. */
+  app?: { reference: string; capture: CaptureMode; description: string };
 };
 
 /** In-process record of fake money movements, for the dev pages and tests. */
@@ -149,6 +155,73 @@ export class FakePaymentProvider implements PaymentProvider {
     return {
       event: { type: "checkout_completed", sessionId, reference: session.input.reference },
       redirectUrl: session.input.successUrl.replace("{SESSION_ID}", encodeURIComponent(sessionId)),
+    };
+  }
+
+  async createPaymentIntent(input: CreatePaymentIntentInput): Promise<AppPayment> {
+    const existing = [...store().intents.entries()].find(
+      ([, intent]) => intent.app?.reference === input.reference,
+    );
+    const id = existing?.[0] ?? fakeId("pi");
+    if (!existing) {
+      store().intents.set(id, {
+        amountCents: input.amountCents,
+        status: "requires_payment_method",
+        refundedCents: 0,
+        app: { reference: input.reference, capture: input.capture, description: input.description },
+      });
+    }
+    return { id, clientSecret: `${id}_secret_fake` };
+  }
+
+  async getPaymentIntent(paymentIntentId: string): Promise<PaymentIntentState> {
+    const intent = store().intents.get(paymentIntentId);
+    return {
+      id: paymentIntentId,
+      reference: intent?.app?.reference ?? null,
+      payment:
+        intent?.status === "succeeded"
+          ? "paid"
+          : intent?.status === "requires_capture"
+            ? "authorized"
+            : intent?.status === "canceled" || !intent
+              ? "canceled"
+              : "unpaid",
+      amountCents: intent?.amountCents ?? 0,
+    };
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string): Promise<void> {
+    const intent = store().intents.get(paymentIntentId);
+    if (intent?.status === "requires_payment_method") intent.status = "canceled";
+  }
+
+  /** What the app's test payment screen shows for an in-app payment, or null. */
+  describeIntent(paymentIntentId: string) {
+    const intent = store().intents.get(paymentIntentId);
+    if (!intent?.app) return null;
+    return {
+      amountCents: intent.amountCents,
+      description: intent.app.description,
+      capture: intent.app.capture,
+      status: intent.status,
+    };
+  }
+
+  /**
+   * Pays (or authorises, for a hold) an in-app payment, like a customer finishing the
+   * payment sheet. Returns the event a webhook would have delivered.
+   */
+  payIntent(paymentIntentId: string): PaymentEvent {
+    const intent = store().intents.get(paymentIntentId);
+    if (!intent?.app) throw new Error("Unknown payment.");
+    if (intent.status !== "requires_payment_method") throw new Error("This payment is closed.");
+    const hold = intent.app.capture === "hold";
+    intent.status = hold ? "requires_capture" : "succeeded";
+    return {
+      type: hold ? "payment_authorized" : "payment_succeeded",
+      paymentIntentId,
+      reference: intent.app.reference,
     };
   }
 

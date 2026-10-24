@@ -22,6 +22,7 @@ import { lazyStorage, type MediaStorage } from "@nevile/storage";
 import { emailUnreadMessages } from "../chat/flows.ts";
 import { sendAll } from "../notify.ts";
 import { cleanUpUnattachedPhotos } from "../photos.ts";
+import { defaultPushSender, deliverPendingNotifications } from "../push.ts";
 import { expireQuoteRequests } from "../quotes/flows.ts";
 import { businessEmails, businessTeamEmails } from "./emails.ts";
 import {
@@ -292,6 +293,16 @@ export async function runScheduledJobs(
     ["quoteRequestsClosed", () => expireQuoteRequests(deps)],
     ["unreadChatEmails", () => emailUnreadMessages(deps)],
     ["photosCleanedUp", () => cleanUpUnattachedPhotos(deps.db, storage, deps.now())],
+    // Anything a crashed request didn't push yet.
+    [
+      "pushesDelivered",
+      () =>
+        deliverPendingNotifications({
+          db: deps.db,
+          push: deps.push ?? defaultPushSender,
+          now: deps.now,
+        }),
+    ],
   ];
   for (const [name, step] of steps) {
     try {

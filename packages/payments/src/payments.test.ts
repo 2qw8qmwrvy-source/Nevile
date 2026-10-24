@@ -154,7 +154,121 @@ function stripeWith(respond: (request: Recorded) => unknown) {
   return { provider, requests };
 }
 
+describe("fake provider: in-app payments (SPEC §20)", () => {
+  const fake = new FakePaymentProvider({ siteUrl: "https://nevile.test/" });
+  const intentInput = (reference: string, capture: "now" | "hold") => ({
+    reference,
+    amountCents: 6453,
+    capture,
+    customerEmail: null,
+    description: "Weekly mowing",
+    metadata: {},
+  });
+
+  it("creates one intent per checkout and charges it when the test sheet pays", async () => {
+    const first = await fake.createPaymentIntent(intentInput("app-1", "now"));
+    expect(await fake.createPaymentIntent(intentInput("app-1", "now"))).toEqual(first);
+    expect(first.clientSecret).toMatch(/_secret_/);
+    expect((await fake.getPaymentIntent(first.id)).payment).toBe("unpaid");
+    expect(fake.payIntent(first.id)).toEqual({
+      type: "payment_succeeded",
+      paymentIntentId: first.id,
+      reference: "app-1",
+    });
+    expect(await fake.getPaymentIntent(first.id)).toEqual({
+      id: first.id,
+      reference: "app-1",
+      payment: "paid",
+      amountCents: 6453,
+    });
+    expect(() => fake.payIntent(first.id)).toThrow("closed");
+    // Paid money can be refunded like any other charge.
+    await expect(
+      fake.refund({ paymentIntentId: first.id, amountCents: 1000, idempotencyKey: "app-r1" }),
+    ).resolves.toHaveProperty("refundId");
+  });
+
+  it("holds approval payments and cancels abandoned ones", async () => {
+    const held = await fake.createPaymentIntent(intentInput("app-2", "hold"));
+    expect(fake.payIntent(held.id).type).toBe("payment_authorized");
+    await fake.cancelPaymentIntent(held.id);
+    expect((await fake.getPaymentIntent(held.id)).payment).toBe("authorized");
+    await fake.release(held.id);
+    expect((await fake.getPaymentIntent(held.id)).payment).toBe("canceled");
+
+    const abandoned = await fake.createPaymentIntent(intentInput("app-3", "now"));
+    await fake.cancelPaymentIntent(abandoned.id);
+    expect((await fake.getPaymentIntent(abandoned.id)).payment).toBe("canceled");
+    expect(() => fake.payIntent(abandoned.id)).toThrow();
+  });
+});
+
 describe("Stripe provider", () => {
+  it("creates in-app payment intents in CAD, held for approvals, once per checkout", async () => {
+    const { provider, requests } = stripeWith(() => ({
+      id: "pi_app_1",
+      object: "payment_intent",
+      client_secret: "pi_app_1_secret_x",
+    }));
+    const payment = await provider.createPaymentIntent({
+      reference: "chk-app",
+      amountCents: 6453,
+      capture: "hold",
+      customerEmail: "cora@example.com",
+      description: "Weekly mowing",
+      metadata: { businessId: "b1" },
+    });
+    expect(payment).toEqual({ id: "pi_app_1", clientSecret: "pi_app_1_secret_x" });
+    const [request] = requests;
+    expect(request?.path).toBe("/v1/payment_intents");
+    expect(request?.headers.get("idempotency-key")).toBe("intent-chk-app");
+    expect(request?.body.get("amount")).toBe("6453");
+    expect(request?.body.get("currency")).toBe("cad");
+    expect(request?.body.get("capture_method")).toBe("manual");
+    expect(request?.body.get("metadata[reference]")).toBe("chk-app");
+    expect(request?.body.get("receipt_email")).toBe("cora@example.com");
+  });
+
+  it("reads in-app payment states and their webhooks", async () => {
+    const { provider } = stripeWith(() => ({
+      id: "pi_app_2",
+      object: "payment_intent",
+      status: "requires_capture",
+      amount: 6453,
+      metadata: { reference: "chk-2" },
+    }));
+    expect(await provider.getPaymentIntent("pi_app_2")).toEqual({
+      id: "pi_app_2",
+      reference: "chk-2",
+      payment: "authorized",
+      amountCents: 6453,
+    });
+    const event = (type: string) =>
+      JSON.stringify({
+        id: "evt_pi",
+        object: "event",
+        type,
+        data: {
+          object: { id: "pi_app_2", object: "payment_intent", metadata: { reference: "chk-2" } },
+        },
+      });
+    const parse = (payload: string) =>
+      provider.parseWebhook(
+        payload,
+        Stripe.webhooks.generateTestHeaderString({ payload, secret: "whsec_account" }),
+      );
+    expect(parse(event("payment_intent.succeeded"))).toEqual({
+      type: "payment_succeeded",
+      paymentIntentId: "pi_app_2",
+      reference: "chk-2",
+    });
+    expect(parse(event("payment_intent.amount_capturable_updated"))).toEqual({
+      type: "payment_authorized",
+      paymentIntentId: "pi_app_2",
+      reference: "chk-2",
+    });
+  });
+
   it("opens Checkout with manual capture for approval requests", async () => {
     const { provider, requests } = stripeWith(() => ({
       id: "cs_test_1",

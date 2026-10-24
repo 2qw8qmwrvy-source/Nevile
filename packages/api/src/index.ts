@@ -23,6 +23,7 @@ export type {
   MarketingConsentState,
   OnboardingState,
 } from "./profile-state.ts";
+export { defaultPushSender, type PushMessage, type PushSender } from "./push.ts";
 export { type AppRouter, appRouter, createCaller } from "./root.ts";
 export {
   BUSINESS_NAME_MAX_LENGTH,

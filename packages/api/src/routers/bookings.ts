@@ -14,18 +14,22 @@ import {
   priceSummary,
 } from "@nevile/core";
 import { addresses, type Business, bookingCheckouts, bookings, desc, eq } from "@nevile/db";
+import { FakePaymentProvider, getPaymentProvider, lazyPaymentProvider } from "@nevile/payments";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   type BookingDeps,
   bookableService,
   cancelByCustomer,
+  completeAppCheckout,
   completeCheckout,
   confirmDone,
   loadBookingParts,
   reportProblem,
+  startAppCheckout,
   startCheckout,
 } from "../bookings/flows.ts";
+import { handlePaymentEvent } from "../bookings/payouts.ts";
 import { loadSchedule, noticeRules } from "../bookings/schedule.ts";
 import { customerBookingView } from "../bookings/views.ts";
 import type { Context } from "../context.ts";
@@ -38,7 +42,34 @@ const isoDate = z
 const bookingIdInput = z.object({ bookingId: z.uuid() });
 
 export function bookingDeps(ctx: Context): BookingDeps {
-  return { db: ctx.db, payments: ctx.payments, email: ctx.email, config: ctx.config, now: ctx.now };
+  return {
+    db: ctx.db,
+    payments: ctx.payments,
+    email: ctx.email,
+    push: ctx.push,
+    config: ctx.config,
+    now: ctx.now,
+  };
+}
+
+/** The signed-in customer's own checkout, or NOT_FOUND. */
+async function ownCheckout(ctx: Context & { user: { id: string } }, checkoutId: string) {
+  const [checkout] = await ctx.db
+    .select()
+    .from(bookingCheckouts)
+    .where(eq(bookingCheckouts.id, checkoutId))
+    .limit(1);
+  if (!checkout || checkout.customerId !== ctx.user.id) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Checkout not found." });
+  }
+  return checkout;
+}
+
+/** The test payment provider, when this environment uses it (never in production). */
+function testProvider(ctx: Context): FakePaymentProvider | null {
+  if (process.env.NODE_ENV === "production") return null;
+  const provider = ctx.payments === lazyPaymentProvider ? getPaymentProvider() : ctx.payments;
+  return provider instanceof FakePaymentProvider ? provider : null;
 }
 
 /** The signed-in customer's booking, or NOT_FOUND (never someone else's). */
@@ -151,6 +182,53 @@ export const bookingsRouter = router({
         input,
       ),
     ),
+
+  /** The same, paid inside the app with the payment sheet (SPEC §20). */
+  appCheckout: verifiedProcedure
+    .input(bookingRequestSchema)
+    .mutation(({ ctx, input }) =>
+      startAppCheckout(
+        bookingDeps(ctx),
+        { id: ctx.user.id, email: contactEmail(ctx.user.email) },
+        input,
+      ),
+    ),
+
+  /** After the app's payment sheet: turns the checkout into a booking (if the webhook hasn't). */
+  finishAppCheckout: protectedProcedure
+    .input(z.object({ checkoutId: z.uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await ownCheckout(ctx, input.checkoutId);
+      return completeAppCheckout(bookingDeps(ctx), input.checkoutId);
+    }),
+
+  /**
+   * Development only: pays an in-app checkout on the test provider, like finishing the
+   * payment sheet. NOT_FOUND in production and with Stripe.
+   */
+  payTestCheckout: protectedProcedure
+    .input(z.object({ checkoutId: z.uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const fake = testProvider(ctx);
+      if (!fake) throw new TRPCError({ code: "NOT_FOUND", message: "Not available." });
+      const checkout = await ownCheckout(ctx, input.checkoutId);
+      if (!checkout.providerPaymentIntentId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This checkout isn't paid in the app.",
+        });
+      }
+      try {
+        await handlePaymentEvent(
+          bookingDeps(ctx),
+          fake.payIntent(checkout.providerPaymentIntentId),
+        );
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This payment is closed." });
+      }
+      return completeAppCheckout(bookingDeps(ctx), input.checkoutId);
+    }),
 
   /** After paying: turns the checkout into a booking (if the webhook hasn't yet). */
   finishCheckout: protectedProcedure

@@ -71,6 +71,13 @@
       "when": 1792799043676,
       "tag": "0009_quotes_chat_v1_4",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792808630468,
+      "tag": "0010_push_v1_4",
+      "breakpoints": true
     }
   ]
 }

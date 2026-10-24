@@ -40,8 +40,10 @@ import { TRPCError } from "@trpc/server";
 import { businessTeamEmails, customerEmail } from "../bookings/emails.ts";
 import { firstName } from "../bookings/views.ts";
 import type { ApiConfig } from "../config.ts";
+import { businessTeamUserIds } from "../inbox.ts";
 import { sendAll } from "../notify.ts";
 import { attachPhotos, CONVERSATION_ROLES, photosFor } from "../photos.ts";
+import { defaultPushSender, type PushSender, pushToUsers } from "../push.ts";
 import { chatEmails } from "./emails.ts";
 
 export type ChatSide = "customer" | "business";
@@ -133,7 +135,7 @@ export async function contactShared(
 
 /** Sends a message (text and/or photos). Contact details are masked for the other side. */
 export async function sendMessage(
-  deps: { db: Database; now: () => Date },
+  deps: { db: Database; now: () => Date; push?: PushSender },
   userId: string,
   conversationId: string,
   raw: MessageInput,
@@ -156,7 +158,7 @@ export async function sendMessage(
       message: "You're sending messages very quickly. Wait a moment and try again.",
     });
   }
-  return deps.db.transaction(async (tx) => {
+  const sent = await deps.db.transaction(async (tx) => {
     const [message] = await tx
       .insert(messages)
       .values({
@@ -193,6 +195,41 @@ export async function sendMessage(
     }
     return { id: message.id };
   });
+  await pushMessage(deps, { conversation, side }, input.body);
+  return sent;
+}
+
+/** A phone push to the other side of the conversation (SPEC §20). Never throws. */
+async function pushMessage(
+  deps: { db: Database; push?: PushSender },
+  { conversation, side }: ConversationAccess,
+  body: string,
+): Promise<void> {
+  try {
+    const summary = await conversationSummary(deps.db, {
+      conversation,
+      side: side === "customer" ? "business" : "customer",
+    });
+    const recipients =
+      side === "customer"
+        ? await businessTeamUserIds(deps.db, conversation.businessId)
+        : [conversation.customerId];
+    const shown = summary.contactShared ? body : maskContactInfo(body);
+    const [sender] =
+      side === "customer"
+        ? await deps.db
+            .select({ name: user.name })
+            .from(user)
+            .where(eq(user.id, conversation.customerId))
+        : [];
+    await pushToUsers({ db: deps.db, push: deps.push ?? defaultPushSender }, recipients, {
+      title: side === "customer" ? firstName(sender?.name) : (summary.business?.name ?? "Nevile"),
+      body: shown ? shown.slice(0, 180) : "Sent a photo",
+      path: `/inbox/${conversation.id}`,
+    });
+  } catch (error) {
+    console.error("[chat] push failed", error);
+  }
 }
 
 export async function markRead(

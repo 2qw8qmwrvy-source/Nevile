@@ -45,7 +45,7 @@ import {
 } from "@nevile/db";
 import { TRPCError } from "@trpc/server";
 import { businessTeamEmails, customerEmail } from "../bookings/emails.ts";
-import type { BookingDeps } from "../bookings/flows.ts";
+import { type BookingDeps, pushNotifications } from "../bookings/flows.ts";
 import { firstName } from "../bookings/views.ts";
 import { openConversation } from "../chat/flows.ts";
 import { businessTeamUserIds, NOTIFICATION_TYPES, notify } from "../inbox.ts";
@@ -295,6 +295,7 @@ export async function requestQuotes(
     return group.id;
   });
   await sendAll(deps.email, mail);
+  await pushNotifications(deps);
   return { groupId };
 }
 
@@ -396,6 +397,7 @@ export async function sendQuote(
     );
   });
   await sendAll(deps.email, mail);
+  await pushNotifications(deps);
 }
 
 /** Tells the customer when every pro on a request closed without ever quoting. */
@@ -481,6 +483,7 @@ export async function declineRequest(
     mail.push(...(await noQuotesMail(tx, deps, group, category.name)));
   });
   await sendAll(deps.email, mail);
+  await pushNotifications(deps);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -564,6 +567,7 @@ export async function closeRequestGroup(
     return closeCopies(tx, deps, locked.group, locked.category.name, "customer_closed", now, null);
   });
   await sendAll(deps.email, mail);
+  await pushNotifications(deps);
 }
 
 /**
@@ -712,6 +716,7 @@ export async function expireQuoteRequests(deps: BookingDeps): Promise<number> {
       return noQuotesMail(tx, deps, locked.group, locked.category.name);
     });
     await sendAll(deps.email, mail);
+    await pushNotifications(deps);
   }
   return closed;
 }

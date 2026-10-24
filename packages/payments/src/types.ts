@@ -35,6 +35,28 @@ export type CheckoutState = {
   amountCents: number | null;
 };
 
+/** Paying inside the phone app (SPEC §20): a payment intent the app confirms itself. */
+export type CreatePaymentIntentInput = {
+  /** Our checkout id; also the idempotency key, so a retry never creates two intents. */
+  reference: string;
+  amountCents: number;
+  capture: CaptureMode;
+  customerEmail: string | null;
+  description: string;
+  metadata: Record<string, string>;
+};
+
+/** What the app needs to show the payment sheet. */
+export type AppPayment = { id: string; clientSecret: string };
+
+export type PaymentIntentState = {
+  id: string;
+  reference: string | null;
+  /** `authorized`: held on the card; `canceled`: closed without a charge. */
+  payment: "paid" | "authorized" | "unpaid" | "canceled";
+  amountCents: number;
+};
+
 export type AccountState = { payoutsEnabled: boolean; detailsSubmitted: boolean };
 
 /** What a provider notification means for Nevile. */
@@ -42,6 +64,9 @@ export type PaymentEvent =
   | { type: "checkout_completed"; sessionId: string; reference: string | null }
   | { type: "checkout_expired"; sessionId: string; reference: string | null }
   | { type: "account_updated"; accountId: string; payoutsEnabled: boolean }
+  /** An in-app payment was charged (or, for a hold, authorised). */
+  | { type: "payment_succeeded"; paymentIntentId: string; reference: string | null }
+  | { type: "payment_authorized"; paymentIntentId: string; reference: string | null }
   | { type: "ignored"; eventType: string };
 
 export class WebhookSignatureError extends Error {
@@ -52,8 +77,8 @@ export class WebhookSignatureError extends Error {
 }
 
 /**
- * Everything Nevile asks of a payment provider (SPEC §7, §19). Card details are only ever
- * entered on the provider's own checkout page.
+ * Everything Nevile asks of a payment provider (SPEC §7, §19, §20). Card details are only
+ * ever entered on the provider's own checkout page or payment sheet.
  */
 export interface PaymentProvider {
   readonly name: ProviderName;
@@ -61,6 +86,11 @@ export interface PaymentProvider {
   getCheckout(sessionId: string): Promise<CheckoutState>;
   /** Closes an unpaid session early (no-op once it's complete or expired). */
   expireCheckout(sessionId: string): Promise<void>;
+  /** In-app payment (SPEC §20): the app confirms it with the provider's payment sheet. */
+  createPaymentIntent(input: CreatePaymentIntentInput): Promise<AppPayment>;
+  getPaymentIntent(paymentIntentId: string): Promise<PaymentIntentState>;
+  /** Closes an unpaid intent (no-op once it's paid, held or closed). */
+  cancelPaymentIntent(paymentIntentId: string): Promise<void>;
   /** Charges a held amount. */
   capture(paymentIntentId: string): Promise<void>;
   /** Releases a held amount without charging it. */

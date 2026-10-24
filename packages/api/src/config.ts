@@ -12,12 +12,15 @@ export interface ApiConfig {
   readonly siteUrl: string;
   /** Where Nevile staff are told about escalated problems (`NEVILE_OPS_EMAIL`), if set. */
   readonly opsEmail: string | null;
+  /** Stripe's publishable key for the app's payment sheet (`STRIPE_PUBLISHABLE_KEY`). */
+  readonly stripePublishableKey: string | null;
 }
 
 export const DEFAULT_API_CONFIG: ApiConfig = Object.freeze({
   neighboursEnabled: false,
   siteUrl: "http://localhost:3000",
   opsEmail: null,
+  stripePublishableKey: null,
 });
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -50,6 +53,7 @@ export function readApiConfig(env: Env = process.env): ApiConfig {
     ),
     siteUrl,
     opsEmail: env.NEVILE_OPS_EMAIL?.trim() || null,
+    stripePublishableKey: env.STRIPE_PUBLISHABLE_KEY?.trim() || null,
   });
 }
 

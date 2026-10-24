@@ -9,6 +9,7 @@ import { createLocalStorage } from "@nevile/storage";
 import { TRPCError } from "@trpc/server";
 import { type ApiConfig, DEFAULT_API_CONFIG } from "../config.ts";
 import { type Context, createContext } from "../context.ts";
+import type { PushMessage, PushSender } from "../push.ts";
 import { freshTestDatabase } from "./database.ts";
 
 export const BASE_URL = "http://localhost:3000";
@@ -51,6 +52,15 @@ export async function createHarness(baseUrl: string) {
   const sms: SmsMessage[] = [];
   const payments = new FakePaymentProvider({ siteUrl: BASE_URL });
   const email = { send: async (message: EmailMessage) => void emails.push(message) };
+  // Phone pushes are captured; tokens listed in `deadTokens` come back as unregistered.
+  const pushes: PushMessage[] = [];
+  const deadTokens = new Set<string>();
+  const push: PushSender = {
+    send: async (messages) => {
+      pushes.push(...messages);
+      return { invalidTokens: messages.map((m) => m.to).filter((token) => deadTokens.has(token)) };
+    },
+  };
   // Tests move time with `clock.set(...)`; null means the real time.
   let fixedNow: Date | null = null;
   const clock = {
@@ -77,6 +87,7 @@ export async function createHarness(baseUrl: string) {
       storage,
       payments,
       email,
+      push,
       now: clock.now,
     });
   }
@@ -136,6 +147,7 @@ export async function createHarness(baseUrl: string) {
       storage,
       payments,
       email,
+      push,
       now: clock.now,
     };
   }
@@ -148,6 +160,8 @@ export async function createHarness(baseUrl: string) {
     payments,
     clock,
     emails,
+    pushes,
+    deadTokens,
     sms,
     contextFor,
     verifyEmail,

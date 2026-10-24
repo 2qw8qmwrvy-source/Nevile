@@ -1,10 +1,13 @@
 import Stripe from "stripe";
 import {
   type AccountState,
+  type AppPayment,
   type CheckoutSession,
   type CheckoutState,
   type CreateCheckoutInput,
+  type CreatePaymentIntentInput,
   type PaymentEvent,
+  type PaymentIntentState,
   type PaymentProvider,
   WebhookSignatureError,
 } from "./types.ts";
@@ -104,6 +107,53 @@ export class StripePaymentProvider implements PaymentProvider {
         intent?.id ?? (typeof session.payment_intent === "string" ? session.payment_intent : null),
       amountCents: session.amount_total,
     };
+  }
+
+  async createPaymentIntent(input: CreatePaymentIntentInput): Promise<AppPayment> {
+    const intent = await this.#stripe.paymentIntents.create(
+      {
+        amount: input.amountCents,
+        currency: CURRENCY,
+        capture_method: input.capture === "hold" ? "manual" : "automatic",
+        // Cards, including Apple Pay and Google Pay, which also support holds.
+        payment_method_types: ["card"],
+        description: input.description,
+        ...(input.customerEmail ? { receipt_email: input.customerEmail } : {}),
+        metadata: { ...input.metadata, reference: input.reference },
+        transfer_group: input.reference,
+      },
+      { idempotencyKey: `intent-${input.reference}` },
+    );
+    if (!intent.client_secret) throw new Error("Stripe didn't return a client secret.");
+    return { id: intent.id, clientSecret: intent.client_secret };
+  }
+
+  async getPaymentIntent(paymentIntentId: string): Promise<PaymentIntentState> {
+    const intent = await this.#stripe.paymentIntents.retrieve(paymentIntentId);
+    return {
+      id: intent.id,
+      reference: intent.metadata.reference ?? null,
+      payment:
+        intent.status === "succeeded"
+          ? "paid"
+          : intent.status === "requires_capture"
+            ? "authorized"
+            : intent.status === "canceled"
+              ? "canceled"
+              : "unpaid",
+      amountCents: intent.amount,
+    };
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string): Promise<void> {
+    const intent = await this.#stripe.paymentIntents.retrieve(paymentIntentId);
+    // Held or charged money is released or refunded by the booking flows, never here.
+    if (["succeeded", "canceled", "requires_capture", "processing"].includes(intent.status)) return;
+    await this.#stripe.paymentIntents.cancel(
+      paymentIntentId,
+      { cancellation_reason: "abandoned" },
+      { idempotencyKey: `cancel-intent-${paymentIntentId}` },
+    );
   }
 
   async expireCheckout(sessionId: string): Promise<void> {
@@ -215,6 +265,18 @@ export class StripePaymentProvider implements PaymentProvider {
           type: "checkout_expired",
           sessionId: event.data.object.id,
           reference: event.data.object.client_reference_id,
+        };
+      case "payment_intent.succeeded":
+        return {
+          type: "payment_succeeded",
+          paymentIntentId: event.data.object.id,
+          reference: event.data.object.metadata.reference ?? null,
+        };
+      case "payment_intent.amount_capturable_updated":
+        return {
+          type: "payment_authorized",
+          paymentIntentId: event.data.object.id,
+          reference: event.data.object.metadata.reference ?? null,
         };
       case "account.updated":
         return {

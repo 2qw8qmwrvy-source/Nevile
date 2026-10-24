@@ -4,6 +4,7 @@ import { lazyPaymentProvider, type PaymentProvider } from "@nevile/payments";
 import { lazyStorage, type MediaStorage } from "@nevile/storage";
 import { type ApiConfig, getApiConfig } from "./config.ts";
 import { defaultEmailSender } from "./notify.ts";
+import { defaultPushSender, type PushSender } from "./push.ts";
 
 export interface Context {
   db: Database;
@@ -19,6 +20,8 @@ export interface Context {
   payments: PaymentProvider;
   /** Booking notifications. Sends never block or undo a booking change. */
   email: EmailSender;
+  /** Phone push notifications (SPEC §20). Like email, never blocks a change. */
+  push: PushSender;
   /** The current time; tests move it. */
   now: () => Date;
 }
@@ -41,6 +44,7 @@ export interface CreateContextOptions {
   /** Defaults to the provider configured by PAYMENTS_PROVIDER (`@nevile/payments`). */
   payments?: PaymentProvider;
   email?: EmailSender;
+  push?: PushSender;
   now?: () => Date;
 }
 
@@ -66,6 +70,7 @@ export async function createContext(options: CreateContextOptions): Promise<Cont
     storage: options.storage ?? lazyStorage,
     payments: options.payments ?? lazyPaymentProvider,
     email: options.email ?? defaultEmailSender,
+    push: options.push ?? defaultPushSender,
     now: options.now ?? (() => new Date()),
   };
 }

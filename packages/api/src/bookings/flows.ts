@@ -62,6 +62,7 @@ import type { ApiConfig } from "../config.ts";
 import { isInstantBookable } from "../listing-state.ts";
 import { sendAll } from "../notify.ts";
 import { lookupPostalArea } from "../postal.ts";
+import { defaultPushSender, deliverPendingNotifications, type PushSender } from "../push.ts";
 import { acceptQuoteInTx, bookableQuote } from "../quotes/flows.ts";
 import {
   type BookingMailFacts,
@@ -79,9 +80,20 @@ export type BookingDeps = {
   db: Database;
   payments: PaymentProvider;
   email: EmailSender;
+  /** Phone pushes for in-app notifications (defaults to the environment's sender). */
+  push?: PushSender;
   config: ApiConfig;
   now: () => Date;
 };
+
+/** After a change that created in-app notifications: push them to phones. */
+export async function pushNotifications(deps: BookingDeps): Promise<void> {
+  await deliverPendingNotifications({
+    db: deps.db,
+    push: deps.push ?? defaultPushSender,
+    now: deps.now,
+  });
+}
 
 type Mail = EmailMessage[];
 
@@ -287,17 +299,24 @@ type CheckoutTarget = {
   cancelUrl: string;
 };
 
-/**
- * Starts paying for a one-off booking (SPEC §19): validates the window and address,
- * prices it on the server, holds the time for 30 minutes and opens the provider's checkout.
- */
-export async function startCheckout(
-  deps: BookingDeps,
-  customer: { id: string; email: string | null },
-  input: CheckoutRequest,
-): Promise<{ checkoutId: string; url: string }> {
-  const { service, business, area, priceCents } = await bookableService(deps.db, input.serviceId);
-  return openCheckout(deps, customer, input, {
+/** The customer-facing side of an in-app payment: what the payment sheet needs. */
+export type AppCheckout = {
+  checkoutId: string;
+  provider: "stripe" | "fake";
+  paymentIntentId: string;
+  clientSecret: string;
+  /** Stripe's publishable key for the app (null with the test provider). */
+  publishableKey: string | null;
+  amountCents: number;
+  capture: "now" | "hold";
+  description: string;
+};
+
+type Opened = { checkoutId: string; url: string } | AppCheckout;
+
+async function serviceTarget(deps: BookingDeps, serviceId: string): Promise<CheckoutTarget> {
+  const { service, business, area, priceCents } = await bookableService(deps.db, serviceId);
+  return {
     business,
     area,
     serviceId: service.id,
@@ -308,7 +327,64 @@ export async function startCheckout(
     instantBook: isInstantBookable(business, service),
     requiredArea: null,
     cancelUrl: `${deps.config.siteUrl}/pros/${business.slug}/book?service=${service.id}`,
-  });
+  };
+}
+
+async function quoteTarget(
+  deps: BookingDeps,
+  customerId: string,
+  quoteId: string,
+): Promise<CheckoutTarget> {
+  const { quote, request, group, category } = await bookableQuote(
+    deps.db,
+    customerId,
+    quoteId,
+    deps.now(),
+  );
+  const [row] = await deps.db
+    .select({ business: businesses, area: serviceAreas })
+    .from(businesses)
+    .innerJoin(serviceAreas, eq(serviceAreas.businessId, businesses.id))
+    .where(eq(businesses.id, request.businessId))
+    .limit(1);
+  if (!row?.business.publishedAt || row.business.suspendedAt) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "This pro isn't on Nevile right now." });
+  }
+  return {
+    business: row.business,
+    area: row.area,
+    serviceId: request.serviceId,
+    quoteId: quote.id,
+    title: `${category.name} (quoted)`,
+    priceCents: quote.priceCents,
+    workMinutes: quote.durationMinutes ?? 60,
+    instantBook: true,
+    requiredArea: group.postalCode,
+    cancelUrl: `${deps.config.siteUrl}/quotes/${group.id}`,
+  };
+}
+
+/**
+ * Starts paying for a one-off booking (SPEC §19): validates the window and address,
+ * prices it on the server, holds the time for 30 minutes and opens the provider's checkout.
+ */
+export async function startCheckout(
+  deps: BookingDeps,
+  customer: { id: string; email: string | null },
+  input: CheckoutRequest,
+): Promise<{ checkoutId: string; url: string }> {
+  const target = await serviceTarget(deps, input.serviceId);
+  return asPage(await openCheckout(deps, customer, input, target, "web"));
+}
+
+/** The same, paid inside the app with the payment sheet (SPEC §20). */
+export async function startAppCheckout(
+  deps: BookingDeps,
+  customer: { id: string; email: string | null },
+  input: CheckoutRequest,
+): Promise<AppCheckout> {
+  const target = await serviceTarget(deps, input.serviceId);
+  return asSheet(await openCheckout(deps, customer, input, target, "app"));
 }
 
 export type QuoteCheckoutRequest = Omit<CheckoutRequest, "serviceId"> & { quoteId: string };
@@ -323,38 +399,32 @@ export async function startQuoteCheckout(
   customer: { id: string; email: string | null },
   input: QuoteCheckoutRequest,
 ): Promise<{ checkoutId: string; url: string }> {
-  const { quote, request, group, category } = await bookableQuote(
-    deps.db,
-    customer.id,
-    input.quoteId,
-    deps.now(),
+  const target = await quoteTarget(deps, customer.id, input.quoteId);
+  return asPage(
+    await openCheckout(deps, customer, { ...input, serviceId: target.serviceId }, target, "web"),
   );
-  const [row] = await deps.db
-    .select({ business: businesses, area: serviceAreas })
-    .from(businesses)
-    .innerJoin(serviceAreas, eq(serviceAreas.businessId, businesses.id))
-    .where(eq(businesses.id, request.businessId))
-    .limit(1);
-  if (!row?.business.publishedAt || row.business.suspendedAt) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "This pro isn't on Nevile right now." });
-  }
-  return openCheckout(
-    deps,
-    customer,
-    { ...input, serviceId: request.serviceId },
-    {
-      business: row.business,
-      area: row.area,
-      serviceId: request.serviceId,
-      quoteId: quote.id,
-      title: `${category.name} (quoted)`,
-      priceCents: quote.priceCents,
-      workMinutes: quote.durationMinutes ?? 60,
-      instantBook: true,
-      requiredArea: group.postalCode,
-      cancelUrl: `${deps.config.siteUrl}/quotes/${group.id}`,
-    },
+}
+
+/** Booking a quote inside the app. */
+export async function startQuoteAppCheckout(
+  deps: BookingDeps,
+  customer: { id: string; email: string | null },
+  input: QuoteCheckoutRequest,
+): Promise<AppCheckout> {
+  const target = await quoteTarget(deps, customer.id, input.quoteId);
+  return asSheet(
+    await openCheckout(deps, customer, { ...input, serviceId: target.serviceId }, target, "app"),
   );
+}
+
+function asPage(opened: Opened): { checkoutId: string; url: string } {
+  if (!("url" in opened)) throw new Error("expected a payment page");
+  return opened;
+}
+
+function asSheet(opened: Opened): AppCheckout {
+  if ("url" in opened) throw new Error("expected an in-app payment");
+  return opened;
 }
 
 async function openCheckout(
@@ -362,7 +432,8 @@ async function openCheckout(
   customer: { id: string; email: string | null },
   input: CheckoutRequest,
   target: CheckoutTarget,
-): Promise<{ checkoutId: string; url: string }> {
+  channel: "web" | "app",
+): Promise<Opened> {
   const now = deps.now();
   const { business, area, priceCents, instantBook } = target;
   if (target.requiredArea && !sameQuoteArea(target.requiredArea, input.address.postalCode)) {
@@ -503,7 +574,36 @@ async function openCheckout(
 
   const when = whenLabel(checkout.startsAt, checkout.endsAt, checkout.timezone);
   const tax = checkout.priceTaxCents + checkout.feeTaxCents;
+  const capture = instantBook ? "now" : "hold";
+  const description = `${business.name}: ${target.title}, ${when}`;
   try {
+    if (channel === "app") {
+      if (deps.payments.name === "stripe" && !deps.config.stripePublishableKey) {
+        throw new Error("STRIPE_PUBLISHABLE_KEY is not set");
+      }
+      const intent = await deps.payments.createPaymentIntent({
+        reference: checkout.id,
+        amountCents: checkout.totalCents,
+        capture,
+        customerEmail: customer.email,
+        description,
+        metadata: { checkoutId: checkout.id, businessId: business.id },
+      });
+      await deps.db
+        .update(bookingCheckouts)
+        .set({ providerPaymentIntentId: intent.id })
+        .where(eq(bookingCheckouts.id, checkout.id));
+      return {
+        checkoutId: checkout.id,
+        provider: deps.payments.name,
+        paymentIntentId: intent.id,
+        clientSecret: intent.clientSecret,
+        publishableKey: deps.payments.name === "stripe" ? deps.config.stripePublishableKey : null,
+        amountCents: checkout.totalCents,
+        capture,
+        description,
+      };
+    }
     const session = await deps.payments.createCheckout({
       reference: checkout.id,
       lines: [
@@ -511,9 +611,9 @@ async function openCheckout(
         { name: "Service fee", amountCents: checkout.serviceFeeCents },
         ...(tax > 0 ? [{ name: "HST", amountCents: tax }] : []),
       ],
-      capture: instantBook ? "now" : "hold",
+      capture,
       customerEmail: customer.email,
-      description: `${business.name}: ${target.title}, ${when}`,
+      description,
       successUrl: `${deps.config.siteUrl}/bookings/return?session={SESSION_ID}`,
       cancelUrl: target.cancelUrl,
       expiresAt,
@@ -578,7 +678,53 @@ export async function completeCheckout(
   if (state.status !== "complete" || state.payment === "unpaid" || !state.paymentIntentId) {
     return { status: "pending" };
   }
-  const paymentIntentId = state.paymentIntentId;
+  return finalizeCheckout(deps, existing, state.payment, state.paymentIntentId);
+}
+
+/**
+ * Finishes an in-app checkout (SPEC §20) from its payment intent: called by the app after
+ * the payment sheet, by the payment webhook, and by the test payment screen.
+ */
+export async function completeAppCheckout(
+  deps: BookingDeps,
+  checkoutId: string,
+): Promise<CheckoutOutcome> {
+  const [existing] = await deps.db
+    .select()
+    .from(bookingCheckouts)
+    .where(eq(bookingCheckouts.id, checkoutId))
+    .limit(1);
+  if (!existing?.providerPaymentIntentId || existing.providerSessionId)
+    return { status: "unknown" };
+  if (existing.status === "completed" && existing.bookingId) {
+    const [booking] = await deps.db
+      .select()
+      .from(bookings)
+      .where(eq(bookings.id, existing.bookingId));
+    return {
+      status: booking?.status === "requested" ? "requested" : "booked",
+      bookingId: existing.bookingId,
+    };
+  }
+  const state = await deps.payments.getPaymentIntent(existing.providerPaymentIntentId);
+  if (state.payment === "canceled") {
+    await deps.db
+      .update(bookingCheckouts)
+      .set({ status: "expired" })
+      .where(and(eq(bookingCheckouts.id, existing.id), eq(bookingCheckouts.status, "open")));
+    return { status: "expired" };
+  }
+  if (state.payment === "unpaid") return { status: "pending" };
+  return finalizeCheckout(deps, existing, state.payment, state.id);
+}
+
+/** Turns a paid or authorised checkout into a booking, exactly once (both channels). */
+async function finalizeCheckout(
+  deps: BookingDeps,
+  existing: BookingCheckout,
+  paymentState: "paid" | "authorized",
+  paymentIntentId: string,
+): Promise<CheckoutOutcome> {
   const now = deps.now();
   const mail: Mail = [];
 
@@ -621,7 +767,7 @@ export async function completeCheckout(
       };
     }
 
-    const confirmed = state.payment === "paid";
+    const confirmed = paymentState === "paid";
     const [booking] = await tx
       .insert(bookings)
       .values({
@@ -748,7 +894,7 @@ export async function completeCheckout(
 
   if (outcome.status === "refunded") {
     // Nothing was booked: give the money back in full.
-    if (state.payment === "paid") {
+    if (paymentState === "paid") {
       await deps.payments.refund({
         paymentIntentId,
         amountCents: existing.totalCents,
@@ -759,6 +905,7 @@ export async function completeCheckout(
     }
   }
   await sendAll(deps.email, mail);
+  await pushNotifications(deps);
   return outcome;
 }
 
@@ -806,6 +953,13 @@ export async function expireCheckouts(deps: BookingDeps): Promise<number> {
       const outcome = await completeCheckout(deps, checkout.providerSessionId).catch(() => null);
       if (outcome && outcome.status !== "pending" && outcome.status !== "unknown") continue;
       await deps.payments.expireCheckout(checkout.providerSessionId).catch(() => undefined);
+    } else if (checkout.providerPaymentIntentId) {
+      // An in-app payment finished at the last moment becomes a booking instead.
+      const outcome = await completeAppCheckout(deps, checkout.id).catch(() => null);
+      if (outcome && outcome.status !== "pending" && outcome.status !== "unknown") continue;
+      await deps.payments
+        .cancelPaymentIntent(checkout.providerPaymentIntentId)
+        .catch(() => undefined);
     }
     await deps.db
       .update(bookingCheckouts)

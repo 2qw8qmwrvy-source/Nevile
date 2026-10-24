@@ -10,7 +10,7 @@ import {
 import { businesses, eq } from "@nevile/db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { startQuoteCheckout } from "../bookings/flows.ts";
+import { startQuoteAppCheckout, startQuoteCheckout } from "../bookings/flows.ts";
 import {
   bookableQuote,
   closeRequestGroup,
@@ -109,6 +109,17 @@ export const quotesRouter = router({
         ...(await openWindows(ctx, business, quote.durationMinutes ?? 60, input)),
       };
     }),
+
+  /** Booking an accepted quote, paid inside the app (SPEC §20). */
+  appCheckout: verifiedProcedure
+    .input(bookingRequestSchema.omit({ serviceId: true }).extend({ quoteId: z.uuid() }))
+    .mutation(({ ctx, input }) =>
+      startQuoteAppCheckout(
+        bookingDeps(ctx),
+        { id: ctx.user.id, email: contactEmail(ctx.user.email) },
+        input,
+      ),
+    ),
 
   /** Holds the window and opens the payment page for an accepted quote. */
   checkout: verifiedProcedure

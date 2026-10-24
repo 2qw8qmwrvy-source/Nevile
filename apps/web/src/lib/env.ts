@@ -38,7 +38,13 @@ const productionSchema = z.object({
   STRIPE_CONNECT_WEBHOOK_SECRET: z
     .union([z.literal(""), z.string().startsWith("whsec_", { message: "must start with whsec_" })])
     .optional(),
+  // The app's payment sheet (SPEC §20).
+  STRIPE_PUBLISHABLE_KEY: z
+    .string({ message: "is required (Stripe publishable key, for the app)" })
+    .regex(/^pk_(live|test)_/, { message: "must be a Stripe publishable key (pk_live_…)" }),
   NEVILE_ALLOW_TEST_PAYMENTS: booleanFlag,
+  // Optional: Expo push security (an access token from your Expo account).
+  EXPO_ACCESS_TOKEN: z.string().optional(),
   // Scheduled jobs (/api/cron) are refused without it.
   CRON_SECRET: z
     .string({ message: "is required (openssl rand -base64 32)" })

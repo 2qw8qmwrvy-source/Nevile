@@ -15,11 +15,14 @@ export const notifications = pgTable(
     type: text("type").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
     readAt: tstz("read_at"),
+    // When it was sent to the person's phones (SPEC §20); null until pushed.
+    pushedAt: tstz("pushed_at"),
     createdAt: createdAt(),
   },
   (t) => [
     index("notifications_user_created_idx").on(t.userId, t.createdAt.desc()),
     index("notifications_user_unread_idx").on(t.userId).where(sql`${t.readAt} IS NULL`),
+    index("notifications_unpushed_idx").on(t.createdAt).where(sql`${t.pushedAt} IS NULL`),
   ],
 );
 
