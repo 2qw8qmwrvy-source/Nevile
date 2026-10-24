@@ -274,7 +274,7 @@ cleanup; May: lawn-mowing season; August: book fall gutter and leaf cleanup).
 4. ~~Listings & search (v1.2, §18).~~
 5. ~~One-off booking, crew calendar & payments (v1.3, §19).~~
 6. ~~Quotes & chat, booking and paying in the app, business mode in the app (v1.4, §20).~~
-7. Recurring jobs & snow contracts (v1.5) → tips, donations at checkout → ratings →
+7. Recurring jobs & snow contracts (v1.5, §21) → tips, donations at checkout → ratings →
    subscription → admin.
 
 ## 15. Nevile Neighbours (community program)
@@ -582,3 +582,98 @@ and **full business mode**. Recurring jobs and snow contracts come in v1.5.
   Tapping a notification opens the matching screen.
 - Starting another payment for the same pro replaces the earlier one, and the earlier
   payment is cancelled at the provider so it can no longer be paid.
+
+## 21. Recurring jobs & snow contracts (v1.5)
+
+Ongoing work, on the website and in the app, for customers and businesses. This section
+refines §4 (scheduling), §7 (charge timing) and §10 (agreements) for these two booking
+kinds.
+
+### Saved card
+
+- Ongoing bookings charge **one saved card** per customer, kept by Stripe (Nevile stores
+  only the brand, last 4 digits and expiry). It's saved the first time it's needed: on
+  the website through Stripe's secure page, in the app through Stripe's payment sheet
+  (cards, Apple Pay, Google Pay). **Account → Payment method** shows it and lets the
+  customer replace it; every ongoing booking then uses the new card.
+- One-off jobs still pay upfront as in §19 and don't need a saved card.
+- **A charge that fails** is retried once a day for 3 days, and the customer is told right
+  away (in-app, email, push) with a link to update the card; updating it retries at once.
+  If it still fails: a recurring visit not paid **24 hours before** it starts is cancelled
+  and the series is **paused** (no more charges or visits until the customer updates the
+  card and resumes it); a snow contract is **paused** (no new visits or instalments) and
+  the unpaid amount stays owed.
+
+### Recurring jobs
+
+- A fixed-price service can allow **weekly**, **every 2 weeks** and/or **monthly** visits
+  (the business picks which). The customer picks one of those, the first day and arrival
+  window, and an end date **at most 6 months** after the first visit. Visits keep the
+  first visit's weekday (or day of the month) and window.
+- Before sending, every visit is checked against the business's capacity. Dates whose
+  window is full are flagged; for each the customer can **skip it** or **pick another
+  window that day**.
+- A recurring booking is a **request the business must accept** within 24 hours, even
+  with Instant Book on; nothing is charged before that. On acceptance the visits are
+  placed on the calendar (dates that stopped fitting in the meantime are skipped and
+  listed to both sides) and the series is confirmed.
+- Each visit is charged **3 days before** it (§7), or at acceptance if that's later.
+  Visits complete, get confirmed, disputed and paid out one by one, like one-off jobs.
+- The customer gets a **reminder the day before** each visit.
+- **Changes:** the customer can **skip** one visit (the cancellation policy applies to that
+  visit as if it were a one-off job) or **end the series** (future visits outside the
+  policy's free window are cancelled free; one inside it follows the policy). The business
+  can **move** one visit to another window or day (the customer is notified and can reply
+  in chat), **cancel** one visit (full refund) or **end the series** (future visits
+  refunded in full). A series ends by itself after its last visit.
+
+### Snow contracts
+
+- A business lists a **seasonal snow contract** as a service in Snow & Ice Removal:
+  snowfall trigger (e.g. 5 cm), season dates (e.g. Nov 15 – Mar 31), price **per visit**
+  or **for the whole season**, and **how many customers** it can take (spots). A season
+  price is paid **upfront**, **monthly** or **either** (the customer picks), as the
+  business allows.
+- Customers sign up from the pro's page, or ask for one through a quote request (below).
+  Signing up is a **request the business must accept** within 24 hours. A full contract
+  shows "No spots left".
+- The customer reads a plain-language **agreement** (parties, address, trigger, season,
+  price, how and when they're charged, cancellation) and ticks **I agree**. The
+  business's listing terms are its acceptance; accepting the request confirms it. Both
+  get a **PDF copy** by email and can download it from the booking any time.
+- **After a storm** the business works from a **snow route**: the list of its active
+  contract addresses, in an order it sets, where it marks each one **Cleared** with an
+  optional photo. That logs a visit; the customer is asked to confirm it or report a
+  problem within **48 hours**, after which it confirms by itself (§6). Nevile doesn't
+  check weather data: the visit log and the customer's confirmation are the record.
+- **Per-visit price:** each visit is charged once it's confirmed (or auto-confirmed), and
+  paid out in the next Monday batch.
+- **Season price:** the season is split into its calendar months (a part month counts as a
+  month) and the price evenly over them (leftover cents go to the first months).
+  **Monthly** charges the first month when the request is accepted and each later month on
+  its 1st; **upfront** charges everything at acceptance. Either way the business is paid
+  each month's share after that month ends.
+- **Cancelling:** either side can end a contract any time. Visits already done are owed
+  (per visit). With a season price: when the **customer** ends it, the current month is
+  kept and later months aren't charged (or are refunded, if paid upfront); when the
+  **business** ends it, the rest of the current month is refunded day by day and later
+  months aren't charged or are refunded.
+- On-demand "come today" snow clearing stays a one-off booking (§19).
+
+### Recurring jobs and contracts in quotes
+
+- A quote reply (§20) is one of three kinds: a **one-off price**, a **recurring offer**
+  (price per visit, the frequencies on offer, typical duration) or **snow contract terms**
+  (trigger, season, per-visit or season price and how a season price is paid). The
+  customer books it the same way as a listed one, with the same checks and agreement; a
+  booking from a pro's own quote counts as already accepted by the pro.
+
+### Business tools
+
+- The calendar shows recurring visits like other jobs, marked with the series. A series
+  page lists its visits with move / cancel, and end series.
+- **Snow route** (website and app): active contracts with address, notes and this
+  season's visits, reorderable, with **Cleared** (+ photo) per address. Contracts paused
+  for an unpaid charge are shown but can't be marked.
+- Services can be set up with recurring frequencies, and as snow contracts (trigger,
+  season, price, billing, spots) on the website and in the app.

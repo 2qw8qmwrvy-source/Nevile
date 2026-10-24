@@ -14,10 +14,12 @@ import {
   bookings,
   businesses,
   businessMembers,
+  cardSetups,
   communityFundLedger,
   communityPartnerMembers,
   communityPartners,
   communityReferrals,
+  contractPeriods,
   conversations,
   disputes,
   donations,
@@ -29,9 +31,13 @@ import {
   quoteRequestGroups,
   quoteRequests,
   quotes,
+  recurringOverrides,
+  recurringSeries,
   refunds,
   reviews,
+  savedCards,
   serviceCategories,
+  serviceContractTerms,
   services,
   snowContracts,
   tips,
@@ -142,6 +148,8 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
   const payment = (values: {
     bookingId: string;
     visitId?: string | null;
+    periodId?: string | null;
+    stripePaymentIntentId?: string;
     businessId?: string;
     status?: "pending" | "succeeded";
     payoutId?: string;
@@ -668,27 +676,85 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
         code: "23514",
         constraint: "payments_charge_shape",
       });
+      const terms = { triggerCm: 5, seasonStart: "2027-11-01", seasonEnd: "2028-03-31" };
+      expect(
+        await violation(
+          db
+            .insert(snowContracts)
+            .values({ ...terms, bookingId: season, seasonPriceCents: 10_000 }),
+        ),
+      ).toEqual({ code: "23514", constraint: "snow_contracts_season_payment" });
       await db.insert(snowContracts).values([
-        {
-          bookingId: perVisit,
-          triggerCm: 5,
-          seasonStart: "2027-11-01",
-          seasonEnd: "2028-03-31",
-          perVisitCents: 10_000,
-        },
-        {
-          bookingId: season,
-          triggerCm: 5,
-          seasonStart: "2027-11-01",
-          seasonEnd: "2028-03-31",
-          seasonPriceCents: 10_000,
-        },
+        { ...terms, bookingId: perVisit, perVisitCents: 10_000 },
+        { ...terms, bookingId: season, seasonPriceCents: 10_000, seasonPayment: "upfront" },
       ]);
       expect(await violation(payment({ bookingId: perVisit }))).toEqual({
         code: "23514",
         constraint: "payments_charge_shape",
       });
-      await expect(payment({ bookingId: season })).resolves.toHaveLength(1);
+
+      // A season price is charged per month of the season (SPEC §21).
+      const month = (sequence: number, periodStart: string, periodEnd: string) => ({
+        bookingId: season,
+        sequence,
+        periodStart,
+        periodEnd,
+        priceCents: 5_000,
+        serviceFeeCents: 320,
+        priceTaxCents: 650,
+        feeTaxCents: 41,
+        totalCents: 6_011,
+        chargeDueAt: at("2027-10-20T13:00:00Z"),
+        releaseAt: at("2027-12-01T04:00:00Z"),
+      });
+      const [november, december] = await db
+        .insert(contractPeriods)
+        .values([month(1, "2027-11-01", "2027-11-30"), month(2, "2027-12-01", "2027-12-31")])
+        .returning({ id: contractPeriods.id });
+      expect(await violation(payment({ bookingId: season }))).toEqual({
+        code: "23514",
+        constraint: "payments_charge_shape",
+      });
+      const monthly = {
+        amountCents: 6_011,
+        priceCents: 5_000,
+        serviceFeeCents: 320,
+        priceTaxCents: 650,
+        feeTaxCents: 41,
+        businessFeeCents: 150,
+      };
+      // Paid upfront: one payment intent, one row per month.
+      await expect(
+        db
+          .insert(payments)
+          .values([
+            {
+              ...monthly,
+              bookingId: season,
+              businessId: ids.businessId,
+              periodId: november?.id,
+              stripePaymentIntentId: "pi_season",
+            },
+            {
+              ...monthly,
+              bookingId: season,
+              businessId: ids.businessId,
+              periodId: december?.id,
+              stripePaymentIntentId: "pi_season",
+            },
+          ])
+          .returning({ id: payments.id }),
+      ).resolves.toHaveLength(2);
+      expect(await violation(payment({ bookingId: season, periodId: november?.id ?? "" }))).toEqual(
+        { code: "23505", constraint: "payments_one_live_per_period_uidx" },
+      );
+      // A payment intent is recorded once per month (or once, without a month).
+      await payment({ bookingId: await booking("one_off"), stripePaymentIntentId: "pi_once" });
+      expect(
+        await violation(
+          payment({ bookingId: await booking("one_off"), stripePaymentIntentId: "pi_once" }),
+        ),
+      ).toEqual({ code: "23505", constraint: "payments_intent_period_unique" });
     });
 
     it("ties a tip to its visit's booking, customer, business and payout", async () => {
@@ -972,8 +1038,8 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
       expiresAt: at("2099-01-08T00:00:00Z"),
     });
 
-    it("stores the recurring terms a recurring quote needs", async () => {
-      const id = await request("recurring");
+    it("stores the frequencies a recurring offer gives the customer (SPEC §21)", async () => {
+      const id = await request("one_off");
       expect(await violation(db.insert(quotes).values(quote(id, "recurring")))).toEqual({
         code: "23514",
         constraint: "quotes_recurring_terms",
@@ -983,55 +1049,153 @@ describe.skipIf(!TEST_DATABASE_URL)("@nevile/db schema", () => {
           .insert(quotes)
           .values({
             ...quote(id, "recurring"),
-            proposedStart: at("2027-05-03T13:00:00Z"),
             durationMinutes: 60,
-            frequency: "biweekly",
-            seriesEndsAt: at("2027-10-31T00:00:00Z"),
+            frequencies: ["weekly", "biweekly"],
           })
           .returning({ id: quotes.id }),
       ).resolves.toHaveLength(1);
     });
 
-    it("stores the snow-contract terms, including whether the price is per visit or per season", async () => {
-      const id = await request("snow_contract");
+    it("stores snow-contract terms, with a payment plan only for a season price", async () => {
+      const id = await request("one_off");
       expect(
         await violation(db.insert(quotes).values({ ...quote(id, "snow_contract"), triggerCm: 5 })),
+      ).toEqual({ code: "23514", constraint: "quotes_snow_terms" });
+      const terms = {
+        ...quote(id, "snow_contract"),
+        triggerCm: 5,
+        seasonStart: "2027-11-01",
+        seasonEnd: "2028-03-31",
+      };
+      expect(
+        await violation(db.insert(quotes).values({ ...terms, priceBasis: "season" as const })),
       ).toEqual({ code: "23514", constraint: "quotes_snow_terms" });
       await expect(
         db
           .insert(quotes)
-          .values({
-            ...quote(id, "snow_contract"),
-            priceBasis: "per_visit",
-            triggerCm: 5,
-            seasonStart: "2027-11-01",
-            seasonEnd: "2028-03-31",
-          })
+          .values({ ...terms, priceBasis: "season", seasonBilling: "either" })
           .returning({ id: quotes.id }),
       ).resolves.toHaveLength(1);
     });
 
-    it("matches the request's kind and keeps one-off quotes free of contract terms", async () => {
+    it("keeps one-off quotes free of recurring and contract terms", async () => {
       const id = await request("one_off");
-      expect(await violation(db.insert(quotes).values(quote(id, "recurring")))).toMatchObject({
-        code: "23514",
-      });
       expect(
         await violation(
-          db.insert(quotes).values({
-            ...quote(id, "recurring"),
-            proposedStart: at("2027-05-03T13:00:00Z"),
-            durationMinutes: 60,
-            frequency: "weekly",
-            seriesEndsAt: at("2027-10-31T00:00:00Z"),
-          }),
+          db.insert(quotes).values({ ...quote(id, "one_off"), frequencies: ["weekly"] }),
         ),
-      ).toEqual({ code: "23503", constraint: "quotes_request_kind_fk" });
-      expect(
-        await violation(db.insert(quotes).values({ ...quote(id, "one_off"), frequency: "weekly" })),
       ).toEqual({ code: "23514", constraint: "quotes_recurring_terms" });
       await expect(
         db.insert(quotes).values(quote(id, "one_off")).returning({ id: quotes.id }),
+      ).resolves.toHaveLength(1);
+    });
+  });
+
+  describe("recurring jobs and snow contracts (SPEC §21)", () => {
+    it("keeps recurring frequencies to fixed-price services, and contract terms consistent", async () => {
+      expect(
+        await violation(
+          db
+            .update(services)
+            .set({ pricingType: "quote", priceCents: null, recurrenceFrequencies: ["weekly"] })
+            .where(eq(services.id, ids.serviceId)),
+        ),
+      ).toEqual({ code: "23514", constraint: "services_recurring_fixed_only" });
+      await db
+        .update(services)
+        .set({ recurrenceFrequencies: ["weekly", "biweekly"] })
+        .where(eq(services.id, ids.serviceId));
+      const terms = {
+        serviceId: ids.serviceId,
+        triggerCm: 5,
+        seasonStart: "2027-11-15",
+        seasonEnd: "2028-03-31",
+        pricing: "season" as const,
+        priceCents: 60_000,
+        spots: 25,
+      };
+      expect(await violation(db.insert(serviceContractTerms).values(terms))).toEqual({
+        code: "23514",
+        constraint: "service_contract_terms_billing",
+      });
+      await db.insert(serviceContractTerms).values({ ...terms, seasonBilling: "either" });
+      await db
+        .delete(serviceContractTerms)
+        .where(eq(serviceContractTerms.serviceId, ids.serviceId));
+      await db
+        .update(services)
+        .set({ recurrenceFrequencies: [] })
+        .where(eq(services.id, ids.serviceId));
+    });
+
+    it("pauses only ongoing bookings and keeps one change per series date", async () => {
+      const oneOff = await booking("one_off");
+      expect(
+        await violation(
+          db
+            .update(bookings)
+            .set({ pausedAt: at("2027-01-02T00:00:00Z") })
+            .where(eq(bookings.id, oneOff)),
+        ),
+      ).toEqual({ code: "23514", constraint: "bookings_pause_ongoing_only" });
+      const recurring = await booking("recurring");
+      await db
+        .update(bookings)
+        .set({ pausedAt: at("2027-01-02T00:00:00Z"), pauseReason: "card_declined" })
+        .where(eq(bookings.id, recurring));
+      const [series] = await db
+        .insert(recurringSeries)
+        .values({
+          bookingId: recurring,
+          frequency: "weekly",
+          startsAt: at("2027-05-04T13:00:00Z"),
+          endsAt: at("2027-09-28T16:00:00Z"),
+          durationMinutes: 60,
+          firstDate: "2027-05-04",
+          endDate: "2027-09-28",
+          windowStartMinute: 540,
+        })
+        .returning({ id: recurringSeries.id });
+      await db
+        .insert(recurringOverrides)
+        .values({ seriesId: series?.id ?? "", date: "2027-06-15", windowStartMinute: null });
+      expect(
+        await violation(
+          db
+            .insert(recurringOverrides)
+            .values({ seriesId: series?.id ?? "", date: "2027-06-15", windowStartMinute: 780 }),
+        ),
+      ).toEqual({ code: "23505", constraint: "recurring_overrides_series_date_unique" });
+    });
+
+    it("stores one saved card per person and provider, and card setups only return to local pages", async () => {
+      const card = {
+        userId: ids.customer,
+        provider: "fake" as const,
+        customerId: "fake_cus_1",
+        paymentMethodId: "fake_pm_1",
+        brand: "visa",
+        last4: "4242",
+        expMonth: 12,
+        expYear: 2030,
+      };
+      expect(await violation(db.insert(savedCards).values({ ...card, last4: "42" }))).toEqual({
+        code: "23514",
+        constraint: "saved_cards_last4",
+      });
+      await db.insert(savedCards).values(card);
+      expect(
+        await violation(db.insert(savedCards).values({ ...card, paymentMethodId: "fake_pm_2" })),
+      ).toEqual({ code: "23505", constraint: "saved_cards_user_provider_unique" });
+      const setup = { userId: ids.customer, provider: "fake" as const, kind: "page" as const };
+      expect(
+        await violation(db.insert(cardSetups).values({ ...setup, returnPath: "//evil.example/x" })),
+      ).toEqual({ code: "23514", constraint: "card_setups_return_path_local" });
+      await expect(
+        db
+          .insert(cardSetups)
+          .values({ ...setup, returnPath: "/account/card" })
+          .returning({ id: cardSetups.id }),
       ).resolves.toHaveLength(1);
     });
   });

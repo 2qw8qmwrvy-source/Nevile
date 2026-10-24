@@ -3,6 +3,8 @@ import type {
   AccountState,
   AppPayment,
   CaptureMode,
+  CardSetupPageInput,
+  CardSetupState,
   CheckoutSession,
   CheckoutState,
   CreateCheckoutInput,
@@ -10,6 +12,9 @@ import type {
   PaymentEvent,
   PaymentIntentState,
   PaymentProvider,
+  SavedCard,
+  SavedCardCharge,
+  SavedCardChargeInput,
 } from "./types.ts";
 
 type FakeSession = {
@@ -27,10 +32,26 @@ type FakeIntent = {
   app?: { reference: string; capture: CaptureMode; description: string };
 };
 
+type FakeSetup = {
+  kind: "page" | "intent";
+  reference: string;
+  customerId: string;
+  status: CardSetupState["status"];
+  card: SavedCard | null;
+  /** Page setups: where the test page sends the customer. */
+  successUrl?: string;
+  cancelUrl?: string;
+};
+
 /** In-process record of fake money movements, for the dev pages and tests. */
 type FakeStore = {
   sessions: Map<string, FakeSession>;
   intents: Map<string, FakeIntent>;
+  customers: Map<string, { userId: string }>;
+  setups: Map<string, FakeSetup>;
+  /** Saved test cards; `declines` makes every charge on it fail. */
+  cards: Map<string, { customerId: string; declines: boolean }>;
+  charges: Array<{ id: string; reference: string; amountCents: number; succeeded: boolean }>;
   accounts: Map<string, { businessId: string; payoutsEnabled: boolean }>;
   refunds: Array<{ id: string; paymentIntentId: string; amountCents: number; key: string }>;
   transfers: Array<{ id: string; accountId: string; amountCents: number; key: string }>;
@@ -45,6 +66,10 @@ function store(): FakeStore {
   global[STORE_KEY] ??= {
     sessions: new Map(),
     intents: new Map(),
+    customers: new Map(),
+    setups: new Map(),
+    cards: new Map(),
+    charges: [],
     accounts: new Map(),
     refunds: [],
     transfers: [],
@@ -321,12 +346,160 @@ export class FakePaymentProvider implements PaymentProvider {
     return { transferId: id };
   }
 
+  async ensureCustomer(input: {
+    userId: string;
+    email: string | null;
+    existingCustomerId: string | null;
+  }) {
+    if (input.existingCustomerId && store().customers.has(input.existingCustomerId)) {
+      return { customerId: input.existingCustomerId };
+    }
+    const existing = [...store().customers.entries()].find(([, c]) => c.userId === input.userId);
+    if (existing) return { customerId: existing[0] };
+    const customerId = fakeId("cus");
+    store().customers.set(customerId, { userId: input.userId });
+    return { customerId };
+  }
+
+  async createCardSetupPage(input: CardSetupPageInput) {
+    const existing = this.#setupFor(input.reference);
+    const id = existing ?? fakeId("cs_setup");
+    if (!existing) {
+      store().setups.set(id, {
+        kind: "page",
+        reference: input.reference,
+        customerId: input.customerId,
+        status: "open",
+        card: null,
+        successUrl: input.successUrl,
+        cancelUrl: input.cancelUrl,
+      });
+    }
+    return { id, url: `${this.#siteUrl}/dev/fake-card/${encodeURIComponent(id)}` };
+  }
+
+  async createCardSetupIntent(input: { reference: string; customerId: string }) {
+    const existing = this.#setupFor(input.reference);
+    const id = existing ?? fakeId("seti");
+    if (!existing) {
+      store().setups.set(id, {
+        kind: "intent",
+        reference: input.reference,
+        customerId: input.customerId,
+        status: "open",
+        card: null,
+      });
+    }
+    return { id, clientSecret: `${id}_secret_fake` };
+  }
+
+  #setupFor(reference: string): string | undefined {
+    return [...store().setups.entries()].find(([, setup]) => setup.reference === reference)?.[0];
+  }
+
+  async getCardSetup(input: { kind: "page" | "intent"; id: string }): Promise<CardSetupState> {
+    const setup = store().setups.get(input.id);
+    if (!setup || setup.kind !== input.kind) {
+      return { id: input.id, reference: null, status: "expired", card: null };
+    }
+    return { id: input.id, reference: setup.reference, status: setup.status, card: setup.card };
+  }
+
+  /** What the test card page shows, or null for an unknown setup. */
+  describeCardSetup(setupId: string) {
+    const setup = store().setups.get(setupId);
+    if (!setup) return null;
+    return { kind: setup.kind, status: setup.status, cancelUrl: setup.cancelUrl ?? null };
+  }
+
+  /**
+   * Saves a test card, like a customer finishing Stripe's page or payment sheet.
+   * `declining` saves one whose charges always fail. Returns the webhook event and, for
+   * page setups, where the customer goes next.
+   */
+  completeCardSetup(
+    setupId: string,
+    options: { declining?: boolean } = {},
+  ): { event: PaymentEvent; redirectUrl: string | null } {
+    const setup = store().setups.get(setupId);
+    if (!setup) throw new Error("Unknown card setup.");
+    if (setup.status !== "open") throw new Error("This card setup is closed.");
+    const paymentMethodId = fakeId("pm");
+    store().cards.set(paymentMethodId, {
+      customerId: setup.customerId,
+      declines: options.declining === true,
+    });
+    setup.card = {
+      paymentMethodId,
+      brand: "visa",
+      last4: options.declining ? "0002" : "4242",
+      expMonth: 12,
+      expYear: new Date().getUTCFullYear() + 3,
+    };
+    setup.status = "complete";
+    return {
+      event: { type: "card_setup_completed", setupId, reference: setup.reference },
+      redirectUrl: setup.successUrl
+        ? setup.successUrl.replace("{SESSION_ID}", encodeURIComponent(setupId))
+        : null,
+    };
+  }
+
+  /** Makes a saved test card start (or stop) declining, e.g. to test retries. */
+  setCardDeclining(paymentMethodId: string, declines: boolean): void {
+    const card = store().cards.get(paymentMethodId);
+    if (!card) throw new Error("Unknown test card.");
+    card.declines = declines;
+  }
+
+  async chargeSavedCard(input: SavedCardChargeInput): Promise<SavedCardCharge> {
+    const done = store().charges.find((charge) => charge.reference === input.reference);
+    if (done) {
+      return done.succeeded
+        ? { status: "succeeded", paymentIntentId: done.id }
+        : {
+            status: "failed",
+            paymentIntentId: done.id,
+            failureCode: "card_declined",
+            failureMessage: "Your card was declined.",
+          };
+    }
+    const card = store().cards.get(input.paymentMethodId);
+    if (!card || card.customerId !== input.customerId) {
+      throw new Error("That card isn't saved for this customer.");
+    }
+    const id = fakeId("pi");
+    const succeeded = !card.declines;
+    store().charges.push({
+      id,
+      reference: input.reference,
+      amountCents: input.amountCents,
+      succeeded,
+    });
+    store().intents.set(id, {
+      amountCents: input.amountCents,
+      status: succeeded ? "succeeded" : "canceled",
+      refundedCents: 0,
+    });
+    if (succeeded) return { status: "succeeded", paymentIntentId: id };
+    return {
+      status: "failed",
+      paymentIntentId: id,
+      failureCode: "card_declined",
+      failureMessage: "Your card was declined.",
+    };
+  }
+
   parseWebhook(): PaymentEvent {
     throw new Error("The fake payment provider doesn't receive webhooks.");
   }
 
   /** Money moved so far (tests and the dev pages). */
   ledger() {
-    return { refunds: [...store().refunds], transfers: [...store().transfers] };
+    return {
+      refunds: [...store().refunds],
+      transfers: [...store().transfers],
+      charges: [...store().charges],
+    };
   }
 }

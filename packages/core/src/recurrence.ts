@@ -93,3 +93,26 @@ export function generateOccurrences(input: RecurrenceInput): Date[] {
   }
   return occurrences;
 }
+
+/**
+ * Local calendar dates of a series from `first` through `last` (both inclusive), in
+ * order. Monthly series clamp to the end of shorter months like `generateOccurrences`.
+ */
+export function occurrenceDates(
+  frequency: RecurrenceFrequency,
+  first: CalendarDate,
+  last: CalendarDate,
+  maxCount: number = DEFAULT_MAX_OCCURRENCES,
+): CalendarDate[] {
+  if (!(RECURRENCE_FREQUENCIES as readonly string[]).includes(frequency)) {
+    throw new RangeError(`unknown frequency "${String(frequency)}"`);
+  }
+  const end = formatIsoDate(last);
+  const dates: CalendarDate[] = [];
+  for (let n = 0; n < maxCount; n += 1) {
+    const date = nthDate(first, frequency, n);
+    if (formatIsoDate(date) > end) break;
+    dates.push(date);
+  }
+  return dates;
+}

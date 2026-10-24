@@ -30,9 +30,11 @@ import {
   bookingStatus,
   cancellationPolicy,
   checkoutStatus,
+  contractPeriodStatus,
   paymentProvider,
   province,
   recurrenceFrequency,
+  seasonPayment,
   visitPhotoKind,
   visitStatus,
 } from "./enums.ts";
@@ -94,6 +96,9 @@ export const bookings = pgTable(
     confirmedAt: tstz("confirmed_at"),
     cancelledAt: tstz("cancelled_at"),
     cancellationReason: text("cancellation_reason"),
+    // Recurring jobs and snow contracts pause after a charge keeps failing (SPEC §21).
+    pausedAt: tstz("paused_at"),
+    pauseReason: text("pause_reason"),
     ...timestamps(),
   },
   (t) => [
@@ -135,6 +140,10 @@ export const bookings = pgTable(
       "bookings_cancelled_fields",
       sql`${t.status} NOT IN ('cancelled_by_customer', 'cancelled_by_business') OR ${t.cancelledAt} IS NOT NULL`,
     ),
+    check(
+      "bookings_pause_ongoing_only",
+      sql`${t.pausedAt} IS NULL OR ${t.kind} IN ('recurring', 'snow_contract')`,
+    ),
   ],
 );
 
@@ -154,11 +163,38 @@ export const recurringSeries = pgTable(
     durationMinutes: integer("duration_minutes").notNull(),
     // Visits have been generated up to this instant.
     generatedThrough: tstz("generated_through"),
+    // The customer's choices, in the booking's zone: first and last day, arrival window.
+    firstDate: date("first_date", { mode: "string" }).notNull(),
+    endDate: date("end_date", { mode: "string" }).notNull(),
+    windowStartMinute: integer("window_start_minute").notNull(),
     ...timestamps(),
   },
   (t) => [
     check("recurring_series_range", sql`${t.endsAt} > ${t.startsAt}`),
     check("recurring_series_duration_positive", sql`${t.durationMinutes} > 0`),
+    check("recurring_series_dates", sql`${t.endDate} > ${t.firstDate}`),
+    check("recurring_series_window_start", sql`${t.windowStartMinute} BETWEEN 0 AND 1439`),
+  ],
+);
+
+/** Dates of a series the customer skips (null window) or moves to another window. */
+export const recurringOverrides = pgTable(
+  "recurring_overrides",
+  {
+    id: id(),
+    seriesId: uuid("series_id")
+      .notNull()
+      .references(() => recurringSeries.id, { onDelete: "cascade" }),
+    date: date("date", { mode: "string" }).notNull(),
+    windowStartMinute: integer("window_start_minute"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("recurring_overrides_series_date_unique").on(t.seriesId, t.date),
+    check(
+      "recurring_overrides_window_start",
+      sql`${t.windowStartMinute} IS NULL OR ${t.windowStartMinute} BETWEEN 0 AND 1439`,
+    ),
   ],
 );
 
@@ -179,10 +215,18 @@ export const snowContracts = pgTable(
     seasonEnd: date("season_end", { mode: "string" }).notNull(),
     perVisitCents: cents("per_visit_cents"),
     seasonPriceCents: cents("season_price_cents"),
+    // How the customer pays a season price; null for per-visit contracts.
+    seasonPayment: seasonPayment("season_payment"),
+    // Place on the business's snow route (lower first); new sign-ups go last.
+    routePosition: integer("route_position").notNull().default(0),
     ...timestamps(),
   },
   (t) => [
     positive("snow_contracts", t.triggerCm),
+    check(
+      "snow_contracts_season_payment",
+      sql`(${t.seasonPriceCents} IS NOT NULL) = (${t.seasonPayment} IS NOT NULL)`,
+    ),
     nonNegative("snow_contracts", t.perVisitCents),
     nonNegative("snow_contracts", t.seasonPriceCents),
     check("snow_contracts_season_range", sql`${t.seasonEnd} > ${t.seasonStart}`),
@@ -231,6 +275,8 @@ export const visits = pgTable(
     autoConfirmAt: tstz("auto_confirm_at"),
     // When this visit should be charged (recurring: 3 days before; snow: after confirm).
     chargeDueAt: tstz("charge_due_at"),
+    // The customer was reminded the day before (recurring visits).
+    remindedAt: tstz("reminded_at"),
     cancelledAt: tstz("cancelled_at"),
     // Business-only notes (customers never see them).
     businessNotes: text("business_notes"),
@@ -276,6 +322,51 @@ export const visits = pgTable(
     check(
       "visits_cancelled_fields",
       sql`${t.status} NOT IN ('cancelled_by_customer', 'cancelled_by_business') OR ${t.cancelledAt} IS NOT NULL`,
+    ),
+  ],
+);
+
+/**
+ * One month of a season-priced snow contract (SPEC §21): its share of the season price,
+ * fee and taxes, when it's charged (monthly plans) and when the business is paid it.
+ * Payments for a month point here (`payments.period_id`); an upfront plan's single
+ * charge is recorded as one payment row per month on the same payment intent.
+ */
+export const contractPeriods = pgTable(
+  "contract_periods",
+  {
+    id: id(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "restrict" }),
+    sequence: integer("sequence").notNull(),
+    periodStart: date("period_start", { mode: "string" }).notNull(),
+    periodEnd: date("period_end", { mode: "string" }).notNull(),
+    priceCents: cents("price_cents").notNull(),
+    serviceFeeCents: cents("service_fee_cents").notNull(),
+    priceTaxCents: cents("price_tax_cents").notNull().default(0),
+    feeTaxCents: cents("fee_tax_cents").notNull().default(0),
+    totalCents: cents("total_cents").notNull(),
+    chargeDueAt: tstz("charge_due_at").notNull(),
+    // When the business is paid this month's share: after the month ends.
+    releaseAt: tstz("release_at").notNull(),
+    status: contractPeriodStatus("status").notNull().default("scheduled"),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("contract_periods_booking_sequence_unique").on(t.bookingId, t.sequence),
+    // Target of the composite FK that ties a period's payments to its booking.
+    unique("contract_periods_id_booking_unique").on(t.id, t.bookingId),
+    index("contract_periods_due_idx").on(t.chargeDueAt).where(sql`${t.status} = 'scheduled'`),
+    positive("contract_periods", t.sequence),
+    nonNegative("contract_periods", t.priceCents),
+    nonNegative("contract_periods", t.serviceFeeCents),
+    nonNegative("contract_periods", t.priceTaxCents),
+    nonNegative("contract_periods", t.feeTaxCents),
+    check("contract_periods_range", sql`${t.periodEnd} >= ${t.periodStart}`),
+    check(
+      "contract_periods_total_is_sum",
+      sql`${t.totalCents} = ${t.priceCents} + ${t.serviceFeeCents} + ${t.priceTaxCents} + ${t.feeTaxCents}`,
     ),
   ],
 );

@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import {
   check,
   date,
-  foreignKey,
   index,
   integer,
   pgTable,
@@ -22,6 +21,7 @@ import {
   quoteStatus,
   quoteTiming,
   recurrenceFrequency,
+  seasonBilling,
   snowPriceBasis,
 } from "./enums.ts";
 
@@ -88,8 +88,6 @@ export const quoteRequests = pgTable(
     ...timestamps(),
   },
   (t) => [
-    // Target of the quotes (quote_request_id, kind) FK.
-    unique("quote_requests_id_kind_unique").on(t.id, t.kind),
     unique("quote_requests_group_business_unique").on(t.groupId, t.businessId),
     index("quote_requests_business_status_created_idx").on(t.businessId, t.status, t.createdAt),
     index("quote_requests_customer_created_idx").on(t.customerId, t.createdAt),
@@ -113,11 +111,11 @@ export const quoteRequests = pgTable(
  * agreed term, so accepting it creates the booking (and its `recurring_series` or
  * `snow_contracts` row) from stored terms only:
  * - one-off / on-demand: price per job, optional proposed start and duration;
- * - recurring: price per visit, first visit (`proposed_start`), duration, frequency and
- *   end of the series;
- * - snow contract: price per visit or per season (`price_basis`), snowfall trigger and
- *   season dates.
- * `kind` repeats the request's kind (composite FK) so the CHECKs can require the
+ * - recurring: price per visit, duration and the frequencies on offer (the customer picks
+ *   the first visit, frequency and end date when booking, SPEC §21);
+ * - snow contract: price per visit or per season (`price_basis`), how a season price is
+ *   paid, snowfall trigger and season dates.
+ * `kind` is the kind of offer, chosen by the business per reply; the CHECKs require the
  * matching terms.
  */
 export const quotes = pgTable(
@@ -134,14 +132,15 @@ export const quotes = pgTable(
     priceCents: cents("price_cents").notNull(),
     proposedStart: tstz("proposed_start"),
     durationMinutes: integer("duration_minutes"),
-    // Recurring terms.
-    frequency: recurrenceFrequency("frequency"),
-    seriesEndsAt: tstz("series_ends_at"),
+    // Recurring offer: the frequencies the customer can pick (price is per visit).
+    frequencies: recurrenceFrequency("frequencies").array().notNull().default([]),
     // Snow-contract terms.
     priceBasis: snowPriceBasis("price_basis"),
     triggerCm: integer("trigger_cm"),
     seasonStart: date("season_start", { mode: "string" }),
     seasonEnd: date("season_end", { mode: "string" }),
+    // How a season price can be paid.
+    seasonBilling: seasonBilling("season_billing"),
     message: text("message"),
     status: quoteStatus("status").notNull().default("pending"),
     expiresAt: tstz("expires_at").notNull(),
@@ -149,13 +148,6 @@ export const quotes = pgTable(
     ...timestamps(),
   },
   (t) => [
-    foreignKey({
-      name: "quotes_request_kind_fk",
-      columns: [t.quoteRequestId, t.kind],
-      foreignColumns: [quoteRequests.id, quoteRequests.kind],
-    })
-      .onDelete("cascade")
-      .onUpdate("cascade"),
     index("quotes_quote_request_id_idx").on(t.quoteRequestId),
     index("quotes_pending_expires_idx").on(t.expiresAt).where(sql`${t.status} = 'pending'`),
     uniqueIndex("quotes_one_pending_per_request_uidx")
@@ -170,16 +162,16 @@ export const quotes = pgTable(
     check(
       "quotes_recurring_terms",
       sql`CASE WHEN ${t.kind} = 'recurring'
-        THEN num_nonnulls(${t.proposedStart}, ${t.durationMinutes}, ${t.frequency}, ${t.seriesEndsAt}) = 4
-          AND ${t.seriesEndsAt} > ${t.proposedStart}
-        ELSE num_nonnulls(${t.frequency}, ${t.seriesEndsAt}) = 0 END`,
+        THEN cardinality(${t.frequencies}) > 0 AND ${t.durationMinutes} IS NOT NULL
+        ELSE cardinality(${t.frequencies}) = 0 END`,
     ),
     check(
       "quotes_snow_terms",
       sql`CASE WHEN ${t.kind} = 'snow_contract'
         THEN num_nonnulls(${t.priceBasis}, ${t.triggerCm}, ${t.seasonStart}, ${t.seasonEnd}) = 4
           AND ${t.triggerCm} > 0 AND ${t.seasonEnd} > ${t.seasonStart}
-        ELSE num_nonnulls(${t.priceBasis}, ${t.triggerCm}, ${t.seasonStart}, ${t.seasonEnd}) = 0 END`,
+          AND (${t.priceBasis} = 'season') = (${t.seasonBilling} IS NOT NULL)
+        ELSE num_nonnulls(${t.priceBasis}, ${t.triggerCm}, ${t.seasonStart}, ${t.seasonEnd}, ${t.seasonBilling}) = 0 END`,
     ),
   ],
 );

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   index,
   integer,
   pgTable,
@@ -11,8 +12,15 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth.ts";
 import { businesses } from "./businesses.ts";
-import { cents, id, nonNegative, slugCheck, timestamps, tstz } from "./columns.ts";
-import { approvalStatus, bookingKind, pricingType } from "./enums.ts";
+import { cents, id, nonNegative, positive, slugCheck, timestamps, tstz } from "./columns.ts";
+import {
+  approvalStatus,
+  bookingKind,
+  pricingType,
+  recurrenceFrequency,
+  seasonBilling,
+  snowPriceBasis,
+} from "./enums.ts";
 
 /** Nevile-managed category list (SPEC §3); seeded from `DEFAULT_CATEGORIES`. */
 export const serviceCategories = pgTable(
@@ -96,6 +104,11 @@ export const services = pgTable(
     instantBook: boolean("instant_book"),
     // Booking kinds the business offers for this service.
     bookingKinds: bookingKind("booking_kinds").array().notNull().default(["one_off"]),
+    // How often a fixed-price service can repeat (SPEC §21); empty: one-off only.
+    recurrenceFrequencies: recurrenceFrequency("recurrence_frequencies")
+      .array()
+      .notNull()
+      .default([]),
     active: boolean("active").notNull().default(true),
     ...timestamps(),
   },
@@ -118,5 +131,42 @@ export const services = pgTable(
     ),
     check("services_duration_minutes_range", sql`${t.durationMinutes} BETWEEN 1 AND 1440`),
     check("services_booking_kinds_not_empty", sql`cardinality(${t.bookingKinds}) > 0`),
+    check(
+      "services_recurring_fixed_only",
+      sql`${t.pricingType} = 'fixed' OR cardinality(${t.recurrenceFrequencies}) = 0`,
+    ),
+  ],
+);
+
+/**
+ * A service listed as a seasonal snow contract (SPEC §21): the terms customers sign up
+ * to. The service's `price_cents` repeats `price_cents` here (per visit or per season).
+ */
+export const serviceContractTerms = pgTable(
+  "service_contract_terms",
+  {
+    serviceId: uuid("service_id")
+      .primaryKey()
+      .references(() => services.id, { onDelete: "cascade" }),
+    triggerCm: integer("trigger_cm").notNull(),
+    seasonStart: date("season_start", { mode: "string" }).notNull(),
+    seasonEnd: date("season_end", { mode: "string" }).notNull(),
+    pricing: snowPriceBasis("pricing").notNull(),
+    priceCents: cents("price_cents").notNull(),
+    // How a season price can be paid; null for per-visit pricing.
+    seasonBilling: seasonBilling("season_billing"),
+    // How many customers the contract can take.
+    spots: integer("spots").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    positive("service_contract_terms", t.triggerCm),
+    positive("service_contract_terms", t.priceCents),
+    positive("service_contract_terms", t.spots),
+    check("service_contract_terms_season_range", sql`${t.seasonEnd} > ${t.seasonStart}`),
+    check(
+      "service_contract_terms_billing",
+      sql`(${t.pricing} = 'season') = (${t.seasonBilling} IS NOT NULL)`,
+    ),
   ],
 );

@@ -4,6 +4,7 @@ import {
   date,
   foreignKey,
   index,
+  integer,
   pgTable,
   text,
   unique,
@@ -11,11 +12,13 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth.ts";
-import { bookings, visits } from "./bookings.ts";
+import { bookings, contractPeriods, visits } from "./bookings.ts";
 import { businesses } from "./businesses.ts";
 import { cents, id, nonNegative, positive, timestamps, tstz } from "./columns.ts";
 import { disputes } from "./disputes.ts";
 import {
+  cardSetupKind,
+  cardSetupStatus,
   paymentProvider,
   paymentStatus,
   payoutStatus,
@@ -75,10 +78,13 @@ export const payments = pgTable(
       .references(() => bookings.id, { onDelete: "restrict" }),
     // The booking's business (composite FK), so payouts can only take their own money.
     businessId: uuid("business_id").notNull(),
-    // Null for booking-level charges (one-off upfront, season-priced contract).
+    // Null for booking-level charges (one-off upfront).
     visitId: uuid("visit_id").references(() => visits.id, { onDelete: "restrict" }),
+    // A month of a season-priced snow contract (SPEC §21).
+    periodId: uuid("period_id"),
     provider: paymentProvider("provider").notNull().default("stripe"),
-    stripePaymentIntentId: text("stripe_payment_intent_id").notNull().unique(),
+    // An upfront season charge is one payment intent shared by one row per month.
+    stripePaymentIntentId: text("stripe_payment_intent_id").notNull(),
     stripeChargeId: text("stripe_charge_id").unique(),
     amountCents: cents("amount_cents").notNull(),
     priceCents: cents("price_cents").notNull(),
@@ -112,12 +118,21 @@ export const payments = pgTable(
       foreignColumns: [visits.id, visits.bookingId],
     }).onDelete("restrict"),
     foreignKey({
+      name: "payments_period_booking_fk",
+      columns: [t.periodId, t.bookingId],
+      foreignColumns: [contractPeriods.id, contractPeriods.bookingId],
+    }).onDelete("restrict"),
+    unique("payments_intent_period_unique")
+      .on(t.stripePaymentIntentId, t.periodId)
+      .nullsNotDistinct(),
+    foreignKey({
       name: "payments_payout_business_fk",
       columns: [t.payoutId, t.businessId],
       foreignColumns: [payouts.id, payouts.businessId],
     }).onDelete("restrict"),
     index("payments_booking_id_idx").on(t.bookingId),
     index("payments_visit_id_idx").on(t.visitId),
+    index("payments_period_id_idx").on(t.periodId),
     index("payments_status_idx").on(t.status),
     index("payments_payout_id_idx").on(t.payoutId),
     index("payments_awaiting_payout_idx")
@@ -130,7 +145,13 @@ export const payments = pgTable(
       .where(sql`${t.visitId} IS NOT NULL AND ${t.status} NOT IN ('failed', 'cancelled')`),
     uniqueIndex("payments_one_live_per_booking_uidx")
       .on(t.bookingId)
-      .where(sql`${t.visitId} IS NULL AND ${t.status} NOT IN ('failed', 'cancelled')`),
+      .where(
+        sql`${t.visitId} IS NULL AND ${t.periodId} IS NULL AND ${t.status} NOT IN ('failed', 'cancelled')`,
+      ),
+    uniqueIndex("payments_one_live_per_period_uidx")
+      .on(t.periodId)
+      .where(sql`${t.periodId} IS NOT NULL AND ${t.status} NOT IN ('failed', 'cancelled')`),
+    check("payments_visit_or_period", sql`num_nonnulls(${t.visitId}, ${t.periodId}) <= 1`),
     nonNegative("payments", t.amountCents),
     nonNegative("payments", t.priceCents),
     nonNegative("payments", t.serviceFeeCents),
@@ -250,5 +271,84 @@ export const tips = pgTable(
       .where(sql`${t.status} NOT IN ('failed', 'cancelled')`),
     positive("tips", t.amountCents),
     nonNegative("tips", t.processingFeeCents),
+  ],
+);
+
+/**
+ * The payment provider's customer record for a person (SPEC §21), per provider so
+ * development's test provider never mixes with Stripe.
+ */
+export const paymentCustomers = pgTable(
+  "payment_customers",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    provider: paymentProvider("provider").notNull(),
+    customerId: text("customer_id").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("payment_customers_user_provider_unique").on(t.userId, t.provider),
+    unique("payment_customers_provider_customer_unique").on(t.provider, t.customerId),
+  ],
+);
+
+/**
+ * A customer's saved card (SPEC §21): one per person and provider, used for every
+ * recurring visit and snow contract charge. Only what's safe to show is kept.
+ */
+export const savedCards = pgTable(
+  "saved_cards",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    provider: paymentProvider("provider").notNull(),
+    customerId: text("customer_id").notNull(),
+    paymentMethodId: text("payment_method_id").notNull(),
+    brand: text("brand").notNull(),
+    last4: text("last4").notNull(),
+    expMonth: integer("exp_month").notNull(),
+    expYear: integer("exp_year").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("saved_cards_user_provider_unique").on(t.userId, t.provider),
+    unique("saved_cards_provider_method_unique").on(t.provider, t.paymentMethodId),
+    check("saved_cards_last4", sql`${t.last4} ~ '^[0-9]{4}$'`),
+    check("saved_cards_exp_month", sql`${t.expMonth} BETWEEN 1 AND 12`),
+  ],
+);
+
+/** Saving a card on the provider's page (website) or payment sheet (app). */
+export const cardSetups = pgTable(
+  "card_setups",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    provider: paymentProvider("provider").notNull(),
+    kind: cardSetupKind("kind").notNull(),
+    providerSetupId: text("provider_setup_id").unique(),
+    status: cardSetupStatus("status").notNull().default("open"),
+    // Website path to come back to after saving (validated as a local path).
+    returnPath: text("return_path"),
+    completedAt: tstz("completed_at"),
+    ...timestamps(),
+  },
+  (t) => [
+    index("card_setups_user_created_idx").on(t.userId, t.createdAt),
+    check(
+      "card_setups_return_path_local",
+      sql`${t.returnPath} IS NULL OR ${t.returnPath} ~ '^/[^/]'`,
+    ),
+    check(
+      "card_setups_completed_fields",
+      sql`${t.status} <> 'completed' OR ${t.completedAt} IS NOT NULL`,
+    ),
   ],
 );

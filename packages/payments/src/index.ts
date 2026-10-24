@@ -76,5 +76,10 @@ export const lazyPaymentProvider: PaymentProvider = {
   onboardingLink: (input) => getPaymentProvider().onboardingLink(input),
   getAccount: (id) => getPaymentProvider().getAccount(id),
   transfer: (input) => getPaymentProvider().transfer(input),
+  ensureCustomer: (input) => getPaymentProvider().ensureCustomer(input),
+  createCardSetupPage: (input) => getPaymentProvider().createCardSetupPage(input),
+  createCardSetupIntent: (input) => getPaymentProvider().createCardSetupIntent(input),
+  getCardSetup: (input) => getPaymentProvider().getCardSetup(input),
+  chargeSavedCard: (input) => getPaymentProvider().chargeSavedCard(input),
   parseWebhook: (body, signature) => getPaymentProvider().parseWebhook(body, signature),
 };

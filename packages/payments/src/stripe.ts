@@ -2,6 +2,8 @@ import Stripe from "stripe";
 import {
   type AccountState,
   type AppPayment,
+  type CardSetupPageInput,
+  type CardSetupState,
   type CheckoutSession,
   type CheckoutState,
   type CreateCheckoutInput,
@@ -9,6 +11,9 @@ import {
   type PaymentEvent,
   type PaymentIntentState,
   type PaymentProvider,
+  type SavedCard,
+  type SavedCardCharge,
+  type SavedCardChargeInput,
   WebhookSignatureError,
 } from "./types.ts";
 
@@ -241,6 +246,130 @@ export class StripePaymentProvider implements PaymentProvider {
     return { transferId: transfer.id };
   }
 
+  async ensureCustomer(input: {
+    userId: string;
+    email: string | null;
+    existingCustomerId: string | null;
+  }) {
+    if (input.existingCustomerId) return { customerId: input.existingCustomerId };
+    const customer = await this.#stripe.customers.create(
+      { ...(input.email ? { email: input.email } : {}), metadata: { userId: input.userId } },
+      { idempotencyKey: `customer-${input.userId}` },
+    );
+    return { customerId: customer.id };
+  }
+
+  async createCardSetupPage(input: CardSetupPageInput) {
+    const session = await this.#stripe.checkout.sessions.create(
+      {
+        mode: "setup",
+        currency: CURRENCY,
+        customer: input.customerId,
+        client_reference_id: input.reference,
+        payment_method_types: ["card"],
+        setup_intent_data: { metadata: { reference: input.reference } },
+        metadata: { reference: input.reference },
+        success_url: input.successUrl.replace("{SESSION_ID}", "{CHECKOUT_SESSION_ID}"),
+        cancel_url: input.cancelUrl,
+      },
+      { idempotencyKey: `card-setup-${input.reference}` },
+    );
+    if (!session.url) throw new Error("Stripe didn't return a setup URL.");
+    return { id: session.id, url: session.url };
+  }
+
+  async createCardSetupIntent(input: { reference: string; customerId: string }) {
+    const intent = await this.#stripe.setupIntents.create(
+      {
+        customer: input.customerId,
+        // Cards, including Apple Pay and Google Pay, kept for charges while the customer is away.
+        payment_method_types: ["card"],
+        usage: "off_session",
+        metadata: { reference: input.reference },
+      },
+      { idempotencyKey: `card-intent-${input.reference}` },
+    );
+    if (!intent.client_secret) throw new Error("Stripe didn't return a client secret.");
+    return { id: intent.id, clientSecret: intent.client_secret };
+  }
+
+  async getCardSetup(input: { kind: "page" | "intent"; id: string }): Promise<CardSetupState> {
+    let intent: Stripe.SetupIntent | null;
+    let reference: string | null;
+    let status: CardSetupState["status"];
+    if (input.kind === "page") {
+      const session = await this.#stripe.checkout.sessions.retrieve(input.id, {
+        expand: ["setup_intent.payment_method"],
+      });
+      intent =
+        session.setup_intent && typeof session.setup_intent === "object"
+          ? session.setup_intent
+          : null;
+      reference = session.client_reference_id;
+      status =
+        session.status === "complete"
+          ? "complete"
+          : session.status === "expired"
+            ? "expired"
+            : "open";
+    } else {
+      intent = await this.#stripe.setupIntents.retrieve(input.id, { expand: ["payment_method"] });
+      reference = intent.metadata?.reference ?? null;
+      status =
+        intent.status === "succeeded"
+          ? "complete"
+          : intent.status === "canceled"
+            ? "expired"
+            : "open";
+    }
+    const method =
+      intent?.status === "succeeded" &&
+      intent.payment_method &&
+      typeof intent.payment_method === "object"
+        ? intent.payment_method
+        : null;
+    return { id: input.id, reference, status, card: method ? cardOf(method) : null };
+  }
+
+  async chargeSavedCard(input: SavedCardChargeInput): Promise<SavedCardCharge> {
+    try {
+      const intent = await this.#stripe.paymentIntents.create(
+        {
+          amount: input.amountCents,
+          currency: CURRENCY,
+          customer: input.customerId,
+          payment_method: input.paymentMethodId,
+          payment_method_types: ["card"],
+          off_session: true,
+          confirm: true,
+          description: input.description,
+          ...(input.customerEmail ? { receipt_email: input.customerEmail } : {}),
+          metadata: { ...input.metadata, reference: input.reference },
+          transfer_group: input.reference,
+        },
+        { idempotencyKey: `charge-${input.reference}` },
+      );
+      if (intent.status === "succeeded") return { status: "succeeded", paymentIntentId: intent.id };
+      return {
+        status: "failed",
+        paymentIntentId: intent.id,
+        failureCode:
+          intent.status === "requires_action" ? "authentication_required" : intent.status,
+        failureMessage: "Your bank didn't approve the charge.",
+      };
+    } catch (error) {
+      if (error instanceof Stripe.errors.StripeCardError) {
+        return {
+          status: "failed",
+          paymentIntentId: error.payment_intent?.id ?? null,
+          failureCode: error.decline_code ?? error.code ?? "card_declined",
+          failureMessage: error.message,
+        };
+      }
+      throw error;
+    }
+  }
+
   parseWebhook(rawBody: string, signature: string | null): PaymentEvent {
     if (!signature) throw new WebhookSignatureError();
     let event: Stripe.Event | null = null;
@@ -255,10 +384,23 @@ export class StripePaymentProvider implements PaymentProvider {
     if (!event) throw new WebhookSignatureError();
     switch (event.type) {
       case "checkout.session.completed":
+        if (event.data.object.mode === "setup") {
+          return {
+            type: "card_setup_completed",
+            setupId: event.data.object.id,
+            reference: event.data.object.client_reference_id,
+          };
+        }
         return {
           type: "checkout_completed",
           sessionId: event.data.object.id,
           reference: event.data.object.client_reference_id,
+        };
+      case "setup_intent.succeeded":
+        return {
+          type: "card_setup_completed",
+          setupId: event.data.object.id,
+          reference: event.data.object.metadata?.reference ?? null,
         };
       case "checkout.session.expired":
         return {
@@ -288,4 +430,15 @@ export class StripePaymentProvider implements PaymentProvider {
         return { type: "ignored", eventType: event.type };
     }
   }
+}
+
+/** The safe-to-show parts of a card (wallet cards report their underlying card). */
+function cardOf(method: Stripe.PaymentMethod): SavedCard {
+  return {
+    paymentMethodId: method.id,
+    brand: method.card?.brand ?? "card",
+    last4: method.card?.last4 ?? "",
+    expMonth: method.card?.exp_month ?? 0,
+    expYear: method.card?.exp_year ?? 0,
+  };
 }

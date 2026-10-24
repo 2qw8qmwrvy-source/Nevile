@@ -404,3 +404,266 @@ describe("provider from env", () => {
     expect(() => createPaymentProviderFromEnv({ PAYMENTS_PROVIDER: "paypal" })).toThrow(/must be/);
   });
 });
+
+describe("saved cards (SPEC §21)", () => {
+  const fake = new FakePaymentProvider({ siteUrl: "https://nevile.test/" });
+
+  it("fake: saves a test card on the page or sheet, then charges it while the customer is away", async () => {
+    const { customerId } = await fake.ensureCustomer({
+      userId: "u1",
+      email: "cora@example.com",
+      existingCustomerId: null,
+    });
+    expect(
+      await fake.ensureCustomer({ userId: "u1", email: null, existingCustomerId: null }),
+    ).toEqual({ customerId });
+
+    const page = await fake.createCardSetupPage({
+      reference: "setup-1",
+      customerId,
+      successUrl: "https://nevile.test/account/card?setup={SESSION_ID}",
+      cancelUrl: "https://nevile.test/account",
+    });
+    expect(page.url).toBe(`https://nevile.test/dev/fake-card/${page.id}`);
+    expect(
+      (await fake.createCardSetupPage({ ...pageInput(customerId), reference: "setup-1" })).id,
+    ).toBe(page.id);
+    const { event, redirectUrl } = fake.completeCardSetup(page.id);
+    expect(event).toEqual({ type: "card_setup_completed", setupId: page.id, reference: "setup-1" });
+    expect(redirectUrl).toBe(`https://nevile.test/account/card?setup=${page.id}`);
+    const saved = await fake.getCardSetup({ kind: "page", id: page.id });
+    expect(saved).toMatchObject({ status: "complete", card: { brand: "visa", last4: "4242" } });
+
+    const charge = await fake.chargeSavedCard({
+      reference: "pay-1",
+      customerId,
+      paymentMethodId: saved.card?.paymentMethodId ?? "",
+      amountCents: 6457,
+      customerEmail: null,
+      description: "Weekly mowing, May 4",
+      metadata: {},
+    });
+    expect(charge.status).toBe("succeeded");
+    // A retry with the same reference never charges twice.
+    await fake.chargeSavedCard({
+      reference: "pay-1",
+      customerId,
+      paymentMethodId: saved.card?.paymentMethodId ?? "",
+      amountCents: 6457,
+      customerEmail: null,
+      description: "",
+      metadata: {},
+    });
+    expect(fake.ledger().charges.filter((c) => c.reference === "pay-1")).toHaveLength(1);
+    // Refunds work on these charges like any other.
+    if (charge.status !== "succeeded") throw new Error("not charged");
+    await fake.refund({
+      paymentIntentId: charge.paymentIntentId,
+      amountCents: 1000,
+      idempotencyKey: "r1",
+    });
+  });
+
+  it("fake: declining cards fail with a reason, and only the owner's card can be charged", async () => {
+    const { customerId } = await fake.ensureCustomer({
+      userId: "u2",
+      email: null,
+      existingCustomerId: null,
+    });
+    const sheet = await fake.createCardSetupIntent({ reference: "setup-2", customerId });
+    expect(sheet.clientSecret).toContain("_secret_");
+    fake.completeCardSetup(sheet.id, { declining: true });
+    const card = (await fake.getCardSetup({ kind: "intent", id: sheet.id })).card;
+    expect(card?.last4).toBe("0002");
+    const input = {
+      reference: "pay-2",
+      customerId,
+      paymentMethodId: card?.paymentMethodId ?? "",
+      amountCents: 4500,
+      customerEmail: null,
+      description: "Snow visit",
+      metadata: {},
+    };
+    expect(await fake.chargeSavedCard(input)).toMatchObject({
+      status: "failed",
+      failureCode: "card_declined",
+    });
+    fake.setCardDeclining(card?.paymentMethodId ?? "", false);
+    expect((await fake.chargeSavedCard({ ...input, reference: "pay-3" })).status).toBe("succeeded");
+    await expect(
+      fake.chargeSavedCard({ ...input, reference: "pay-4", customerId: "fake_cus_x" }),
+    ).rejects.toThrow();
+  });
+
+  it("Stripe: creates the customer once and saves cards for later charges", async () => {
+    const { provider, requests } = stripeWith((request) =>
+      request.path === "/v1/customers"
+        ? { id: "cus_1", object: "customer" }
+        : request.path === "/v1/setup_intents"
+          ? { id: "seti_1", object: "setup_intent", client_secret: "seti_1_secret_x" }
+          : { id: "cs_set_1", object: "checkout.session", url: "https://checkout.stripe.test/set" },
+    );
+    expect(
+      await provider.ensureCustomer({
+        userId: "u1",
+        email: "cora@example.com",
+        existingCustomerId: null,
+      }),
+    ).toEqual({ customerId: "cus_1" });
+    expect(requests[0]?.headers.get("idempotency-key")).toBe("customer-u1");
+    expect(
+      await provider.ensureCustomer({ userId: "u1", email: null, existingCustomerId: "cus_1" }),
+    ).toEqual({ customerId: "cus_1" });
+    expect(requests).toHaveLength(1);
+
+    await provider.createCardSetupPage({ ...pageInput("cus_1"), reference: "setup-9" });
+    const page = requests.at(-1);
+    expect(page?.path).toBe("/v1/checkout/sessions");
+    expect(page?.body.get("mode")).toBe("setup");
+    expect(page?.body.get("customer")).toBe("cus_1");
+    expect(page?.body.get("success_url")).toBe(
+      "https://nevile.test/account/card?setup={CHECKOUT_SESSION_ID}",
+    );
+    expect(page?.headers.get("idempotency-key")).toBe("card-setup-setup-9");
+
+    expect(
+      await provider.createCardSetupIntent({ reference: "setup-10", customerId: "cus_1" }),
+    ).toEqual({
+      id: "seti_1",
+      clientSecret: "seti_1_secret_x",
+    });
+    expect(requests.at(-1)?.body.get("usage")).toBe("off_session");
+  });
+
+  it("Stripe: reads the saved card and charges it off-session", async () => {
+    const card = {
+      id: "pm_1",
+      object: "payment_method",
+      card: { brand: "mastercard", last4: "4444", exp_month: 8, exp_year: 2029 },
+    };
+    const { provider, requests } = stripeWith((request) =>
+      request.path.startsWith("/v1/setup_intents")
+        ? {
+            id: "seti_2",
+            object: "setup_intent",
+            status: "succeeded",
+            payment_method: card,
+            metadata: { reference: "setup-2" },
+          }
+        : { id: "pi_9", object: "payment_intent", status: "succeeded" },
+    );
+    expect(await provider.getCardSetup({ kind: "intent", id: "seti_2" })).toEqual({
+      id: "seti_2",
+      reference: "setup-2",
+      status: "complete",
+      card: {
+        paymentMethodId: "pm_1",
+        brand: "mastercard",
+        last4: "4444",
+        expMonth: 8,
+        expYear: 2029,
+      },
+    });
+    const charge = await provider.chargeSavedCard({
+      reference: "pay-9",
+      customerId: "cus_1",
+      paymentMethodId: "pm_1",
+      amountCents: 6457,
+      customerEmail: "cora@example.com",
+      description: "Weekly mowing",
+      metadata: { bookingId: "b1" },
+    });
+    expect(charge).toEqual({ status: "succeeded", paymentIntentId: "pi_9" });
+    const request = requests.at(-1);
+    expect(request?.body.get("off_session")).toBe("true");
+    expect(request?.body.get("confirm")).toBe("true");
+    expect(request?.body.get("payment_method")).toBe("pm_1");
+    expect(request?.headers.get("idempotency-key")).toBe("charge-pay-9");
+  });
+
+  it("Stripe: a declined card is a failed result, not an error", async () => {
+    const fetchImpl = async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            type: "card_error",
+            code: "card_declined",
+            decline_code: "insufficient_funds",
+            message: "Your card has insufficient funds.",
+            payment_intent: { id: "pi_declined", object: "payment_intent" },
+          },
+        }),
+        { status: 402, headers: { "content-type": "application/json", "request-id": "req_x" } },
+      );
+    const provider = new StripePaymentProvider({
+      secretKey: "sk_test_123",
+      webhookSecret: "whsec_account",
+      httpClient: Stripe.createFetchHttpClient(fetchImpl as typeof fetch),
+    });
+    expect(
+      await provider.chargeSavedCard({
+        reference: "pay-10",
+        customerId: "cus_1",
+        paymentMethodId: "pm_1",
+        amountCents: 100,
+        customerEmail: null,
+        description: "",
+        metadata: {},
+      }),
+    ).toEqual({
+      status: "failed",
+      paymentIntentId: "pi_declined",
+      failureCode: "insufficient_funds",
+      failureMessage: "Your card has insufficient funds.",
+    });
+  });
+
+  it("Stripe: maps card setup webhooks", () => {
+    const { provider } = stripeWith(() => ({}));
+    const signed = (payload: string) =>
+      provider.parseWebhook(
+        payload,
+        Stripe.webhooks.generateTestHeaderString({ payload, secret: "whsec_account" }),
+      );
+    const session = JSON.stringify({
+      id: "evt_3",
+      object: "event",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_set",
+          object: "checkout.session",
+          mode: "setup",
+          client_reference_id: "setup-3",
+        },
+      },
+    });
+    expect(signed(session)).toEqual({
+      type: "card_setup_completed",
+      setupId: "cs_set",
+      reference: "setup-3",
+    });
+    const intent = JSON.stringify({
+      id: "evt_4",
+      object: "event",
+      type: "setup_intent.succeeded",
+      data: {
+        object: { id: "seti_4", object: "setup_intent", metadata: { reference: "setup-4" } },
+      },
+    });
+    expect(signed(intent)).toEqual({
+      type: "card_setup_completed",
+      setupId: "seti_4",
+      reference: "setup-4",
+    });
+  });
+});
+
+function pageInput(customerId: string) {
+  return {
+    reference: "setup-x",
+    customerId,
+    successUrl: "https://nevile.test/account/card?setup={SESSION_ID}",
+    cancelUrl: "https://nevile.test/account",
+  };
+}

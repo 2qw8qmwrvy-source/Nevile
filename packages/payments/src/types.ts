@@ -59,6 +59,56 @@ export type PaymentIntentState = {
 
 export type AccountState = { payoutsEnabled: boolean; detailsSubmitted: boolean };
 
+/** A customer's saved card (SPEC §21): only what's safe to show and to charge with. */
+export type SavedCard = {
+  paymentMethodId: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+};
+
+/** Saving a card on the provider's page (website). */
+export type CardSetupPageInput = {
+  /** Our card setup id; also the idempotency key. */
+  reference: string;
+  customerId: string;
+  /** Where the customer lands after saving. `{SESSION_ID}` is replaced with the session id. */
+  successUrl: string;
+  cancelUrl: string;
+};
+
+/** How a card setup turned out. */
+export type CardSetupState = {
+  id: string;
+  reference: string | null;
+  status: "open" | "complete" | "expired";
+  card: SavedCard | null;
+};
+
+/** Charging a saved card with the customer away (recurring visits, snow contracts). */
+export type SavedCardChargeInput = {
+  /** Our payment id; also the idempotency key, so a retry never charges twice. */
+  reference: string;
+  customerId: string;
+  paymentMethodId: string;
+  amountCents: number;
+  customerEmail: string | null;
+  description: string;
+  metadata: Record<string, string>;
+};
+
+export type SavedCardCharge =
+  | { status: "succeeded"; paymentIntentId: string }
+  | {
+      status: "failed";
+      /** The provider's payment id for the attempt, when it created one. */
+      paymentIntentId: string | null;
+      /** e.g. `card_declined`, `expired_card`, `authentication_required`. */
+      failureCode: string;
+      failureMessage: string;
+    };
+
 /** What a provider notification means for Nevile. */
 export type PaymentEvent =
   | { type: "checkout_completed"; sessionId: string; reference: string | null }
@@ -67,6 +117,8 @@ export type PaymentEvent =
   /** An in-app payment was charged (or, for a hold, authorised). */
   | { type: "payment_succeeded"; paymentIntentId: string; reference: string | null }
   | { type: "payment_authorized"; paymentIntentId: string; reference: string | null }
+  /** A card was saved, on the provider's page or the payment sheet. */
+  | { type: "card_setup_completed"; setupId: string; reference: string | null }
   | { type: "ignored"; eventType: string };
 
 export class WebhookSignatureError extends Error {
@@ -119,6 +171,23 @@ export interface PaymentProvider {
     idempotencyKey: string;
     description: string;
   }): Promise<{ transferId: string }>;
+  /** The provider's customer record that holds a person's saved card. */
+  ensureCustomer(input: {
+    userId: string;
+    email: string | null;
+    /** Reuses this customer when it's already been created. */
+    existingCustomerId: string | null;
+  }): Promise<{ customerId: string }>;
+  /** Saving a card on the provider's page (website). */
+  createCardSetupPage(input: CardSetupPageInput): Promise<{ id: string; url: string }>;
+  /** Saving a card in the app's payment sheet. */
+  createCardSetupIntent(input: {
+    reference: string;
+    customerId: string;
+  }): Promise<{ id: string; clientSecret: string }>;
+  getCardSetup(input: { kind: "page" | "intent"; id: string }): Promise<CardSetupState>;
+  /** Charges a saved card with the customer away; a decline is a result, not an error. */
+  chargeSavedCard(input: SavedCardChargeInput): Promise<SavedCardCharge>;
   /** Verifies and reads a webhook; throws `WebhookSignatureError` if it isn't genuine. */
   parseWebhook(rawBody: string, signature: string | null): PaymentEvent;
 }

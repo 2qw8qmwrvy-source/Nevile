@@ -1,6 +1,7 @@
 import type {
   BookingState,
   CancellationPolicyId,
+  ContractPricing,
   DonationKind,
   LedgerEntryKind,
   OnboardingIntent,
@@ -8,6 +9,8 @@ import type {
   ProvinceCode,
   RecurrenceFrequency,
   ReferralStatus,
+  SeasonBilling,
+  SeasonPayment,
 } from "@nevile/core";
 import { pgEnum } from "drizzle-orm/pg-core";
 
@@ -206,10 +209,35 @@ export const QUOTE_STATUSES = ["pending", "accepted", "declined", "expired", "wi
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 export const quoteStatus = pgEnum("quote_status", QUOTE_STATUSES);
 
-/** Whether a snow-contract quote's price is per visit or one price for the season. */
+/** Whether a snow contract's price is per visit or one price for the season. */
 export const SNOW_PRICE_BASES = ["per_visit", "season"] as const;
 export type SnowPriceBasis = (typeof SNOW_PRICE_BASES)[number];
+type _SnowPriceBasisAligned = Assert<SameMembers<SnowPriceBasis, ContractPricing>>;
 export const snowPriceBasis = pgEnum("snow_price_basis", SNOW_PRICE_BASES);
+
+/** How a season price can be paid, as the business offers it (SPEC §21). */
+const seasonBillings = ["upfront", "monthly", "either"] as const;
+type _SeasonBillingAligned = Assert<SameMembers<(typeof seasonBillings)[number], SeasonBilling>>;
+export const seasonBilling = pgEnum("season_billing", seasonBillings);
+
+/** How a customer pays a season price. */
+const seasonPayments = ["upfront", "monthly"] as const;
+type _SeasonPaymentAligned = Assert<SameMembers<(typeof seasonPayments)[number], SeasonPayment>>;
+export const seasonPayment = pgEnum("season_payment", seasonPayments);
+
+/** Saving a card: on the provider's page (website) or the payment sheet (app). */
+export const CARD_SETUP_KINDS = ["page", "intent"] as const;
+export type CardSetupKind = (typeof CARD_SETUP_KINDS)[number];
+export const cardSetupKind = pgEnum("card_setup_kind", CARD_SETUP_KINDS);
+
+export const CARD_SETUP_STATUSES = ["open", "completed", "expired"] as const;
+export type CardSetupStatus = (typeof CARD_SETUP_STATUSES)[number];
+export const cardSetupStatus = pgEnum("card_setup_status", CARD_SETUP_STATUSES);
+
+/** A season month's charge: waiting for its date, charged, or no longer owed. */
+export const CONTRACT_PERIOD_STATUSES = ["scheduled", "charged", "cancelled"] as const;
+export type ContractPeriodStatus = (typeof CONTRACT_PERIOD_STATUSES)[number];
+export const contractPeriodStatus = pgEnum("contract_period_status", CONTRACT_PERIOD_STATUSES);
 
 export const VISIT_PHOTO_KINDS = ["before", "after"] as const;
 export type VisitPhotoKind = (typeof VISIT_PHOTO_KINDS)[number];
