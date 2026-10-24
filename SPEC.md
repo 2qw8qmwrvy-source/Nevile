@@ -572,3 +572,8 @@ and **full business mode**. Recurring jobs and snow contracts come in v1.5.
   stays on the website); payout setup opens Stripe's secure page.
 - Development and tests use the built-in fake payment provider with a test payment
   screen; testing Stripe's payment sheet needs a development build of the app.
+- The app asks for notification permission right after a quote request, a booking or a
+  message (never at launch), and stops this phone's pushes when the person signs out.
+  Tapping a notification opens the matching screen.
+- Starting another payment for the same pro replaces the earlier one, and the earlier
+  payment is cancelled at the provider so it can no longer be paid.

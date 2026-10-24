@@ -30,7 +30,7 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
 
 /** One booking: when and where, what was paid, and what the customer can do now. */
 export default function BookingRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, new: isNew } = useLocalSearchParams<{ id: string; new?: string }>();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const queryOptions = trpc.bookings.get.queryOptions({ bookingId: id ?? "" });
@@ -120,6 +120,16 @@ export default function BookingRoute() {
             <Text tone="muted">with {booking.data.business.name}</Text>
           </View>
 
+          {isNew ? (
+            <FormAlert
+              tone="success"
+              message={
+                booking.data.status === "requested"
+                  ? `Request sent. ${booking.data.business.name} has 24 hours to accept; your card is only held until then.`
+                  : "You're booked. We've emailed you a receipt."
+              }
+            />
+          ) : null}
           {error ? <FormAlert tone="error" message={error.message} /> : null}
 
           <Card style={styles.section}>

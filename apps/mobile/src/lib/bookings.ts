@@ -1,6 +1,6 @@
 /**
  * Customer bookings in the app (SPEC §19): the list and detail screens share these types and
- * the status colours. Booking itself happens on the website for now.
+ * the status colours. Booking and paying live in `app/book.tsx`.
  */
 import type { AppRouter, inferRouterOutputs } from "@nevile/api";
 

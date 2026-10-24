@@ -48,10 +48,15 @@ the logs names the variable.
 | `STRIPE_SECRET_KEY` | leave empty | **required** | `sk_test_…` on staging, `sk_live_…` in production. A restricted key (`rk_…`) works if it can manage Checkout, Connect accounts, refunds and transfers. |
 | `STRIPE_WEBHOOK_SECRET` | leave empty | **required** | Signing secret (`whsec_…`) of the webhook endpoint below. |
 | `STRIPE_CONNECT_WEBHOOK_SECRET` | leave empty | optional | Only if Connect events use a second endpoint with its own secret. |
+| `STRIPE_PUBLISHABLE_KEY` | leave empty | **required** | `pk_test_…` / `pk_live_…`, from the same Stripe account as the secret key. The app's payment sheet needs it; it is safe to expose. |
 | `NEVILE_ALLOW_TEST_PAYMENTS` | leave empty | staging only | `true` lets a production build run with a test key. Never set it in production. |
 | `CRON_SECRET` | optional | **required** | Bearer token for `/api/cron` (below). `openssl rand -base64 32`, unique per environment. |
 | `NEVILE_OPS_EMAIL` | optional | recommended | Where problems unresolved after 3 days are escalated. |
+| `EXPO_ACCESS_TOKEN` | leave empty | optional | Expo access token, only if "enhanced push security" is turned on for the Expo project. Pushes go through Expo's push service in production. |
+| `NEVILE_DEV_PUSH` | leave empty | never | `expo` sends real pushes from development; otherwise they are printed to the console. |
 | `EXPO_PUBLIC_API_URL` | `apps/mobile/.env.local` | app build settings | The website's origin for the mobile app. Release builds must use the production `https://` origin. |
+| `EXPO_PUBLIC_EAS_PROJECT_ID` | optional | app build settings | The Expo (EAS) project id push tokens are issued for. Not needed once `eas init` has written it into the app config. Without it the app gets no pushes. |
+| `EXPO_PUBLIC_APPLE_MERCHANT_ID` | optional | app build settings | Apple Pay merchant id; defaults to `merchant.ca.nevile.app`, which must match `app.json` and the Apple developer account. |
 
 Until real email and SMS providers are connected in `@nevile/auth`, sign-in does not work
 with `NODE_ENV=production`: the auth module refuses to run rather than silently drop

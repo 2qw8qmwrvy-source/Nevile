@@ -8,6 +8,7 @@ import { Button } from "@/components/button.tsx";
 import { Card } from "@/components/card.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { Icon, icons } from "@/components/icon.tsx";
+import { ListRow } from "@/components/list-row.tsx";
 import { PressableScale } from "@/components/pressable-scale.tsx";
 import { Screen } from "@/components/screen.tsx";
 import { Text } from "@/components/text.tsx";
@@ -65,7 +66,7 @@ export default function BookingsScreen() {
   const signedIn = Boolean(session.data?.user);
   const list = useQuery({ ...trpc.bookings.list.queryOptions(), enabled: signedIn });
   const refetch = list.refetch;
-  // Bookings are made on the website, so check again whenever the tab comes into view.
+  // Bookings can change elsewhere (the website, the pro), so check again on every visit.
   useFocusEffect(
     useCallback(() => {
       if (signedIn) void refetch();
@@ -91,6 +92,14 @@ export default function BookingsScreen() {
   const empty = data && data.needsYou.length + data.upcoming.length + data.past.length === 0;
   return (
     <Screen title="Bookings">
+      <Card flush style={styles.quotes}>
+        <ListRow
+          label="Your quotes"
+          description="Requests you've sent and the prices pros sent back"
+          icon={icons.chat}
+          onPress={() => router.push("/quotes")}
+        />
+      </Card>
       {list.isPending ? (
         <ActivityIndicator
           color={colors.primary}
@@ -106,7 +115,7 @@ export default function BookingsScreen() {
         <EmptyState
           icon={icons.booked}
           title="No bookings yet"
-          message="Find a local pro and book a time on the Nevile website. Your visits and receipts show up here."
+          message="Find a local pro and book a time, or ask a few for a quote. Your visits and receipts show up here."
           action={
             <Button
               label="Find a pro"
@@ -134,4 +143,5 @@ const styles = StyleSheet.create({
   rowTop: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   shrink: { flex: 1, minWidth: 0 },
   signIn: { gap: space.sm, alignItems: "flex-start" },
+  quotes: { marginBottom: space.lg, overflow: "hidden" },
 });

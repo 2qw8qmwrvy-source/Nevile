@@ -194,6 +194,28 @@ describe.skipIf(!TEST_DATABASE_URL)("the app: in-app payment and push (SPEC §20
     ).toBe("NOT_FOUND");
   });
 
+  it("closes the earlier payment when the customer starts again", async () => {
+    harness.clock.set(novAt(1, 14));
+    const first = await call(customer).bookings.appCheckout({
+      serviceId,
+      ...(await firstWindow()),
+      address,
+      notes: "",
+    });
+    const second = await call(customer).bookings.appCheckout({
+      serviceId,
+      ...(await firstWindow()),
+      address,
+      notes: "",
+    });
+    expect((await harness.payments.getPaymentIntent(first.paymentIntentId)).payment).toBe(
+      "canceled",
+    );
+    expect((await harness.payments.getPaymentIntent(second.paymentIntentId)).payment).toBe(
+      "unpaid",
+    );
+  });
+
   it("registers phones and pushes quotes, replies and chat to them", async () => {
     harness.clock.set(novAt(2, 9));
     await call(customer).push.register({ token: CUSTOMER_TOKEN, platform: "ios" });

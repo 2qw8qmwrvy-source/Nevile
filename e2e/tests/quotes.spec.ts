@@ -155,4 +155,42 @@ test.describe("quotes and chat (SPEC §20)", () => {
     const response = await request.get("/api/private-media/00000000-0000-4000-8000-000000000000");
     expect(response.status()).toBe(404);
   });
+
+  test("streamed photo uploads (no Content-Length, as Android sends them) are size-capped", async ({
+    baseURL,
+  }) => {
+    const boundary = "nevile-e2e-boundary";
+    const multipart = (bytes: Uint8Array) =>
+      Buffer.concat([
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="purpose"\r\n\r\nquotes\r\n` +
+            `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="lawn.png"\r\n` +
+            "Content-Type: image/png\r\n\r\n",
+        ),
+        Buffer.from(bytes),
+        Buffer.from(`\r\n--${boundary}--\r\n`),
+      ]);
+    const upload = (body: Buffer) =>
+      fetch(`${baseURL}/api/private-uploads`, {
+        method: "POST",
+        headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+        // A stream has no known length, so it's sent chunked.
+        body: new ReadableStream({
+          start(controller) {
+            for (let start = 0; start < body.length; start += 64 * 1024) {
+              controller.enqueue(body.subarray(start, start + 64 * 1024));
+            }
+            controller.close();
+          },
+        }),
+        duplex: "half",
+      } as RequestInit);
+
+    // Read in full and refused only because nobody is signed in.
+    const small = await upload(multipart(TINY_PNG));
+    expect(small.status).toBe(401);
+    // Over 10 MB: refused while reading.
+    const large = await upload(multipart(new Uint8Array(11 * 1024 * 1024)));
+    expect(large.status).toBe(413);
+  });
 });

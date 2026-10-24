@@ -24,6 +24,9 @@ npx expo export --platform ios          # bundle smoke test (run inside apps/mob
 | `src/lib/auth.ts` | Better Auth client (`authClient`, `useSession`), API base URL, auth error copy. |
 | `src/lib/trpc-client.ts` / `trpc.tsx` | tRPC client with the session cookie; `ApiProvider` (TanStack Query) and `useTRPC`. |
 | `src/lib/auth-ui.tsx` | Form pieces used by the auth and account screens (`TextField`, `FormAlert`, tabs). |
+| `src/app/book.tsx`, `src/app/pay-test.tsx` | Booking a service or an accepted quote, paid in the app (Stripe's payment sheet; the test payment screen in development). |
+| `src/app/quotes/`, `src/app/inbox/` | Quote requests (camera/library photos), quote comparison, and chat. |
+| `src/lib/payments.ts`, `photos.ts`, `push.ts`, `app-links.ts` | Payment sheet, private photo uploads, push registration, and opening website paths (from notifications) on app screens. |
 | `src/theme/` | Seasons palette and type scale built on `@nevile/tokens`; `fonts.ts` lists the bundled font files. |
 
 ## API and sign-in
@@ -53,6 +56,25 @@ error and falls back to localhost.
 - Sign-up emails link to the website's `/verify-email` page; after confirming, people sign
   in in the app with their email and password. Phone codes create the account on first
   use.
+
+## Payments, photos and push (SPEC §20)
+
+- **Paying:** the booking screen asks the API for a payment (`bookings.appCheckout` or
+  `quotes.appCheckout`). With Stripe it opens Stripe's payment sheet (cards, Apple Pay,
+  Google Pay) and then confirms the booking (`bookings.finishAppCheckout`; the webhook does
+  the same if the app is closed). With the test provider (`PAYMENTS_PROVIDER=fake`, the
+  default in development) it opens the app's test payment screen instead. The payment
+  sheet is native code, so testing it needs a development build (`npx expo run:ios`), not
+  Expo Go. Apple Pay also needs the merchant id (`merchant.ca.nevile.app`, or
+  `EXPO_PUBLIC_APPLE_MERCHANT_ID`) registered in the Apple developer account.
+- **Photos:** picked with `expo-image-picker` and uploaded to `/api/private-uploads` with
+  the session cookie. They're shown from `/api/private-media/<id>` with the same cookie and
+  kept in memory only, never in the disk cache.
+- **Push:** the app asks for notification permission after a quote request, a booking or
+  a message, never at launch, then registers its Expo push token (`push.register`) and
+  removes it on sign-out. Tokens need the EAS project id (`eas init`, or
+  `EXPO_PUBLIC_EAS_PROJECT_ID`) and a real device. A tapped notification opens the matching
+  screen; anything the app doesn't have yet opens on the website.
 
 Auth constants (cookie prefix, OTP length, name limit) and the client factory come from
 `@nevile/auth/client`, the server-free entry point of the auth package, so the app and the

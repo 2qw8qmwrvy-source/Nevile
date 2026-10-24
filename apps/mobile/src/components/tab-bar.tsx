@@ -30,6 +30,7 @@ export function TabBar({ state, descriptors, emitter, navigateToTab, insets }: B
             ? options.tabBarLabel
             : (options.title ?? route.name);
         const tint = focused ? colors.primary : colors.muted;
+        const badge = options.tabBarBadge;
 
         const onPress = () => {
           const event = emitter.emit({
@@ -49,7 +50,8 @@ export function TabBar({ state, descriptors, emitter, navigateToTab, insets }: B
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
             accessibilityLabel={
-              options.tabBarAccessibilityLabel ?? `${label}, tab, ${index + 1} of ${count}`
+              options.tabBarAccessibilityLabel ??
+              `${label}${badge ? `, ${badge} unread` : ""}, tab, ${index + 1} of ${count}`
             }
             testID={options.tabBarButtonTestID}
             onPress={onPress}
@@ -58,6 +60,13 @@ export function TabBar({ state, descriptors, emitter, navigateToTab, insets }: B
           >
             <View style={[styles.pill, focused && styles.pillActive]}>
               {options.tabBarIcon?.({ focused, color: tint, size: 22 })}
+              {badge ? (
+                <View style={styles.badge}>
+                  <Text variant="caption" maxFontSizeMultiplier={1.2} style={styles.badgeText}>
+                    {badge}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <Text
               variant="caption"
@@ -101,4 +110,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   pillActive: { backgroundColor: colors.tabPill },
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: 6,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.danger,
+  },
+  badgeText: { color: colors.onPrimary, fontFamily: fontFamily.bodySemiBold, fontSize: 11 },
 });

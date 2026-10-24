@@ -5,8 +5,8 @@ import { db } from "@nevile/db";
 import { lazyStorage } from "@nevile/storage";
 import { z } from "zod";
 import { crossSiteRefused, isForeignOrigin } from "@/lib/same-origin.ts";
+import { readUploadForm } from "@/lib/upload-form.ts";
 
-const MAX_REQUEST_BYTES = PHOTO_MAX_BYTES + 64 * 1024;
 const fieldsSchema = z.object({ purpose: z.enum(["quotes", "chat"]) });
 
 function error(status: number, message: string): Response {
@@ -20,16 +20,9 @@ function error(status: number, message: string): Response {
  */
 export async function POST(req: Request): Promise<Response> {
   if (isForeignOrigin(req)) return crossSiteRefused();
-  const length = Number(req.headers.get("content-length"));
-  if (!Number.isFinite(length) || length <= 0)
-    return error(411, "Send the photo as a form upload.");
-  if (length > MAX_REQUEST_BYTES) return error(413, "Photos can be up to 10 MB.");
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return error(400, "Send the photo as a form upload.");
-  }
+  const upload = await readUploadForm(req);
+  if (!upload.ok) return error(upload.status, upload.message);
+  const { form } = upload;
   const fields = fieldsSchema.safeParse({ purpose: form.get("purpose") });
   const file = form.get("file");
   if (!fields.success || !(file instanceof File)) return error(400, "Choose a photo to upload.");

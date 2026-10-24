@@ -3,6 +3,7 @@ import {
   type CategorySlug,
   DEFAULT_CATEGORIES,
   postalAreaOf,
+  QUOTE_REQUEST_LIMITS,
   SEARCH_SORT_LABELS,
   SEARCH_SORTS,
   type SearchSort,
@@ -91,6 +92,8 @@ export default function SearchScreen() {
   const [sort, setSort] = useState<SearchSort>("best");
   const [filters, setFilters] = useState(NO_FILTERS);
   const [page, setPage] = useState(1);
+  // Pros picked to ask for a quote together (SPEC §20: up to 3, same service).
+  const [picked, setPicked] = useState<string[]>([]);
   const postalCode = params.postal ?? savedPostal;
 
   // The saved postal code may arrive after the first render.
@@ -104,8 +107,28 @@ export default function SearchScreen() {
 
   const selectCategory = (slug: CategorySlug | undefined) => {
     setPage(1);
+    setPicked([]);
     router.setParams({ category: slug });
   };
+
+  const togglePick = (id: string) =>
+    setPicked((current) =>
+      current.includes(id)
+        ? current.filter((value) => value !== id)
+        : current.length < QUOTE_REQUEST_LIMITS.maxPros
+          ? [...current, id]
+          : current,
+    );
+
+  const askForQuotes = () =>
+    router.push({
+      pathname: "/quotes/new",
+      params: {
+        category: selected?.slug ?? "",
+        pros: picked.join(","),
+        ...(postalCode ? { postal: postalCode } : {}),
+      },
+    });
 
   function applyPostal() {
     const value = postalDraft.trim();
@@ -126,6 +149,24 @@ export default function SearchScreen() {
       title="Search"
       subtitle="Local pros whose service area covers your address."
       contentStyle={styles.content}
+      footer={
+        picked.length > 0 && selected ? (
+          <View style={styles.quoteBar}>
+            <Text variant="small" tone="muted" style={styles.quoteHint}>
+              {picked.length < QUOTE_REQUEST_LIMITS.maxPros
+                ? `You can add ${QUOTE_REQUEST_LIMITS.maxPros - picked.length} more.`
+                : "That's the most for one request."}
+            </Text>
+            <Button
+              label={
+                picked.length > 1 ? `Ask ${picked.length} pros for a quote` : "Ask for a quote"
+              }
+              icon={icons.chat}
+              onPress={askForQuotes}
+            />
+          </View>
+        ) : null
+      }
     >
       <SearchField
         label="Search services"
@@ -296,15 +337,32 @@ export default function SearchScreen() {
                   }
                 />
               ) : (
-                data.results.map((result) => (
-                  <ProCard
-                    key={result.id}
-                    result={result}
-                    onPress={() =>
-                      router.push({ pathname: "/pros/[slug]", params: { slug: result.slug } })
-                    }
-                  />
-                ))
+                data.results.map((result) => {
+                  const isPicked = picked.includes(result.id);
+                  const full = !isPicked && picked.length >= QUOTE_REQUEST_LIMITS.maxPros;
+                  return (
+                    <View key={result.id} style={styles.result}>
+                      <ProCard
+                        result={result}
+                        onPress={() =>
+                          router.push({ pathname: "/pros/[slug]", params: { slug: result.slug } })
+                        }
+                      />
+                      {selected && result.takesQuotes ? (
+                        <Chip
+                          label={isPicked ? "Added to your quote request" : "Ask for a quote"}
+                          icon={isPicked ? icons.check : icons.chat}
+                          selected={isPicked}
+                          disabled={full}
+                          accessibilityRole="checkbox"
+                          accessibilityLabel={`Ask ${result.name} for a quote`}
+                          accessibilityState={{ checked: isPicked, disabled: full }}
+                          onPress={() => togglePick(result.id)}
+                        />
+                      ) : null}
+                    </View>
+                  );
+                })
               )}
               {data.page > 1 || data.hasMore ? (
                 <View style={styles.pager}>
@@ -348,4 +406,16 @@ const styles = StyleSheet.create({
   results: { gap: 12 },
   fetching: { opacity: 0.6 },
   pager: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  result: { gap: 8 },
+  quoteBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  quoteHint: { flex: 1, minWidth: 0 },
 });

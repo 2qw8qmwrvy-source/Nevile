@@ -36,6 +36,28 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.ca.nevile.app",
+          "enableGooglePay": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Nevile uses photos you pick to show pros the job when you ask for a quote or message them.",
+          "cameraPermission": "Nevile uses the camera so you can photograph the job for a quote or a message.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1E5B43",
+          "defaultChannel": "default"
+        }
       ]
     ],
     "experiments": {

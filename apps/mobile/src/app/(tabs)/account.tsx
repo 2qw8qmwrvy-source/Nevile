@@ -7,7 +7,8 @@ import { AccessibilityInfo, Alert } from "react-native";
 import { authClient, callAuth, contactEmail, formatPhone, useSession } from "@/lib/auth.ts";
 import { openLegalPage, openWebsitePage } from "@/lib/links.ts";
 import { useUpdateMe } from "@/lib/me.ts";
-import { useTRPC } from "@/lib/trpc.tsx";
+import { unregisterPush } from "@/lib/push.ts";
+import { useTRPC, useTRPCClient } from "@/lib/trpc.tsx";
 import {
   apiErrorCode,
   apiErrorMessage,
@@ -30,6 +31,7 @@ function comingSoon(feature: string) {
 
 export default function AccountRoute() {
   const trpc = useTRPC();
+  const client = useTRPCClient();
   const queryClient = useQueryClient();
   const { data: session, isPending: sessionPending, refetch: refetchSession } = useSession();
   const user = session?.user ?? null;
@@ -125,6 +127,8 @@ export default function AccountRoute() {
 
   async function signOut() {
     setSigningOut(true);
+    // While the session still works, so this phone stops getting this person's pushes.
+    await unregisterPush(client);
     // The Expo plugin forgets the stored session before the request is sent, so this device
     // is signed out even when the server can't be reached.
     const { error } = await callAuth(() => authClient.signOut());

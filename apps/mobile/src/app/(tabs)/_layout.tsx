@@ -1,8 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
 import { Tabs } from "expo-router/js-tabs";
 import type { ColorValue } from "react-native";
 
 import { Icon, type IconName, icons } from "@/components/icon.tsx";
 import { TabBar } from "@/components/tab-bar.tsx";
+import { useSession } from "@/lib/auth.ts";
+import { useTRPC } from "@/lib/trpc.tsx";
 import { colors } from "@/theme";
 
 function tabIcon(name: IconName) {
@@ -12,6 +15,14 @@ function tabIcon(name: IconName) {
 }
 
 export default function TabsLayout() {
+  const trpc = useTRPC();
+  const session = useSession();
+  const unread = useQuery({
+    ...trpc.chat.unread.queryOptions(),
+    enabled: Boolean(session.data?.user),
+    refetchInterval: 60_000,
+  });
+  const inboxCount = (unread.data?.conversations ?? 0) + (unread.data?.notifications ?? 0);
   return (
     <Tabs
       tabBar={(props) => <TabBar {...props} />}
@@ -23,7 +34,14 @@ export default function TabsLayout() {
         name="bookings"
         options={{ title: "Bookings", tabBarIcon: tabIcon(icons.bookings) }}
       />
-      <Tabs.Screen name="inbox" options={{ title: "Inbox", tabBarIcon: tabIcon(icons.inbox) }} />
+      <Tabs.Screen
+        name="inbox"
+        options={{
+          title: "Inbox",
+          tabBarIcon: tabIcon(icons.inbox),
+          tabBarBadge: inboxCount > 0 ? (inboxCount > 99 ? "99+" : inboxCount) : undefined,
+        }}
+      />
       <Tabs.Screen
         name="account"
         options={{ title: "Account", tabBarIcon: tabIcon(icons.account) }}

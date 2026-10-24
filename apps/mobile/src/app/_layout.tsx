@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 
 import { OnboardingGate } from "@/components/onboarding-gate.tsx";
+import { PushBridge } from "@/components/push-bridge.tsx";
 import { ApiProvider } from "@/lib/trpc.tsx";
 import { colors } from "@/theme";
 import { fontAssets } from "@/theme/fonts.ts";
@@ -65,8 +66,15 @@ export default function RootLayout() {
           <Stack.Screen name="neighbours" />
           <Stack.Screen name="pros/[slug]" />
           <Stack.Screen name="bookings/[id]" />
+          <Stack.Screen name="book" />
+          <Stack.Screen name="pay-test" options={{ presentation: "modal" }} />
+          <Stack.Screen name="quotes/index" />
+          <Stack.Screen name="quotes/new" options={{ presentation: "modal" }} />
+          <Stack.Screen name="quotes/[groupId]" />
+          <Stack.Screen name="inbox/[conversationId]" />
         </Stack>
         <OnboardingGate />
+        <PushBridge />
       </ThemeProvider>
     </ApiProvider>
   );

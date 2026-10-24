@@ -490,10 +490,10 @@ async function openCheckout(
   // A minute over Stripe's 30-minute minimum, so the session is always accepted.
   const expiresAt = new Date(now.getTime() + (CHECKOUT_HOLD_MINUTES + 1) * MS_PER_MINUTE);
 
-  const checkout = await deps.db.transaction(async (tx) => {
+  const { checkout, replaced } = await deps.db.transaction(async (tx) => {
     await lockBusinessCapacity(tx, business.id);
     // A new checkout for the same pro replaces the customer's earlier ones.
-    await tx
+    const replaced = await tx
       .update(bookingCheckouts)
       .set({ status: "cancelled" })
       .where(
@@ -502,7 +502,11 @@ async function openCheckout(
           eq(bookingCheckouts.businessId, business.id),
           eq(bookingCheckouts.status, "open"),
         ),
-      );
+      )
+      .returning({
+        sessionId: bookingCheckouts.providerSessionId,
+        paymentIntentId: bookingCheckouts.providerPaymentIntentId,
+      });
     const open = await tx
       .select({ id: bookingCheckouts.id })
       .from(bookingCheckouts)
@@ -569,8 +573,15 @@ async function openCheckout(
       })
       .returning();
     if (!row) throw new Error("checkout insert returned nothing");
-    return row;
+    return { checkout: row, replaced };
   });
+  // Close the replaced payments too, so an old tab or payment sheet can't still be paid.
+  for (const old of replaced) {
+    if (old.sessionId) await deps.payments.expireCheckout(old.sessionId).catch(() => undefined);
+    if (old.paymentIntentId) {
+      await deps.payments.cancelPaymentIntent(old.paymentIntentId).catch(() => undefined);
+    }
+  }
 
   const when = whenLabel(checkout.startsAt, checkout.endsAt, checkout.timezone);
   const tax = checkout.priceTaxCents + checkout.feeTaxCents;

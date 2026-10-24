@@ -5,9 +5,7 @@ import { db } from "@nevile/db";
 import { lazyStorage } from "@nevile/storage";
 import { z } from "zod";
 import { crossSiteRefused, isForeignOrigin } from "@/lib/same-origin.ts";
-
-// Room for the multipart boundaries and the two small text fields.
-const MAX_REQUEST_BYTES = PHOTO_MAX_BYTES + 64 * 1024;
+import { readUploadForm } from "@/lib/upload-form.ts";
 
 const fieldsSchema = z.object({
   businessId: z.uuid(),
@@ -20,23 +18,15 @@ function error(status: number, message: string): Response {
 
 /**
  * Logo and work-photo uploads from the business dashboard (SPEC §18): multipart form data
- * with `businessId`, `kind` ("photo" | "logo") and `file`. The size is checked before the
+ * with `businessId`, `kind` ("photo" | "logo") and `file`. The size is capped while the
  * body is read; `saveBusinessImage` checks the caller's role, re-encodes the image (no
  * metadata) and records it.
  */
 export async function POST(req: Request): Promise<Response> {
   if (isForeignOrigin(req)) return crossSiteRefused();
-  const length = Number(req.headers.get("content-length"));
-  if (!Number.isFinite(length) || length <= 0)
-    return error(411, "Send the photo as a form upload.");
-  if (length > MAX_REQUEST_BYTES) return error(413, "Photos can be up to 10 MB.");
-
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return error(400, "Send the photo as a form upload.");
-  }
+  const upload = await readUploadForm(req);
+  if (!upload.ok) return error(upload.status, upload.message);
+  const { form } = upload;
   const fields = fieldsSchema.safeParse({
     businessId: form.get("businessId"),
     kind: form.get("kind"),
