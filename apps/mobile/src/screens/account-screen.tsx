@@ -14,6 +14,7 @@ import { Button } from "@/components/button.tsx";
 import { Card } from "@/components/card.tsx";
 import { Icon, icons } from "@/components/icon.tsx";
 import { ListRow } from "@/components/list-row.tsx";
+import { PressableScale } from "@/components/pressable-scale.tsx";
 import { Screen } from "@/components/screen.tsx";
 import { Text } from "@/components/text.tsx";
 import {
@@ -73,8 +74,8 @@ export type AccountScreenProps = {
   creatingBusiness?: boolean;
   businessErrors?: BusinessFormErrors;
   onCreateBusiness?: (input: BusinessFormInput) => void;
-  /** Opens the listing dashboard on the website (SPEC §18: managed there for now). */
-  onManageListing?: () => void;
+  /** Opens the business tools for one of the person's businesses. */
+  onOpenBusiness?: (businessId: string) => void;
   onSignIn?: () => void;
   onCreateAccount?: () => void;
   onSignOut?: () => void;
@@ -234,7 +235,7 @@ function BusinessSection({
   creating,
   errors,
   onCreate,
-  onManageListing,
+  onOpenBusiness,
   verificationNeeded,
 }: {
   businesses?: readonly AccountBusiness[];
@@ -243,7 +244,7 @@ function BusinessSection({
   creating: boolean;
   errors?: BusinessFormErrors;
   onCreate?: (input: BusinessFormInput) => void;
-  onManageListing?: () => void;
+  onOpenBusiness?: (businessId: string) => void;
   verificationNeeded: boolean;
 }) {
   const [formOpen, setFormOpen] = useState(false);
@@ -267,17 +268,18 @@ function BusinessSection({
   } else if (businesses.length > 0) {
     content = (
       <>
-        <Text tone="muted">
-          Edit your profile, photos, service area and services on the website. Your calendar and
-          crew are coming next.
-        </Text>
+        <Text tone="muted">Your calendar, quotes, listing, team and payouts.</Text>
         <View style={styles.businessList}>
           {businesses.map((business) => (
-            <View
+            <PressableScale
               key={business.id}
               style={styles.businessRow}
-              accessible
+              accessibilityRole="button"
               accessibilityLabel={`${business.name}, ${business.roleLabel}, ${business.place}`}
+              accessibilityHint="Opens your business tools"
+              disabled={!onOpenBusiness}
+              pressedScale={0.98}
+              onPress={() => onOpenBusiness?.(business.id)}
             >
               <View style={styles.businessIcon}>
                 <Icon name={icons.business} size={20} color={colors.primary} />
@@ -288,18 +290,10 @@ function BusinessSection({
                   {business.roleLabel} · {business.place}
                 </Text>
               </View>
-            </View>
+              <Icon name={icons.chevronRight} size={16} color={colors.muted} />
+            </PressableScale>
           ))}
         </View>
-        {onManageListing ? (
-          <Button
-            label="Manage your listing"
-            icon={icons.business}
-            fullWidth
-            onPress={onManageListing}
-            accessibilityHint="Opens the Nevile website"
-          />
-        ) : null}
       </>
     );
   } else if (verificationNeeded) {
@@ -354,7 +348,7 @@ export function AccountScreen({
   creatingBusiness = false,
   businessErrors,
   onCreateBusiness,
-  onManageListing,
+  onOpenBusiness,
   onSignIn,
   onCreateAccount,
   onSignOut,
@@ -434,7 +428,7 @@ export function AccountScreen({
           creating={creatingBusiness}
           errors={businessErrors}
           onCreate={onCreateBusiness}
-          onManageListing={onManageListing}
+          onOpenBusiness={onOpenBusiness}
         />
       </View>
 

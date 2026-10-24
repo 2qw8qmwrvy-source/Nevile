@@ -26,6 +26,8 @@ npx expo export --platform ios          # bundle smoke test (run inside apps/mob
 | `src/lib/auth-ui.tsx` | Form pieces used by the auth and account screens (`TextField`, `FormAlert`, tabs). |
 | `src/app/book.tsx`, `src/app/pay-test.tsx` | Booking a service or an accepted quote, paid in the app (Stripe's payment sheet; the test payment screen in development). |
 | `src/app/quotes/`, `src/app/inbox/` | Quote requests (camera/library photos), quote comparison, and chat. |
+| `src/app/business/` | Business tools, opened from Account: hub, calendar and jobs, quote requests, listing (profile, services, photos, service area), team (hours, time off, invites, booking windows) and payouts. Every screen takes `businessId`. |
+| `src/components/business-screen.tsx` | Frame for business tools: Back, business switcher, and the signed-out / no business / wrong role states. |
 | `src/lib/payments.ts`, `photos.ts`, `push.ts`, `app-links.ts` | Payment sheet, private photo uploads, push registration, and opening website paths (from notifications) on app screens. |
 | `src/theme/` | Seasons palette and type scale built on `@nevile/tokens`; `fonts.ts` lists the bundled font files. |
 

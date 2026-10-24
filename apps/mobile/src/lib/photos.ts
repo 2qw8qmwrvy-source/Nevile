@@ -54,13 +54,16 @@ export async function pickPhotos(
   return result.canceled ? [] : result.assets.slice(0, limit);
 }
 
-/** Uploads one photo; returns its id for the request or message to attach. */
-export async function uploadPrivatePhoto(
-  asset: Pick<ImagePicker.ImagePickerAsset, "uri" | "fileName" | "mimeType">,
-  purpose: PhotoPurpose,
-): Promise<string> {
+type Asset = Pick<ImagePicker.ImagePickerAsset, "uri" | "fileName" | "mimeType">;
+
+/** Posts one image as multipart form data with the session cookie; returns the JSON reply. */
+async function postImage(
+  path: string,
+  fields: Record<string, string>,
+  asset: Asset,
+): Promise<Record<string, unknown>> {
   const form = new FormData();
-  form.append("purpose", purpose);
+  for (const [name, value] of Object.entries(fields)) form.append(name, value);
   const name = asset.fileName ?? "photo.jpg";
   if (Platform.OS === "web") {
     form.append("file", await (await fetch(asset.uri)).blob(), name);
@@ -75,7 +78,7 @@ export async function uploadPrivatePhoto(
   const cookie = await getAuthCookie();
   let response: Response;
   try {
-    response = await fetch(`${API_URL}/api/private-uploads`, {
+    response = await fetch(`${API_URL}${path}`, {
       method: "POST",
       headers: cookie ? { cookie } : {},
       body: form,
@@ -84,14 +87,29 @@ export async function uploadPrivatePhoto(
   } catch {
     throw new PhotoError("We couldn't reach Nevile. Check your connection and try again.");
   }
-  const json = (await response.json().catch(() => null)) as {
-    id?: string;
-    error?: { message?: string };
-  } | null;
-  if (!response.ok || !json?.id) {
+  const json = (await response.json().catch(() => null)) as
+    | (Record<string, unknown> & { error?: { message?: string } })
+    | null;
+  if (!response.ok || !json) {
     throw new PhotoError(json?.error?.message ?? "We couldn't upload that photo.");
   }
+  return json;
+}
+
+/** Uploads one private photo; returns its id for the request or message to attach. */
+export async function uploadPrivatePhoto(asset: Asset, purpose: PhotoPurpose): Promise<string> {
+  const json = await postImage("/api/private-uploads", { purpose }, asset);
+  if (typeof json.id !== "string") throw new PhotoError("We couldn't upload that photo.");
   return json.id;
+}
+
+/** Uploads a work photo or the logo for a business's public page (SPEC §18). */
+export async function uploadBusinessImage(
+  asset: Asset,
+  businessId: string,
+  kind: "photo" | "logo",
+): Promise<void> {
+  await postImage("/api/uploads", { businessId, kind }, asset);
 }
 
 /** The session cookie for loading private photos, refreshed when the session changes. */

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { AccessibilityInfo, Alert } from "react-native";
 
 import { authClient, callAuth, contactEmail, formatPhone, useSession } from "@/lib/auth.ts";
-import { openLegalPage, openWebsitePage } from "@/lib/links.ts";
+import { openLegalPage } from "@/lib/links.ts";
 import { useUpdateMe } from "@/lib/me.ts";
 import { unregisterPush } from "@/lib/push.ts";
 import { useTRPC, useTRPCClient } from "@/lib/trpc.tsx";
@@ -70,6 +70,7 @@ export default function AccountRoute() {
         AccessibilityInfo.announceForAccessibility(
           `${business.name} is set up. You're now in business mode.`,
         );
+        router.push({ pathname: "/business", params: { businessId: business.id } });
       },
       onError: (error) => {
         // "You already have a business", or the email was confirmed elsewhere: refresh.
@@ -157,7 +158,9 @@ export default function AccountRoute() {
       creatingBusiness={createBusiness.isPending}
       businessErrors={businessErrors}
       onCreateBusiness={(input) => createBusiness.mutate(input)}
-      onManageListing={() => void openWebsitePage("/business")}
+      onOpenBusiness={(businessId) =>
+        router.push({ pathname: "/business", params: { businessId } })
+      }
       onSignIn={() => router.push("/sign-in")}
       onCreateAccount={() => router.push("/sign-up")}
       onSignOut={confirmSignOut}

@@ -30,3 +30,13 @@ export const shortDate = new Intl.DateTimeFormat("en-CA", {
   month: "short",
   day: "numeric",
 });
+
+/** "Mon, Nov 2, 3:00 p.m." for quote reply deadlines. */
+export const replyByFormat = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Halifax",
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});

@@ -568,8 +568,12 @@ and **full business mode**. Recurring jobs and snow contracts come in v1.5.
   Stripe's payment sheet (cards, Apple Pay, Google Pay); request quotes with photos from
   the camera or library; and chat.
 - **Business mode** in the app: calendar, requests and quotes, chat, team, listing,
-  photos and payouts. The service area is set by postal code and distance (the map editor
-  stays on the website); payout setup opens Stripe's secure page.
+  photos and payouts. It opens from Account (a business's row opens its business tools);
+  the bottom tabs stay the same. People in several businesses switch between them at the
+  top of the business tools. What each role sees matches the website: crew get their own
+  jobs, hours and time off; owners and managers get everything; only the owner sets up
+  payouts. The service area is set by postal code and distance (the map editor stays on
+  the website); payout setup opens Stripe's secure page.
 - Development and tests use the built-in fake payment provider with a test payment
   screen; testing Stripe's payment sheet needs a development build of the app.
 - The app asks for notification permission right after a quote request, a booking or a

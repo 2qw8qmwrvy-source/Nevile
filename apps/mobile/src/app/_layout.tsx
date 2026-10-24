@@ -72,6 +72,20 @@ export default function RootLayout() {
           <Stack.Screen name="quotes/new" options={{ presentation: "modal" }} />
           <Stack.Screen name="quotes/[groupId]" />
           <Stack.Screen name="inbox/[conversationId]" />
+          <Stack.Screen name="business/index" />
+          <Stack.Screen name="business/calendar" />
+          <Stack.Screen name="business/bookings/[id]" />
+          <Stack.Screen name="business/quotes/index" />
+          <Stack.Screen name="business/quotes/[requestId]" />
+          <Stack.Screen name="business/listing" />
+          <Stack.Screen name="business/profile" />
+          <Stack.Screen name="business/service" />
+          <Stack.Screen name="business/area" />
+          <Stack.Screen name="business/photos" />
+          <Stack.Screen name="business/team" />
+          <Stack.Screen name="business/member" />
+          <Stack.Screen name="business/windows" />
+          <Stack.Screen name="business/payouts" />
         </Stack>
         <OnboardingGate />
         <PushBridge />
