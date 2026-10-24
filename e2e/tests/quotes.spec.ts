@@ -1,6 +1,7 @@
 import {
   confirmEmail,
   expect,
+  horizontalOverflow,
   messageWith,
   publishBusiness,
   seriousViolations,
@@ -41,6 +42,8 @@ test.describe("quotes and chat (SPEC §20)", () => {
     await customer.goto("/search?service=lawn-mowing&postal=B3H%201A1");
     await customer.getByRole("checkbox", { name: `Ask ${annName} for a quote` }).check();
     await customer.getByRole("checkbox", { name: `Ask ${benName} for a quote` }).check();
+    // Signed in, with the quote bar showing: still no sideways scrolling on phones.
+    expect(await horizontalOverflow(customer)).toBe(0);
     await customer.getByRole("link", { name: /Ask 2 pros for a quote/ }).click();
 
     await expect(

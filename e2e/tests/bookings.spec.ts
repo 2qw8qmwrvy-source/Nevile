@@ -39,11 +39,13 @@ test.describe("bookings (SPEC §19)", () => {
     await crew.goto(inviteLink);
     await expect(crew.getByRole("heading", { name: `Join ${name}` })).toBeVisible();
     await crew.getByRole("main").getByRole("link", { name: "Create an account" }).click();
+    await crew.waitForLoadState("networkidle");
     await crew.getByLabel("Your name").fill("Cal Crew");
     await crew.getByRole("textbox", { name: "Email" }).fill(crewEmail);
     await crew.getByLabel("Postal code").fill("B3H 1A1");
     await crew.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
     await crew.getByLabel("Confirm password").fill("correct-horse-battery");
+    await expect(crew.getByLabel("Postal code")).toHaveValue("B3H 1A1");
     await crew.getByRole("button", { name: "Create account" }).click();
     await expect(crew).toHaveURL(/\/invite\//);
     await confirmEmail(crew, crewEmail);
@@ -89,6 +91,7 @@ test.describe("bookings (SPEC §19)", () => {
 
     // The crew member sees it in their week.
     await crew.reload();
+    await crew.waitForLoadState("networkidle");
     await crew.getByRole("button", { name: "Next week" }).click();
     await expect(crew.getByText("Weekly mowing")).toBeVisible();
     await expect(crew.getByText("“Side gate is unlocked.”")).toBeVisible();

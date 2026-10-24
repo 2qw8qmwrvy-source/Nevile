@@ -48,6 +48,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_MAPLIBRE_VERSION: maplibreVersion },
+  // Browser tests hide the development badge: it covers the bottom-left corner, where
+  // fixed bars (like "Ask for quotes") sit. Production never shows it.
+  ...(process.env.NEVILE_HIDE_DEV_INDICATOR === "true" ? { devIndicators: false as const } : {}),
   poweredByHeader: false,
   reactStrictMode: true,
   typedRoutes: true,

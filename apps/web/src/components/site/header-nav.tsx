@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
-import { CloseIcon, MenuIcon } from "@/components/ui/icons.tsx";
+import { CloseIcon, MailIcon, MenuIcon } from "@/components/ui/icons.tsx";
 import { cn } from "@/lib/cn.ts";
 import { authRoutes } from "@/lib/routes.ts";
 import { useAuthState } from "@/lib/use-auth-state.ts";
@@ -64,8 +64,10 @@ function InboxButton() {
     };
   }, [pathname]);
   return (
-    <Button href="/inbox" variant="ghost" className="relative" prefetch>
-      Inbox
+    <Button href="/inbox" variant="ghost" className="relative px-2.5 sm:px-4" prefetch>
+      {/* A compact icon on phones, so the signed-in header still fits 360px screens. */}
+      <MailIcon size={20} className="sm:hidden" />
+      <span className="sr-only sm:not-sr-only">Inbox</span>
       {count > 0 ? (
         <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-xs font-bold text-on-primary">
           <span className="sr-only">, unread: </span>
@@ -84,28 +86,36 @@ export function HeaderAccount({ hasSessionCookie }: { hasSessionCookie: boolean 
     return (
       <span
         aria-hidden="true"
-        className="inline-block h-11 w-[104px] rounded-full bg-subtle motion-safe:animate-pulse"
+        className="inline-block h-11 w-11 rounded-full bg-subtle motion-safe:animate-pulse sm:w-[104px]"
       />
     );
   }
   if (status === "signed-in") {
     return (
       <>
-        <Button href="/bookings" variant="ghost" className="hidden sm:inline-flex" prefetch>
-          Bookings
-        </Button>
+        {/* Display classes go on a wrapper: Button's own inline-flex would override "hidden". */}
+        <span className="hidden sm:inline-flex">
+          <Button href="/bookings" variant="ghost" prefetch>
+            Bookings
+          </Button>
+        </span>
         <InboxButton />
-        <Button href="/account" variant="secondary" prefetch>
-          Account
-        </Button>
+        {/* On phones Account lives in the menu, so the header keeps room to breathe. */}
+        <span className="hidden sm:inline-flex">
+          <Button href="/account" variant="secondary" prefetch>
+            Account
+          </Button>
+        </span>
       </>
     );
   }
   return (
     <>
-      <Button href={authRoutes.signIn} variant="ghost" className="hidden sm:inline-flex">
-        Sign in
-      </Button>
+      <span className="hidden sm:inline-flex">
+        <Button href={authRoutes.signIn} variant="ghost">
+          Sign in
+        </Button>
+      </span>
       <Button href={authRoutes.signUp}>Sign up</Button>
     </>
   );
@@ -194,6 +204,16 @@ export function MobileMenu({ hasSessionCookie }: { hasSessionCookie: boolean }) 
               className="flex min-h-12 items-center rounded-input px-3 text-base font-medium text-ink no-underline hover:bg-hover hover:text-ink aria-[current=page]:bg-hover"
             >
               Your quotes
+            </Link>
+          ) : null}
+          {status === "signed-in" ? (
+            <Link
+              href="/account"
+              onClick={() => setOpen(false)}
+              aria-current={pathname === "/account" ? "page" : undefined}
+              className="flex min-h-12 items-center rounded-input px-3 text-base font-medium text-ink no-underline hover:bg-hover hover:text-ink aria-[current=page]:bg-hover"
+            >
+              Your account
             </Link>
           ) : null}
           {status === "signed-out" ? (

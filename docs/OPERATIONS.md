@@ -111,7 +111,7 @@ Schema changes:
   restore target is known.
 - `pnpm db:seed` (service categories) is safe to run again after each deploy.
 
-## Business photos (media storage)
+## Business photos and private photos (media storage)
 
 Logos and work photos (SPEC §18) are re-encoded on upload (WebP, metadata and location
 removed), then stored under random names like `businesses/<id>/photos/<uuid>.webp`. Files
@@ -129,6 +129,18 @@ Setting up Cloudflare R2 (AWS S3 works the same way):
 
 Deleting a photo or replacing a logo deletes the file too. A failed delete only leaves an
 unused file behind (it is logged as "Could not delete stored media").
+
+Private photos (quote requests and chat, SPEC §20) live in the same bucket under
+`private/quotes/<uuid>.webp` and `private/chat/<uuid>.webp`. The site never hands out
+their storage keys: it streams them through `/api/private-media/<id>` only to the people
+in that request or conversation. If the bucket is publicly readable through
+`MEDIA_PUBLIC_BASE_URL`, **allow public reads of `businesses/*` only**:
+
+- Cloudflare R2 with a custom domain: add a WAF custom rule on the media domain,
+  "URI Path starts with `/private/`" → Block.
+- AWS S3: grant public `s3:GetObject` only on `arn:aws:s3:::<bucket>/businesses/*`.
+
+Photos uploaded but never sent are deleted after a day by the scheduled jobs.
 
 ## Maps and postal code areas
 
@@ -224,7 +236,10 @@ Each run, in order, and each step is safe to repeat:
 3. confirms finished jobs the customer didn't answer within 48 hours;
 4. escalates problems not resolved within 3 days to `NEVILE_OPS_EMAIL`;
 5. reminds businesses 2 days before their payout setup deadline, then enforces it;
-6. on Mondays, creates and sends the week's payouts (and retries failed ones).
+6. on Mondays, creates and sends the week's payouts (and retries failed ones);
+7. closes quote requests nobody answered in 3 days, and quotes not booked in 7 (SPEC §20);
+8. sends one email per conversation when chat messages have sat unread for 10 minutes;
+9. deletes photos that were uploaded for a request or message but never sent (after a day).
 
 The JSON answer lists how many items each step handled. Alert if the endpoint fails
 several runs in a row: holds then stay open longer and payouts wait.

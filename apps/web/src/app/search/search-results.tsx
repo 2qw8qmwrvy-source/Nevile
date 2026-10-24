@@ -4,7 +4,8 @@ import type { AppRouter, inferRouterOutputs } from "@nevile/api";
 import { QUOTE_REQUEST_LIMITS } from "@nevile/core";
 import type { Route } from "next";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { MapView } from "@/components/map/map-view.tsx";
 import { ProAvatar } from "@/components/pros/pro-avatar.tsx";
 import { ProBadges } from "@/components/pros/pro-badges.tsx";
@@ -34,6 +35,10 @@ export function SearchResults({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>(quote?.picked ?? []);
+  // The "Ask for quotes" bar is portalled to <body>: page transitions transform the
+  // content, which would otherwise pin a fixed bar to the content instead of the screen.
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => setPortalTarget(document.body), []);
   const togglePick = (id: string) =>
     setPicked((current) =>
       current.includes(id)
@@ -76,7 +81,10 @@ export function SearchResults({
           {showMap ? "Hide map" : "Show map"}
         </Button>
       </div>
-      <ol className="grid gap-3" aria-label="Pros that serve your area">
+      <ol
+        className={cn("grid gap-3", picked.length > 0 && "pb-24")}
+        aria-label="Pros that serve your area"
+      >
         {results.map((result) => (
           <li key={result.id} id={`result-${result.id}`}>
             <Link
@@ -130,19 +138,22 @@ export function SearchResults({
           </li>
         ))}
       </ol>
-      {askHref && picked.length > 0 ? (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 py-3 shadow-card backdrop-blur lg:col-span-2">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-            <p className="text-[15px]">
-              <strong>{picked.length}</strong> of {MAX_QUOTE_PROS} pros picked for a quote
-            </p>
-            <Button href={askHref}>
-              Ask {picked.length === 1 ? "for a quote" : `${picked.length} pros for a quote`}
-              <ArrowRightIcon size={18} />
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      {askHref && picked.length > 0 && portalTarget
+        ? createPortal(
+            <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-card backdrop-blur">
+              <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
+                <p className="text-[15px]">
+                  <strong>{picked.length}</strong> of {MAX_QUOTE_PROS} pros picked for a quote
+                </p>
+                <Button href={askHref}>
+                  Ask {picked.length === 1 ? "for a quote" : `${picked.length} pros for a quote`}
+                  <ArrowRightIcon size={18} />
+                </Button>
+              </div>
+            </div>,
+            portalTarget,
+          )
+        : null}
       <div
         id="search-map"
         className={cn("lg:sticky lg:top-24 lg:block", showMap ? "block" : "hidden")}

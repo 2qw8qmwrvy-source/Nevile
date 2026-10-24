@@ -125,6 +125,11 @@ With the default `PAYMENTS_PROVIDER=fake`, no Stripe account is needed:
    jobs done), **Team** (hours, time off, invites, arrival windows) and **Payouts** (test
    payout setup).
 
+Quotes and chat work the same way: as a customer, search with a service chosen, tick up to
+3 pros and press **Ask for a quote**; as the business, answer it under **Business → Quotes**.
+Each request has its own conversation in the **Inbox**; phone numbers and emails typed in
+chat stay hidden from the other side until a booking between them is paid.
+
 Scheduled upkeep (expiring holds, auto-confirming jobs, Monday payouts) runs when something
 calls `/api/cron`; locally, set `CRON_SECRET` in `.env` and run
 `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron`.

@@ -71,6 +71,7 @@ export default defineConfig({
       NEVILE_NEIGHBOURS_ENABLED: "false",
       // Bookings use the built-in test payment provider (no Stripe calls).
       PAYMENTS_PROVIDER: "fake",
+      NEVILE_HIDE_DEV_INDICATOR: "true",
       CRON_SECRET: E2E_CRON_SECRET,
       NEXT_TELEMETRY_DISABLED: "1",
     },

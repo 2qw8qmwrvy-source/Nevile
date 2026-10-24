@@ -119,17 +119,28 @@ export async function signUpWithEmail(
   }: { email: string; postalCode?: string; name?: string },
 ) {
   await page.goto("/sign-up");
+  // Typing before the page is interactive can be undone when it hydrates.
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("textbox", { name: "Email" }).fill(email);
   await page.getByLabel("Postal code").fill(postalCode);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
+  await expect(page.getByLabel("Postal code")).toHaveValue(postalCode);
   await page.getByRole("button", { name: "Create account" }).click();
 }
 
-/** Horizontal overflow in CSS pixels (0 means no sideways scrolling). */
-export function horizontalOverflow(page: Page): Promise<number> {
-  return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+/**
+ * Horizontal overflow in CSS pixels (0 means no sideways scrolling), measured against the
+ * device width: on phones an overflowing page widens the layout viewport itself, so
+ * comparing with `innerWidth` alone would miss it.
+ */
+export async function horizontalOverflow(page: Page): Promise<number> {
+  const deviceWidth = page.viewportSize()?.width ?? 0;
+  const width = await page.evaluate(() =>
+    Math.max(document.documentElement.scrollWidth, window.innerWidth),
+  );
+  return Math.max(0, width - deviceWidth);
 }
 
 /** The season SPEC §13 expects for today in Nova Scotia. */
