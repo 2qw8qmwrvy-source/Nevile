@@ -8,6 +8,7 @@ import { BusinessScreen } from "@/components/business-screen.tsx";
 import { Button } from "@/components/button.tsx";
 import { Card } from "@/components/card.tsx";
 import { Text } from "@/components/text.tsx";
+import { APP_SCHEME } from "@/lib/auth.ts";
 import { FormAlert } from "@/lib/auth-ui.tsx";
 import type { Membership } from "@/lib/business.ts";
 import { useTRPC } from "@/lib/trpc.tsx";
@@ -57,11 +58,9 @@ function Payouts({ membership }: { membership: Membership }) {
   const start = useMutation(
     trpc.payouts.start.mutationOptions({
       onSuccess: async ({ url }) => {
-        // Stripe's secure page; when it's closed, ask whether payouts are ready now.
-        await WebBrowser.openBrowserAsync(url, {
-          controlsColor: colors.primary,
-          dismissButtonStyle: "done",
-        });
+        // Stripe's secure page. It ends on a page whose button opens nevile://payout-return,
+        // which closes the sheet; then ask whether payouts are ready now.
+        await WebBrowser.openAuthSessionAsync(url, `${APP_SCHEME}://payout-return`);
         setReturned(true);
         refresh.mutate({ businessId });
       },
@@ -116,7 +115,7 @@ function Payouts({ membership }: { membership: Membership }) {
                 fullWidth
                 loading={start.isPending}
                 accessibilityHint="Opens Stripe's secure page"
-                onPress={() => start.mutate({ businessId })}
+                onPress={() => start.mutate({ businessId, returnTo: "app" })}
               />
             ) : (
               <Text>Only the owner can set up payouts.</Text>

@@ -60,6 +60,8 @@ export async function startPayoutSetup(
   deps: BookingDeps,
   business: Business,
   email: string | null,
+  /** Where Stripe sends the business afterwards: the website, or a page that returns to the app. */
+  returnTo: "web" | "app" = "web",
 ): Promise<{ url: string }> {
   let accountId = business.stripeAccountId;
   if (!accountId) {
@@ -69,7 +71,10 @@ export async function startPayoutSetup(
       .set({ stripeAccountId: accountId })
       .where(eq(businesses.id, business.id));
   }
-  const page = `${deps.config.siteUrl}/business/payouts`;
+  const page =
+    returnTo === "app"
+      ? `${deps.config.siteUrl}/payouts/app-return`
+      : `${deps.config.siteUrl}/business/payouts`;
   return deps.payments.onboardingLink({
     accountId,
     returnUrl: `${page}?done=1`,

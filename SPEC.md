@@ -272,10 +272,9 @@ cleanup; May: lawn-mowing season; August: book fall gutter and leaf cleanup).
    gate, motion & performance polish, Nevile Neighbours groundwork, CI, browser tests,
    monitoring, legal & accessibility drafts.~~
 4. ~~Listings & search (v1.2, §18).~~
-5. ~~One-off booking, crew calendar & payments (v1.3, §19).~~ The app shows bookings; its
-   Book buttons open the website's booking page for now.
-6. Quotes & chat, booking and paying in the app, business mode in the app (v1.4, §20) →
-   recurring jobs & snow contracts (v1.5) → tips, donations at checkout → ratings →
+5. ~~One-off booking, crew calendar & payments (v1.3, §19).~~
+6. ~~Quotes & chat, booking and paying in the app, business mode in the app (v1.4, §20).~~
+7. Recurring jobs & snow contracts (v1.5) → tips, donations at checkout → ratings →
    subscription → admin.
 
 ## 15. Nevile Neighbours (community program)
@@ -573,7 +572,9 @@ and **full business mode**. Recurring jobs and snow contracts come in v1.5.
   top of the business tools. What each role sees matches the website: crew get their own
   jobs, hours and time off; owners and managers get everything; only the owner sets up
   payouts. The service area is set by postal code and distance (the map editor stays on
-  the website); payout setup opens Stripe's secure page.
+  the website); payout setup opens Stripe's secure page, which ends on a page that hands
+  back to the app. Notifications about a business's quote requests name the business, so
+  they open the right one for people in several.
 - Development and tests use the built-in fake payment provider with a test payment
   screen; testing Stripe's payment sheet needs a development build of the app.
 - The app asks for notification permission right after a quote request, a booking or a

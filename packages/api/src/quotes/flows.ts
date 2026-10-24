@@ -52,7 +52,7 @@ import { businessTeamUserIds, NOTIFICATION_TYPES, notify } from "../inbox.ts";
 import { sendAll } from "../notify.ts";
 import { attachPhotos, photosFor } from "../photos.ts";
 import { lookupPostalArea } from "../postal.ts";
-import { type QuoteMailFacts, quoteEmails } from "./emails.ts";
+import { businessQuotePath, type QuoteMailFacts, quoteEmails } from "./emails.ts";
 
 type Mail = EmailMessage[];
 
@@ -268,6 +268,7 @@ export async function requestQuotes(
         quoteRequestId: request.id,
       });
       const facts: QuoteMailFacts = {
+        businessId: target.business.id,
         businessName: target.business.name,
         categoryName,
         siteUrl: deps.config.siteUrl,
@@ -280,7 +281,7 @@ export async function requestQuotes(
         NOTIFICATION_TYPES.quoteRequested,
         {
           text: `${firstName(customer.name)} asked for a quote: ${categoryName} near ${area.code}`,
-          path: `/business/quotes/${request.id}`,
+          path: businessQuotePath(request.id, target.business.id),
         },
       );
       mail.push(
@@ -377,6 +378,7 @@ export async function sendQuote(
       })
       .where(eq(quoteRequests.id, request.id));
     const facts: QuoteMailFacts = {
+      businessId: business.id,
       businessName: business.name,
       categoryName: category.name,
       siteUrl: deps.config.siteUrl,
@@ -436,7 +438,6 @@ async function noQuotesMail(
     categoryName,
     siteUrl: deps.config.siteUrl,
     groupId: group.id,
-    requestId: "",
   });
 }
 
@@ -472,6 +473,7 @@ export async function declineRequest(
     });
     mail.push(
       ...quoteEmails.declinedForCustomer(await customerEmail(tx, request.customerId), {
+        businessId: business.id,
         businessName: business.name,
         categoryName: category.name,
         siteUrl: deps.config.siteUrl,
@@ -524,10 +526,11 @@ async function closeCopies(
         reason === "chose_another"
           ? `The customer booked another pro: ${categoryName}`
           : `The customer closed their request: ${categoryName}`,
-      path: `/business/quotes/${request.id}`,
+      path: businessQuotePath(request.id, business.id),
     });
     mail.push(
       ...quoteEmails.closedForBusiness(await businessTeamEmails(tx, business.id), {
+        businessId: business.id,
         businessName: business.name,
         categoryName,
         siteUrl: deps.config.siteUrl,
@@ -710,7 +713,7 @@ export async function expireQuoteRequests(deps: BookingDeps): Promise<number> {
           text: quoted
             ? `Your quote expired: ${locked.category.name}`
             : `A quote request closed without a reply: ${locked.category.name}`,
-          path: `/business/quotes/${request.id}`,
+          path: businessQuotePath(request.id, request.businessId),
         },
       );
       return noQuotesMail(tx, deps, locked.group, locked.category.name);

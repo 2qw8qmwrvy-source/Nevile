@@ -86,6 +86,7 @@ export default function RootLayout() {
           <Stack.Screen name="business/member" />
           <Stack.Screen name="business/windows" />
           <Stack.Screen name="business/payouts" />
+          <Stack.Screen name="payout-return" options={{ animation: "none" }} />
         </Stack>
         <OnboardingGate />
         <PushBridge />

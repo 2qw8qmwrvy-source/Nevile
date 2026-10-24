@@ -200,4 +200,18 @@ test.describe("bookings (SPEC §19)", () => {
     });
     expect(ok.status()).toBe(200);
   });
+
+  test("payout setup started in the app ends on a page that returns to the app", async ({
+    page,
+  }) => {
+    await page.goto("/payouts/app-return?done=1");
+    await expect(page.getByRole("heading", { name: "Payout setup: done here" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Back to the Nevile app" })).toHaveAttribute(
+      "href",
+      "nevile://payout-return",
+    );
+    expect(await seriousViolations(page)).toEqual([]);
+    await page.goto("/payouts/app-return?retry=1");
+    await expect(page.getByRole("heading", { name: "That link expired" })).toBeVisible();
+  });
 });

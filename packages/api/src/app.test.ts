@@ -239,7 +239,7 @@ describe.skipIf(!TEST_DATABASE_URL)("the app: in-app payment and push (SPEC §20
         to: OWNER_TOKEN,
         title: "Nevile",
         body: "Cora asked for a quote: Lawn Mowing near B3H",
-        path: expect.stringMatching(/^\/business\/quotes\//),
+        path: expect.stringMatching(new RegExp(`^/business/quotes/[0-9a-f-]+\\?b=${businessId}$`)),
       },
     ]);
 

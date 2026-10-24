@@ -130,6 +130,22 @@ Quotes and chat work the same way: as a customer, search with a service chosen, 
 Each request has its own conversation in the **Inbox**; phone numbers and emails typed in
 chat stay hidden from the other side until a booking between them is paid.
 
+### Trying it in the app
+
+Everything above also works in the phone app (`pnpm --filter @nevile/mobile start`, see
+`apps/mobile/README.md`):
+
+- **Customers** book from a pro's page and pay on the in-app test payment screen (a
+  development build with real Stripe keys shows Stripe's payment sheet instead), ask for
+  quotes from a pro's page or by ticking up to 3 pros in search (photos from the camera or
+  library), and chat from the **Inbox** tab.
+- **Businesses** tap their business under **Account** to open the business tools: calendar
+  and jobs, quote requests, listing (profile, services, photos, service area by postal
+  code), team and payouts. The tabs stay the same.
+- Push notifications need a real phone and the Expo project id
+  (`EXPO_PUBLIC_EAS_PROJECT_ID`); in development the server prints them under
+  `[dev push]` unless `NEVILE_DEV_PUSH=expo`.
+
 Scheduled upkeep (expiring holds, auto-confirming jobs, Monday payouts) runs when something
 calls `/api/cron`; locally, set `CRON_SECRET` in `.env` and run
 `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron`.

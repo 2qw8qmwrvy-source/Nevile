@@ -1,4 +1,5 @@
 import { contactEmail } from "@nevile/auth";
+import { z } from "zod";
 import {
   assertOwner,
   payoutSummary,
@@ -16,10 +17,17 @@ export const payoutsRouter = router({
   status: editor.query(({ ctx }) => payoutSummary(bookingDeps(ctx), ctx.business)),
 
   /** Opens Stripe's payout setup (identity and bank account). Owner only. */
-  start: editor.mutation(({ ctx }) => {
-    assertOwner(ctx.membership.role);
-    return startPayoutSetup(bookingDeps(ctx), ctx.business, contactEmail(ctx.user.email));
-  }),
+  start: editor
+    .input(z.object({ returnTo: z.enum(["web", "app"]).default("web") }))
+    .mutation(({ ctx, input }) => {
+      assertOwner(ctx.membership.role);
+      return startPayoutSetup(
+        bookingDeps(ctx),
+        ctx.business,
+        contactEmail(ctx.user.email),
+        input.returnTo,
+      );
+    }),
 
   /** Re-checks payout readiness after returning from setup. */
   refresh: editor.mutation(async ({ ctx }) => ({

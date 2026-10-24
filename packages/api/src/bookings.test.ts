@@ -351,7 +351,13 @@ describe.skipIf(!TEST_DATABASE_URL)("one-off bookings (SPEC §19)", () => {
     expect(paused.code).toBe("PRECONDITION_FAILED");
 
     expect((await trpcError(call(crew).payouts.start({ businessId }))).code).toBe("FORBIDDEN");
+    // From the app, Stripe returns to a page that hands back to the app.
+    const fromApp = await call(owner).payouts.start({ businessId, returnTo: "app" });
+    expect(new URL(fromApp.url).searchParams.get("return")).toMatch(
+      /\/payouts\/app-return\?done=1$/,
+    );
     const { url } = await call(owner).payouts.start({ businessId });
+    expect(new URL(url).searchParams.get("return")).toMatch(/\/business\/payouts\?done=1$/);
     const accountId = new URL(url).searchParams.get("account") ?? "";
     await handlePaymentEvent(deps(), harness.payments.finishOnboarding(accountId));
     expect((await call(owner).payouts.refresh({ businessId })).payoutsEnabled).toBe(true);

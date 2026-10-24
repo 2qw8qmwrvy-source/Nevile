@@ -3,6 +3,7 @@ import { emailsTo } from "../bookings/emails.ts";
 
 /** What quote emails need to say. */
 export type QuoteMailFacts = {
+  businessId: string;
   businessName: string;
   categoryName: string;
   siteUrl: string;
@@ -11,8 +12,12 @@ export type QuoteMailFacts = {
 };
 
 const customerLink = (facts: QuoteMailFacts) => `${facts.siteUrl}/quotes/${facts.groupId}`;
+/** A business's quote request page; `?b=` picks the business for people in several. */
+export const businessQuotePath = (requestId: string, businessId: string) =>
+  `/business/quotes/${requestId}?b=${businessId}`;
+
 const businessLink = (facts: QuoteMailFacts) =>
-  `${facts.siteUrl}/business/quotes/${facts.requestId}`;
+  `${facts.siteUrl}${businessQuotePath(facts.requestId, facts.businessId)}`;
 
 export const quoteEmails = {
   newRequestForBusiness: (
@@ -41,7 +46,10 @@ export const quoteEmails = {
       `${facts.businessName} can't quote this job`,
       `${facts.businessName} can't take your ${facts.categoryName.toLowerCase()} job.\n\nTheir reason: "${facts.reason}"\n\nSee your other quotes, or ask another pro: ${customerLink(facts)}`,
     ),
-  noQuotesForCustomer: (recipients: string[], facts: Omit<QuoteMailFacts, "businessName">) =>
+  noQuotesForCustomer: (
+    recipients: string[],
+    facts: Pick<QuoteMailFacts, "categoryName" | "siteUrl" | "groupId">,
+  ) =>
     emailsTo(
       recipients,
       `No quotes for your ${facts.categoryName.toLowerCase()} request`,
