@@ -29,6 +29,7 @@ export function ProfileSection({ listing, businessId, onUnpublished }: SectionPr
   const [gstHstNumber, setGstHstNumber] = useState(business.gstHstNumber ?? "");
   const [policy, setPolicy] = useState<CancellationPolicyId>(business.cancellationPolicy);
   const [instantBook, setInstantBook] = useState(business.instantBook);
+  const [takesQuotes, setTakesQuotes] = useState(business.acceptsQuoteRequests);
   const [saved, setSaved] = useState(false);
 
   const save = useMutation(
@@ -51,6 +52,7 @@ export function ProfileSection({ listing, businessId, onUnpublished }: SectionPr
       gstHstNumber,
       cancellationPolicy: policy,
       instantBook,
+      acceptsQuoteRequests: takesQuotes,
     });
   }
 
@@ -143,6 +145,13 @@ export function ProfileSection({ listing, businessId, onUnpublished }: SectionPr
             onChange={(event) => setInstantBook(event.target.checked)}
             label="Instant Book"
             description="Customers can book your fixed-price services straight away, without waiting for you to accept. You can switch it off for single services."
+          />
+          <Checkbox
+            name="acceptsQuoteRequests"
+            checked={takesQuotes}
+            onChange={(event) => setTakesQuotes(event.target.checked)}
+            label="Take quote requests"
+            description="Customers can describe a job and ask you for a price, from your page and from search. You reply within 3 days with a quote, or decline."
           />
         </fieldset>
         {formError ? <FormAlert tone="error">{formError}</FormAlert> : null}

@@ -58,7 +58,11 @@ function locationNote(location: SearchLocation): { text: string; tone: "plain" |
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  let params = parseSearchParams(await searchParams);
+  const raw = await searchParams;
+  let params = parseSearchParams(raw);
+  // Pros already picked for a quote request (coming back from the request form).
+  const picked =
+    typeof raw.quote === "string" ? raw.quote.split(",").filter(Boolean).slice(0, 3) : [];
   const caller = await getServerCaller();
 
   // Signed-in customers who saved a postal code start from it (SPEC §16).
@@ -150,7 +154,14 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             <NoResults params={params} />
           ) : (
             <>
-              <SearchResults results={data.results} />
+              <SearchResults
+                results={data.results}
+                quote={
+                  params.service
+                    ? { categorySlug: params.service, postalCode: params.postal ?? "", picked }
+                    : null
+                }
+              />
               <Pagination params={params} hasMore={data.hasMore} total={data.total} />
             </>
           )}

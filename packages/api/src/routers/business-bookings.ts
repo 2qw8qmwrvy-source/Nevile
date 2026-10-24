@@ -12,6 +12,7 @@ import {
   asc,
   bookings,
   businessMembers,
+  conversations,
   eq,
   gte,
   inArray,
@@ -76,6 +77,17 @@ async function viewsFor(ctx: MemberCtx, bookingIds: string[]) {
     .where(eq(businessMembers.businessId, ctx.business.id));
   const names = new Map(members.map((row) => [row.id, row.name]));
   const minutes = await checkoutWorkMinutes(ctx.db, bookingIds);
+  const chats =
+    ctx.membership.role === "crew" || bookingIds.length === 0
+      ? new Map<string, string>()
+      : new Map(
+          (
+            await ctx.db
+              .select({ id: conversations.id, bookingId: conversations.bookingId })
+              .from(conversations)
+              .where(inArray(conversations.bookingId, bookingIds))
+          ).map((row) => [row.bookingId ?? "", row.id]),
+        );
   const result = [];
   for (const id of bookingIds) {
     const parts = await loadBookingParts(ctx.db, id);
@@ -101,6 +113,7 @@ async function viewsFor(ctx: MemberCtx, bookingIds: string[]) {
             ? { id: assigneeId, name: names.get(assigneeId) ?? "Crew member" }
             : null,
           workMinutes: parts.visit?.workMinutes ?? minutes.get(id) ?? parts.service.durationMinutes,
+          conversationId: chats.get(id) ?? null,
         },
         now,
       ),

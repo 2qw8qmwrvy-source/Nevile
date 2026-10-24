@@ -1,6 +1,7 @@
 "use client";
 
 import type { AppRouter, inferRouterOutputs } from "@nevile/api";
+import { QUOTE_REQUEST_LIMITS } from "@nevile/core";
 import type { Route } from "next";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -13,6 +14,7 @@ import { ArrowRightIcon, PinIcon } from "@/components/ui/icons.tsx";
 import { cn } from "@/lib/cn.ts";
 
 type SearchOutput = inferRouterOutputs<AppRouter>["search"]["query"];
+const MAX_QUOTE_PROS = QUOTE_REQUEST_LIMITS.maxPros;
 export type SearchResult = SearchOutput["results"][number];
 
 /**
@@ -20,8 +22,33 @@ export type SearchResult = SearchOutput["results"][number];
  * the same businesses at approximate locations. Hovering or focusing a card highlights
  * its pin, and choosing a pin highlights the card.
  */
-export function SearchResults({ results }: { results: readonly SearchResult[] }) {
+/** Picking up to 3 pros to ask for a quote (SPEC §20); only with a service chosen. */
+type QuotePicking = { categorySlug: string; postalCode: string; picked: string[] };
+
+export function SearchResults({
+  results,
+  quote,
+}: {
+  results: readonly SearchResult[];
+  quote: QuotePicking | null;
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>(quote?.picked ?? []);
+  const togglePick = (id: string) =>
+    setPicked((current) =>
+      current.includes(id)
+        ? current.filter((candidate) => candidate !== id)
+        : current.length < MAX_QUOTE_PROS
+          ? [...current, id]
+          : current,
+    );
+  const askHref = quote
+    ? (`/quotes/new?${new URLSearchParams({
+        category: quote.categorySlug,
+        postal: quote.postalCode,
+        pros: picked.join(","),
+      })}` as Route)
+    : null;
   const [showMap, setShowMap] = useState(false);
   const pins = useMemo(
     () => results.map((result) => ({ id: result.id, ...result.pin, label: result.name })),
@@ -88,9 +115,34 @@ export function SearchResults({ results }: { results: readonly SearchResult[] })
                 className="col-start-2 justify-self-end text-muted transition-transform group-hover:translate-x-0.5 sm:hidden"
               />
             </Link>
+            {quote && result.takesQuotes ? (
+              <label className="mt-1.5 ml-1 inline-flex min-h-11 cursor-pointer items-center gap-2 text-[15px] font-semibold">
+                <input
+                  type="checkbox"
+                  className="size-5 accent-(--color-primary)"
+                  checked={picked.includes(result.id)}
+                  disabled={!picked.includes(result.id) && picked.length >= MAX_QUOTE_PROS}
+                  onChange={() => togglePick(result.id)}
+                />
+                Ask {result.name} for a quote
+              </label>
+            ) : null}
           </li>
         ))}
       </ol>
+      {askHref && picked.length > 0 ? (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 py-3 shadow-card backdrop-blur lg:col-span-2">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
+            <p className="text-[15px]">
+              <strong>{picked.length}</strong> of {MAX_QUOTE_PROS} pros picked for a quote
+            </p>
+            <Button href={askHref}>
+              Ask {picked.length === 1 ? "for a quote" : `${picked.length} pros for a quote`}
+              <ArrowRightIcon size={18} />
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <div
         id="search-map"
         className={cn("lg:sticky lg:top-24 lg:block", showMap ? "block" : "hidden")}

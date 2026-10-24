@@ -51,6 +51,9 @@ export default async function ProPage({ params }: ProPageProps) {
   // Members previewing their own page can't book themselves.
   const canBook = profile.bookingOpen && !profile.preview;
   const firstBookable = profile.services.find((service) => service.bookable);
+  const canAskQuote = profile.takesQuotes && !profile.preview;
+  const quoteHref = (categorySlug: string) =>
+    `/quotes/new?${new URLSearchParams({ pro: profile.id, category: categorySlug })}` as Route;
 
   return (
     <Container className="pt-1 pb-16 sm:pb-24">
@@ -179,8 +182,15 @@ export default async function ProPage({ params }: ProPageProps) {
                       >
                         Book
                       </Button>
-                    ) : !service.bookable ? (
-                      <p className="mt-3 text-sm text-muted">Quotes open on Nevile soon.</p>
+                    ) : !service.bookable && canAskQuote ? (
+                      <Button
+                        href={quoteHref(service.categorySlug)}
+                        size="sm"
+                        variant="secondary"
+                        className="mt-3"
+                      >
+                        Request a quote
+                      </Button>
                     ) : null}
                   </Card>
                 </li>
@@ -258,13 +268,32 @@ export default async function ProPage({ params }: ProPageProps) {
                   Book a time
                 </Button>
               </>
-            ) : (
+            ) : !canAskQuote || firstBookable ? (
               <p className="mt-2 text-[15px] leading-relaxed text-muted">
                 {firstBookable
                   ? `${profile.name} isn't taking new bookings right now. Please check back soon.`
-                  : "This pro works by quote. Quotes open on Nevile soon."}
+                  : `${profile.name} isn't taking new work right now. Please check back soon.`}
               </p>
-            )}
+            ) : null}
+            {canAskQuote ? (
+              <div className="mt-4 border-t border-border pt-4">
+                <p className="text-[15px] leading-relaxed text-muted">
+                  Bigger or unusual job? Describe it and get a price, then book a time.
+                </p>
+                <Button
+                  href={quoteHref(profile.categories[0]?.slug ?? "")}
+                  block
+                  size="lg"
+                  variant={firstBookable && canBook ? "secondary" : "primary"}
+                  className="mt-3"
+                >
+                  Request a quote
+                </Button>
+                {profile.responseTime ? (
+                  <p className="mt-2 text-center text-sm text-muted">{profile.responseTime}</p>
+                ) : null}
+              </div>
+            ) : null}
           </Card>
           {profile.area ? (
             <Card>

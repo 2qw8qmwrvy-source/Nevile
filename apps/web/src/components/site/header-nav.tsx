@@ -40,6 +40,42 @@ export function DesktopNav() {
   );
 }
 
+/** Inbox with an unread badge, refreshed every minute and when the tab comes back. */
+function InboxButton() {
+  const [count, setCount] = useState(0);
+  const pathname = usePathname();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-check on navigation.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      fetch("/api/inbox/unread", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : { count: 0 }))
+        .then((data: { count?: number }) => {
+          if (!cancelled) setCount(data.count ?? 0);
+        })
+        .catch(() => undefined);
+    void load();
+    const timer = window.setInterval(load, 60_000);
+    window.addEventListener("focus", load);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", load);
+    };
+  }, [pathname]);
+  return (
+    <Button href="/inbox" variant="ghost" className="relative" prefetch>
+      Inbox
+      {count > 0 ? (
+        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-xs font-bold text-on-primary">
+          <span className="sr-only">, unread: </span>
+          {count > 99 ? "99+" : count}
+        </span>
+      ) : null}
+    </Button>
+  );
+}
+
 /** Sign in / Sign up, or Account, once the browser knows the session. */
 export function HeaderAccount({ hasSessionCookie }: { hasSessionCookie: boolean }) {
   const { status } = useAuthState(hasSessionCookie);
@@ -58,6 +94,7 @@ export function HeaderAccount({ hasSessionCookie }: { hasSessionCookie: boolean 
         <Button href="/bookings" variant="ghost" className="hidden sm:inline-flex" prefetch>
           Bookings
         </Button>
+        <InboxButton />
         <Button href="/account" variant="secondary" prefetch>
           Account
         </Button>
@@ -147,6 +184,16 @@ export function MobileMenu({ hasSessionCookie }: { hasSessionCookie: boolean }) 
               className="flex min-h-12 items-center rounded-input px-3 text-base font-medium text-ink no-underline hover:bg-hover hover:text-ink aria-[current=page]:bg-hover"
             >
               Your bookings
+            </Link>
+          ) : null}
+          {status === "signed-in" ? (
+            <Link
+              href="/quotes"
+              onClick={() => setOpen(false)}
+              aria-current={pathname === "/quotes" ? "page" : undefined}
+              className="flex min-h-12 items-center rounded-input px-3 text-base font-medium text-ink no-underline hover:bg-hover hover:text-ink aria-[current=page]:bg-hover"
+            >
+              Your quotes
             </Link>
           ) : null}
           {status === "signed-out" ? (

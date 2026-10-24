@@ -2,6 +2,7 @@ export type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 export { type BookingDeps, completeCheckout } from "./bookings/flows.ts";
 export { type JobsReport, runScheduledJobs } from "./bookings/jobs.ts";
 export { handlePaymentEvent } from "./bookings/payouts.ts";
+export { unreadCounts } from "./chat/flows.ts";
 export {
   type ApiConfig,
   DEFAULT_API_CONFIG,

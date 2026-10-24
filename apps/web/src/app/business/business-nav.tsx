@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn.ts";
 const TABS = [
   { href: "/business", label: "Listing" },
   { href: "/business/calendar", label: "Calendar" },
+  { href: "/business/quotes", label: "Quotes", editorsOnly: true },
   { href: "/business/team", label: "Team" },
   { href: "/business/payouts", label: "Payouts", editorsOnly: true },
 ] as const;

@@ -3,6 +3,7 @@
 import type { AppRouter, inferRouterOutputs } from "@nevile/api";
 import { addCalendarDays, formatCad, formatIsoDate, parseIsoDate, toLocal } from "@nevile/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Route } from "next";
 import { useState } from "react";
 import { FormAlert } from "@/app/(auth)/_components/form-alert.tsx";
 import { StatusPill } from "@/app/bookings/status-pill.tsx";
@@ -163,6 +164,11 @@ function JobCard({
         {actions.markFixed ? (
           <Button size="sm" disabled={busy} onClick={() => markFixed.mutate(input)}>
             Mark fixed
+          </Button>
+        ) : null}
+        {job.conversationId ? (
+          <Button size="sm" variant="secondary" href={`/inbox/${job.conversationId}` as Route}>
+            Message
           </Button>
         ) : null}
         {actions.cancel && canManage && !cancelling ? (

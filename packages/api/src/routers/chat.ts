@@ -1,5 +1,5 @@
 import { messageInputSchema } from "@nevile/core";
-import { and, businessMembers, count, desc, eq, inArray, isNull, notifications } from "@nevile/db";
+import { and, businessMembers, desc, eq, inArray, isNull, notifications } from "@nevile/db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -9,7 +9,7 @@ import {
   markRead,
   requireConversation,
   sendMessage,
-  unreadConversationCount,
+  unreadCounts,
 } from "../chat/flows.ts";
 import { CONVERSATION_ROLES } from "../photos.ts";
 import { protectedProcedure, router, verifiedProcedure } from "../trpc.ts";
@@ -69,16 +69,7 @@ export const chatRouter = router({
     }),
 
   /** Badge counts: unread conversations and unread notifications. */
-  unread: protectedProcedure.query(async ({ ctx }) => {
-    const [row] = await ctx.db
-      .select({ n: count() })
-      .from(notifications)
-      .where(and(eq(notifications.userId, ctx.user.id), isNull(notifications.readAt)));
-    return {
-      conversations: await unreadConversationCount(ctx.db, ctx.user.id),
-      notifications: row?.n ?? 0,
-    };
-  }),
+  unread: protectedProcedure.query(({ ctx }) => unreadCounts(ctx.db, ctx.user.id)),
 
   /** The latest in-app notifications (quotes, declines, closed requests). */
   notifications: protectedProcedure.query(async ({ ctx }) => {

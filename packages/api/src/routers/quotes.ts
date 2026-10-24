@@ -1,6 +1,7 @@
 import { contactEmail } from "@nevile/auth";
 import {
   bookingRequestSchema,
+  CANCELLATION_POLICIES,
   CATEGORY_SLUGS,
   canTakeBookings,
   launchPostalCodeSchema,
@@ -96,6 +97,10 @@ export const quotesRouter = router({
         business: { name: business.name, slug: business.slug },
         quote: pro?.quote ?? null,
         postalArea: group.postalArea,
+        cancellationPolicy: {
+          label: CANCELLATION_POLICIES[business.cancellationPolicy].label,
+          description: CANCELLATION_POLICIES[business.cancellationPolicy].description,
+        },
         bookingOpen: canTakeBookings({
           payoutsEnabled: business.payoutsEnabled,
           payoutSetupDueAt: business.payoutSetupDueAt,

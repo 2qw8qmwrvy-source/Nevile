@@ -66,6 +66,17 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
             >
               {booking.business.name}
             </Link>
+            {booking.conversationId ? (
+              <>
+                {" · "}
+                <Link
+                  href={`/inbox/${booking.conversationId}` as Route}
+                  className="font-semibold text-primary"
+                >
+                  Message
+                </Link>
+              </>
+            ) : null}
           </p>
         </div>
         <StatusPill status={booking.status} label={booking.statusLabel} />

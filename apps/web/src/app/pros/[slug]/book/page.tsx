@@ -51,17 +51,17 @@ export default async function BookPage({ params, searchParams }: BookPageProps) 
         </p>
       ) : (
         <BookingFlow
-          slug={slug}
-          services={bookable.map((service) => ({
-            id: service.id,
-            title: service.title,
-            priceText: service.priceText,
-          }))}
-          initialServiceId={
-            bookable.some((service) => service.id === requested)
+          source={{
+            kind: "service",
+            services: bookable.map((service) => ({
+              id: service.id,
+              title: service.title,
+              priceText: service.priceText,
+            })),
+            initialServiceId: bookable.some((service) => service.id === requested)
               ? (requested as string)
-              : (bookable[0]?.id ?? "")
-          }
+              : (bookable[0]?.id ?? ""),
+          }}
           defaultPostal={me.onboarding.postalCode ?? ""}
         />
       )}

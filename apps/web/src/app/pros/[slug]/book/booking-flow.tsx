@@ -19,11 +19,33 @@ import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { cn } from "@/lib/cn.ts";
 import { useTRPC } from "@/lib/trpc.ts";
 
+/** What is being booked: one of a pro's fixed-price services, or an accepted quote. */
+export type BookingSource =
+  | {
+      kind: "service";
+      services: ReadonlyArray<{ id: string; title: string; priceText: string }>;
+      initialServiceId: string;
+    }
+  | { kind: "quote"; quoteId: string };
+
 type BookingFlowProps = {
-  slug: string;
-  services: ReadonlyArray<{ id: string; title: string; priceText: string }>;
-  initialServiceId: string;
+  source: BookingSource;
   defaultPostal: string;
+};
+
+/** The parts of the page that differ between a service and a quote, in one shape. */
+type BookingView = {
+  title: string;
+  duration: string;
+  instantBook: boolean;
+  cancellationPolicy: { label: string; description: string };
+  price: { priceCents: number; serviceFeeCents: number; taxCents: number; totalCents: number };
+  firstDate: string;
+  lastDate: string;
+  days: ReadonlyArray<{
+    date: string;
+    windows: ReadonlyArray<{ startMinute: number; label: string; available: boolean }>;
+  }>;
 };
 
 const DAYS_PER_PAGE = 7;
@@ -46,9 +68,12 @@ const asDate = (iso: string) => new Date(`${iso}T12:00:00Z`);
  * Pick a day and arrival window, enter the address, review the price, then pay on the
  * payment provider's page (SPEC §19). The server re-checks everything.
  */
-export function BookingFlow({ services, initialServiceId, defaultPostal }: BookingFlowProps) {
+export function BookingFlow({ source, defaultPostal }: BookingFlowProps) {
   const trpc = useTRPC();
-  const [serviceId, setServiceId] = useState(initialServiceId);
+  const services = source.kind === "service" ? source.services : [];
+  const [serviceId, setServiceId] = useState(
+    source.kind === "service" ? source.initialServiceId : "",
+  );
   const [from, setFrom] = useState<string | undefined>(undefined);
   const [date, setDate] = useState<string | null>(null);
   const [windowStart, setWindowStart] = useState<number | null>(null);
@@ -61,15 +86,24 @@ export function BookingFlow({ services, initialServiceId, defaultPostal }: Booki
   const [notes, setNotes] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
 
-  const availability = useQuery(
-    trpc.bookings.availability.queryOptions({ serviceId, from, days: DAYS_PER_PAGE }),
-  );
-  const checkout = useMutation(
-    trpc.bookings.checkout.mutationOptions({
-      onSuccess: ({ url }) => window.location.assign(url),
+  const serviceAvailability = useQuery({
+    ...trpc.bookings.availability.queryOptions({ serviceId, from, days: DAYS_PER_PAGE }),
+    enabled: source.kind === "service",
+  });
+  const quoteAvailability = useQuery({
+    ...trpc.quotes.bookingOptions.queryOptions({
+      quoteId: source.kind === "quote" ? source.quoteId : "",
+      from,
+      days: DAYS_PER_PAGE,
     }),
-  );
-  const data = availability.data;
+    enabled: source.kind === "quote",
+  });
+  const availability = source.kind === "service" ? serviceAvailability : quoteAvailability;
+  const openPayment = { onSuccess: ({ url }: { url: string }) => window.location.assign(url) };
+  const serviceCheckout = useMutation(trpc.bookings.checkout.mutationOptions(openPayment));
+  const quoteCheckout = useMutation(trpc.quotes.checkout.mutationOptions(openPayment));
+  const checkout = source.kind === "service" ? serviceCheckout : quoteCheckout;
+  const data = toView(serviceAvailability.data, quoteAvailability.data, source.kind);
   const day = data?.days.find((candidate) => candidate.date === date) ?? null;
   const chosenWindow = day?.windows.find((window) => window.startMinute === windowStart) ?? null;
   const fieldErrors = checkout.error?.data?.zodError?.fieldErrors as
@@ -99,7 +133,11 @@ export function BookingFlow({ services, initialServiceId, defaultPostal }: Booki
       setProblem("Enter a postal code like B3H 1A1.");
       return;
     }
-    checkout.mutate({ serviceId, date, windowStart, address, notes });
+    if (source.kind === "quote") {
+      quoteCheckout.mutate({ quoteId: source.quoteId, date, windowStart, address, notes });
+    } else {
+      serviceCheckout.mutate({ serviceId, date, windowStart, address, notes });
+    }
   }
 
   const firstShown = data?.days[0]?.date;
@@ -325,9 +363,9 @@ export function BookingFlow({ services, initialServiceId, defaultPostal }: Booki
           <h2 className="font-display text-[20px] font-bold">Summary</h2>
           {data ? (
             <>
-              <p className="mt-2 text-[15px] font-semibold">{data.service.title}</p>
+              <p className="mt-2 text-[15px] font-semibold">{data.title}</p>
               <p className="text-sm text-muted">
-                About {data.service.duration}
+                About {data.duration}
                 {day && chosenWindow
                   ? ` · ${longDay.format(asDate(day.date))}, ${chosenWindow.label}`
                   : ""}
@@ -402,4 +440,53 @@ export function BookingFlow({ services, initialServiceId, defaultPostal }: Booki
       </aside>
     </form>
   );
+}
+
+type ServiceAvailability = {
+  service: { title: string; duration: string };
+  instantBook: boolean;
+  cancellationPolicy: { label: string; description: string };
+  price: BookingView["price"];
+} & Pick<BookingView, "firstDate" | "lastDate" | "days">;
+
+type QuoteAvailability = {
+  title: string;
+  cancellationPolicy: { label: string; description: string };
+  quote: {
+    priceCents: number;
+    duration: string;
+    total: { serviceFeeCents: number; taxCents: number; totalCents: number };
+  } | null;
+} & Pick<BookingView, "firstDate" | "lastDate" | "days">;
+
+function toView(
+  service: ServiceAvailability | undefined,
+  quote: QuoteAvailability | undefined,
+  kind: BookingSource["kind"],
+): BookingView | undefined {
+  if (kind === "service") {
+    if (!service) return undefined;
+    return {
+      title: service.service.title,
+      duration: service.service.duration,
+      instantBook: service.instantBook,
+      cancellationPolicy: service.cancellationPolicy,
+      price: service.price,
+      firstDate: service.firstDate,
+      lastDate: service.lastDate,
+      days: service.days,
+    };
+  }
+  if (!quote?.quote) return undefined;
+  return {
+    title: quote.title,
+    duration: quote.quote.duration,
+    // The business already agreed to a quote: booking it is confirmed on payment.
+    instantBook: true,
+    cancellationPolicy: quote.cancellationPolicy,
+    price: { priceCents: quote.quote.priceCents, ...quote.quote.total },
+    firstDate: quote.firstDate,
+    lastDate: quote.lastDate,
+    days: quote.days,
+  };
 }

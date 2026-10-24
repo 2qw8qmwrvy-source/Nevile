@@ -12,6 +12,7 @@ import {
   asc,
   type BookingCheckout,
   bookingCheckouts,
+  conversations,
   type DbExecutor,
   eq,
   inArray,
@@ -88,6 +89,10 @@ export async function customerBookingView(
   const allowed = allowedEvents(parts, now);
   const quote = allowed.has("cancel_by_customer") ? customerCancellationQuote(parts, now) : null;
   const policy = CANCELLATION_POLICIES[booking.cancellationPolicy];
+  const [conversation] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(eq(conversations.bookingId, booking.id));
   return {
     id: booking.id,
     status,
@@ -130,6 +135,8 @@ export async function customerBookingView(
         }
       : null,
     createdAt: booking.createdAt,
+    /** Chat with the business about this job (SPEC §20). */
+    conversationId: conversation?.id ?? null,
   };
 }
 export type CustomerBookingView = Awaited<ReturnType<typeof customerBookingView>>;
@@ -147,6 +154,8 @@ export function businessBookingView(
     customer: Pick<User, "name" | "email" | "phoneNumber">;
     assignee: { id: string; name: string } | null;
     workMinutes: number;
+    /** Only for owners and managers (crew don't see chat). */
+    conversationId?: string | null;
   },
   now: Date,
 ) {
@@ -178,6 +187,7 @@ export function businessBookingView(
         (payment?.businessFeeCents ?? 0),
     },
     approvalExpiresAt: booking.status === "requested" ? booking.approvalExpiresAt : null,
+    conversationId: extra.conversationId ?? null,
     actions: {
       accept: allowed.has("approve"),
       decline: allowed.has("decline"),

@@ -25,7 +25,9 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
   messages,
+  notifications,
   or,
   payments,
   quoteRequestGroups,
@@ -250,6 +252,12 @@ export async function conversationSummary(db: DbExecutor, access: ConversationAc
     .from(user)
     .where(eq(user.id, conversation.customerId));
   const topic = await conversationTopics(db, [conversation]);
+  const [request] = conversation.quoteRequestId
+    ? await db
+        .select({ groupId: quoteRequests.groupId })
+        .from(quoteRequests)
+        .where(eq(quoteRequests.id, conversation.quoteRequestId))
+    : [];
   return {
     id: conversation.id,
     side,
@@ -259,6 +267,7 @@ export async function conversationSummary(db: DbExecutor, access: ConversationAc
     topic: topic.get(conversation.id) ?? "Conversation",
     bookingId: conversation.bookingId,
     quoteRequestId: conversation.quoteRequestId,
+    quoteGroupId: request?.groupId ?? null,
     contactShared: await contactShared(db, conversation.customerId, conversation.businessId),
   };
 }
@@ -407,6 +416,21 @@ export async function unreadConversationCount(db: DbExecutor, userId: string): P
       ),
     );
   return row?.n ?? 0;
+}
+
+/** Badge counts for the signed-in person: unread conversations and notifications. */
+export async function unreadCounts(
+  db: DbExecutor,
+  userId: string,
+): Promise<{ conversations: number; notifications: number }> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(notifications)
+    .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
+  return {
+    conversations: await unreadConversationCount(db, userId),
+    notifications: row?.n ?? 0,
+  };
 }
 
 /**
