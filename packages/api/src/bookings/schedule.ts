@@ -88,7 +88,7 @@ export async function placedWork(
   businessId: string,
   range: { from: Date; to: Date },
   now: Date,
-  options: { excludeCheckoutId?: string } = {},
+  options: { excludeCheckoutId?: string; excludeVisitId?: string } = {},
 ): Promise<PlacedWork[]> {
   const jobs = await db
     .select({ startsAt: visits.startsAt, workMinutes: visits.workMinutes })
@@ -99,6 +99,7 @@ export async function placedWork(
         gte(visits.startsAt, range.from),
         lt(visits.startsAt, range.to),
         notInArray(visits.status, [...FREED_VISIT_STATES]),
+        options.excludeVisitId ? ne(visits.id, options.excludeVisitId) : undefined,
       ),
     );
   const holds = await db
@@ -137,7 +138,7 @@ export async function loadSchedule(
   first: CalendarDate,
   days: number,
   now: Date,
-  options: { excludeCheckoutId?: string } = {},
+  options: { excludeCheckoutId?: string; excludeVisitId?: string } = {},
 ) {
   const range = dayRange(first, days, business.timezone);
   // One after another: `db` may be a transaction, and a connection runs one query at a time.

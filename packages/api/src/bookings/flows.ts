@@ -29,6 +29,7 @@ import {
 import {
   addresses,
   and,
+  asc,
   auditLog,
   type Booking,
   type BookingCheckout,
@@ -114,18 +115,32 @@ export type BookingParts = {
 export async function loadBookingParts(
   db: DbExecutor,
   bookingId: string,
-  options: { lock?: boolean } = {},
+  options: { lock?: boolean; visitId?: string } = {},
 ): Promise<BookingParts | null> {
   const query = db.select().from(bookings).where(eq(bookings.id, bookingId));
   const [booking] = options.lock ? await query.for("update") : await query;
   if (!booking) return null;
-  const [visit] = await db.select().from(visits).where(eq(visits.bookingId, booking.id)).limit(1);
+  // Ongoing bookings (SPEC §21) have many visits: flows act on the one they name.
+  const [visit] = await db
+    .select()
+    .from(visits)
+    .where(
+      and(
+        eq(visits.bookingId, booking.id),
+        options.visitId ? eq(visits.id, options.visitId) : undefined,
+      ),
+    )
+    .orderBy(asc(visits.sequence))
+    .limit(1);
+  if (options.visitId && !visit) return null;
+  const perVisit = isOngoing(booking) && visit;
   const [payment] = await db
     .select()
     .from(payments)
     .where(
       and(
         eq(payments.bookingId, booking.id),
+        perVisit ? eq(payments.visitId, visit.id) : undefined,
         inArray(payments.status, [
           "authorized",
           "succeeded",
@@ -162,6 +177,24 @@ export async function loadBookingParts(
     service,
     business,
   };
+}
+
+/** Recurring jobs and snow contracts: many visits under one booking (SPEC §21). */
+export function isOngoing(booking: Pick<Booking, "kind">): boolean {
+  return booking.kind === "recurring" || booking.kind === "snow_contract";
+}
+
+/**
+ * Mirrors a visit's new state onto a one-off booking. An ongoing booking keeps its own
+ * status (confirmed while it runs) as its visits move on.
+ */
+async function setSingleVisitStatus(
+  tx: DbExecutor,
+  parts: BookingParts,
+  status: Booking["status"],
+): Promise<void> {
+  if (isOngoing(parts.booking)) return;
+  await tx.update(bookings).set({ status }).where(eq(bookings.id, parts.booking.id));
 }
 
 export function mailFacts(parts: BookingParts, config: ApiConfig): BookingMailFacts {
@@ -209,7 +242,7 @@ export function assertTransition(parts: BookingParts, type: BookingEventType, at
   }
 }
 
-async function audit(
+export async function audit(
   tx: DbExecutor,
   action: string,
   entity: string,
@@ -221,7 +254,7 @@ async function audit(
 }
 
 /** The first paid booking starts the 7-day payout-setup clock (SPEC §19). */
-async function startPayoutClock(
+export async function startPayoutClock(
   tx: DbExecutor,
   business: Business,
   now: Date,
@@ -244,6 +277,62 @@ const dueLabel = (due: Date, timeZone: string) =>
 // Checkout
 // ---------------------------------------------------------------------------------------
 
+/**
+ * Whether a customer can book this business at this postal code (SPEC §19): it takes
+ * bookings, it isn't their own, and the address is inside its service area.
+ */
+export async function assertCanBook(
+  db: DbExecutor,
+  input: {
+    business: Business;
+    area: { lat: number; lng: number; radiusKm: number };
+    customerId: string;
+    now: Date;
+  },
+  postalCode: string,
+): Promise<void> {
+  const { business, area } = input;
+  if (
+    !canTakeBookings({
+      payoutsEnabled: business.payoutsEnabled,
+      payoutSetupDueAt: business.payoutSetupDueAt,
+      now: input.now,
+    })
+  ) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "This pro isn't taking bookings right now.",
+    });
+  }
+  const [member] = await db
+    .select({ id: businessMembers.id })
+    .from(businessMembers)
+    .where(
+      and(
+        eq(businessMembers.businessId, business.id),
+        eq(businessMembers.userId, input.customerId),
+      ),
+    )
+    .limit(1);
+  if (member)
+    throw new TRPCError({ code: "FORBIDDEN", message: "You can't book your own business." });
+
+  // The job address's postal code area must be inside the service radius (SPEC §19).
+  const lookup = await lookupPostalArea(db, postalCode);
+  if (lookup.kind !== "found") {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "We can't place that postal code yet. Check it, or try a nearby one.",
+    });
+  }
+  if (haversineKm(lookup.area.point, area) > area.radiusKm) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `That address is outside ${business.name}'s service area.`,
+    });
+  }
+}
+
 export type CheckoutRequest = {
   serviceId: string;
   date: string;
@@ -252,7 +341,7 @@ export type CheckoutRequest = {
   notes: string | null;
 };
 
-const WINDOW_MESSAGES = {
+export const WINDOW_MESSAGES = {
   no_window: "That arrival window isn't offered any more. Pick another time.",
   too_soon: "That time is too soon to book. Pick a later day.",
   too_far: "That's further ahead than this pro takes bookings.",
@@ -442,42 +531,11 @@ async function openCheckout(
       message: `The quote is for ${postalAreaOf(target.requiredArea)}. Use an address with a postal code starting ${postalAreaOf(target.requiredArea)}, or ask for a new quote.`,
     });
   }
-  if (
-    !canTakeBookings({
-      payoutsEnabled: business.payoutsEnabled,
-      payoutSetupDueAt: business.payoutSetupDueAt,
-      now,
-    })
-  ) {
-    throw new TRPCError({
-      code: "PRECONDITION_FAILED",
-      message: "This pro isn't taking bookings right now.",
-    });
-  }
-  const [member] = await deps.db
-    .select({ id: businessMembers.id })
-    .from(businessMembers)
-    .where(
-      and(eq(businessMembers.businessId, business.id), eq(businessMembers.userId, customer.id)),
-    )
-    .limit(1);
-  if (member)
-    throw new TRPCError({ code: "FORBIDDEN", message: "You can't book your own business." });
-
-  // The job address's postal code area must be inside the service radius (SPEC §19).
-  const lookup = await lookupPostalArea(deps.db, input.address.postalCode);
-  if (lookup.kind !== "found") {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "We can't place that postal code yet. Check it, or try a nearby one.",
-    });
-  }
-  if (haversineKm(lookup.area.point, area) > area.radiusKm) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: `That address is outside ${business.name}'s service area.`,
-    });
-  }
+  await assertCanBook(
+    deps.db,
+    { business, area, customerId: customer.id, now },
+    input.address.postalCode,
+  );
 
   const date = parseIsoDate(input.date);
   if (!date) throw new TRPCError({ code: "BAD_REQUEST", message: "Pick a day." });
@@ -989,8 +1047,9 @@ async function lockedParts(
   tx: DbExecutor,
   bookingId: string,
   businessId?: string,
+  visitId?: string,
 ): Promise<BookingParts> {
-  const parts = await loadBookingParts(tx, bookingId, { lock: true });
+  const parts = await loadBookingParts(tx, bookingId, { lock: true, visitId });
   if (!parts || (businessId && parts.booking.businessId !== businessId)) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found." });
   }
@@ -1153,7 +1212,7 @@ export function customerCancellationQuote(parts: BookingParts, now: Date): Refun
 }
 
 /** Sends a refund to the provider and records it, split like the payment (SPEC §5). */
-async function recordRefund(
+export async function recordRefund(
   tx: DbExecutor,
   provider: PaymentProvider,
   payment: Payment,
@@ -1335,11 +1394,12 @@ export async function markDone(
   actorUserId: string,
   businessId: string,
   bookingId: string,
+  visitId?: string,
 ) {
   const now = deps.now();
   const mail: Mail = [];
   await deps.db.transaction(async (tx) => {
-    const parts = await lockedParts(tx, bookingId, businessId);
+    const parts = await lockedParts(tx, bookingId, businessId, visitId);
     assertTransition(parts, "mark_complete", now);
     const autoConfirmAt = new Date(now.getTime() + COMPLETION_CONFIRMATION_HOURS * MS_PER_HOUR);
     await tx
@@ -1351,10 +1411,7 @@ export async function markDone(
         autoConfirmAt,
       })
       .where(eq(visits.id, parts.visit?.id ?? ""));
-    await tx
-      .update(bookings)
-      .set({ status: "completed_pending_confirmation" })
-      .where(eq(bookings.id, bookingId));
+    await setSingleVisitStatus(tx, parts, "completed_pending_confirmation");
     mail.push(
       ...bookingEmails.doneForCustomer(
         await customerEmail(tx, parts.booking.customerId),
@@ -1376,9 +1433,12 @@ async function completeJob(
     .update(visits)
     .set({ status: "completed", confirmedAt: now, autoConfirmed: auto, autoConfirmAt: null })
     .where(eq(visits.id, parts.visit?.id ?? ""));
-  await tx.update(bookings).set({ status: "completed" }).where(eq(bookings.id, parts.booking.id));
+  await setSingleVisitStatus(tx, parts, "completed");
   if (parts.payment) {
     await tx.update(payments).set({ releasedAt: now }).where(eq(payments.id, parts.payment.id));
+  } else if (isOngoing(parts.booking) && parts.visit) {
+    // A per-visit snow visit is charged once it's confirmed (SPEC §7, §21).
+    await tx.update(visits).set({ chargeDueAt: now }).where(eq(visits.id, parts.visit.id));
   }
   if (parts.dispute) {
     await tx
@@ -1393,10 +1453,11 @@ export async function confirmDone(
   deps: BookingDeps,
   customerId: string,
   bookingId: string,
+  visitId?: string,
 ): Promise<void> {
   const now = deps.now();
   await deps.db.transaction(async (tx) => {
-    const parts = await lockedParts(tx, bookingId);
+    const parts = await lockedParts(tx, bookingId, undefined, visitId);
     if (parts.booking.customerId !== customerId) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found." });
     }
@@ -1409,7 +1470,7 @@ export async function confirmDone(
 export async function autoConfirmJobs(deps: BookingDeps): Promise<number> {
   const now = deps.now();
   const due = await deps.db
-    .select({ bookingId: visits.bookingId })
+    .select({ bookingId: visits.bookingId, visitId: visits.id })
     .from(visits)
     .where(
       and(eq(visits.status, "completed_pending_confirmation"), lte(visits.autoConfirmAt, now)),
@@ -1417,7 +1478,7 @@ export async function autoConfirmJobs(deps: BookingDeps): Promise<number> {
   let confirmed = 0;
   for (const visit of due) {
     await deps.db.transaction(async (tx) => {
-      const parts = await lockedParts(tx, visit.bookingId);
+      const parts = await lockedParts(tx, visit.bookingId, undefined, visit.visitId);
       if (!transition(snapshotOf(parts), { type: "auto_confirm", at: now }).ok) return;
       await completeJob(tx, parts, now, true);
       confirmed += 1;
@@ -1432,11 +1493,12 @@ export async function reportProblem(
   customerId: string,
   bookingId: string,
   reason: string,
+  visitId?: string,
 ): Promise<void> {
   const now = deps.now();
   const mail: Mail = [];
   await deps.db.transaction(async (tx) => {
-    const parts = await lockedParts(tx, bookingId);
+    const parts = await lockedParts(tx, bookingId, undefined, visitId);
     if (parts.booking.customerId !== customerId) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found." });
     }
@@ -1454,7 +1516,7 @@ export async function reportProblem(
       .update(visits)
       .set({ status: "disputed", autoConfirmAt: null })
       .where(eq(visits.id, parts.visit?.id ?? ""));
-    await tx.update(bookings).set({ status: "disputed" }).where(eq(bookings.id, bookingId));
+    await setSingleVisitStatus(tx, parts, "disputed");
     mail.push(
       ...bookingEmails.problemForBusiness(
         await businessTeamEmails(tx, parts.booking.businessId),
@@ -1471,16 +1533,17 @@ export async function scheduleFix(
   deps: BookingDeps,
   businessId: string,
   bookingId: string,
+  visitId?: string,
 ): Promise<void> {
   const now = deps.now();
   await deps.db.transaction(async (tx) => {
-    const parts = await lockedParts(tx, bookingId, businessId);
+    const parts = await lockedParts(tx, bookingId, businessId, visitId);
     assertTransition(parts, "schedule_fix", now);
     await tx
       .update(visits)
       .set({ status: "fix_scheduled" })
       .where(eq(visits.id, parts.visit?.id ?? ""));
-    await tx.update(bookings).set({ status: "fix_scheduled" }).where(eq(bookings.id, bookingId));
+    await setSingleVisitStatus(tx, parts, "fix_scheduled");
     if (parts.dispute) {
       await tx
         .update(disputes)
@@ -1495,11 +1558,12 @@ export async function markFixed(
   deps: BookingDeps,
   businessId: string,
   bookingId: string,
+  visitId?: string,
 ): Promise<void> {
   const now = deps.now();
   const mail: Mail = [];
   await deps.db.transaction(async (tx) => {
-    const parts = await lockedParts(tx, bookingId, businessId);
+    const parts = await lockedParts(tx, bookingId, businessId, visitId);
     assertTransition(parts, "mark_fixed", now);
     await tx
       .update(visits)
@@ -1508,10 +1572,7 @@ export async function markFixed(
         autoConfirmAt: new Date(now.getTime() + COMPLETION_CONFIRMATION_HOURS * MS_PER_HOUR),
       })
       .where(eq(visits.id, parts.visit?.id ?? ""));
-    await tx
-      .update(bookings)
-      .set({ status: "completed_pending_confirmation" })
-      .where(eq(bookings.id, bookingId));
+    await setSingleVisitStatus(tx, parts, "completed_pending_confirmation");
     mail.push(
       ...bookingEmails.doneForCustomer(
         await customerEmail(tx, parts.booking.customerId),

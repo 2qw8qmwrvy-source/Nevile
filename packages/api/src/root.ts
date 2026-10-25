@@ -2,6 +2,7 @@ import { bookingsRouter } from "./routers/bookings.ts";
 import { businessRouter } from "./routers/business.ts";
 import { businessBookingsRouter } from "./routers/business-bookings.ts";
 import { businessQuotesRouter } from "./routers/business-quotes.ts";
+import { cardsRouter } from "./routers/cards.ts";
 import { categoriesRouter } from "./routers/categories.ts";
 import { chatRouter } from "./routers/chat.ts";
 import { communityRouter } from "./routers/community.ts";
@@ -35,6 +36,7 @@ export const appRouter = router({
   businessQuotes: businessQuotesRouter,
   chat: chatRouter,
   push: pushRouter,
+  cards: cardsRouter,
 });
 
 export type AppRouter = typeof appRouter;

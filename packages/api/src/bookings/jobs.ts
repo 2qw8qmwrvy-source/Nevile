@@ -21,6 +21,7 @@ import {
 import { lazyStorage, type MediaStorage } from "@nevile/storage";
 import { emailUnreadMessages } from "../chat/flows.ts";
 import { sendAll } from "../notify.ts";
+import { chargeOngoing, releaseSeasonMonths } from "../ongoing/charges.ts";
 import { cleanUpUnattachedPhotos } from "../photos.ts";
 import { defaultPushSender, deliverPendingNotifications } from "../push.ts";
 import { expireQuoteRequests } from "../quotes/flows.ts";
@@ -286,6 +287,9 @@ export async function runScheduledJobs(
     ["checkoutsExpired", () => expireCheckouts(deps)],
     ["requestsExpired", () => expireRequests(deps)],
     ["jobsAutoConfirmed", () => autoConfirmJobs(deps)],
+    // Recurring jobs and snow contracts (SPEC §21), before payouts so they include them.
+    ["ongoingCharges", () => chargeOngoing(deps)],
+    ["seasonMonthsReleased", () => releaseSeasonMonths(deps)],
     ["disputesEscalated", () => escalateDisputes(deps)],
     ["payoutSetup", () => enforcePayoutSetup(deps)],
     ["payouts", () => runPayouts(deps)],

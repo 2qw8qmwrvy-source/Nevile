@@ -66,7 +66,7 @@ async function ownCheckout(ctx: Context & { user: { id: string } }, checkoutId: 
 }
 
 /** The test payment provider, when this environment uses it (never in production). */
-function testProvider(ctx: Context): FakePaymentProvider | null {
+export function testProvider(ctx: Context): FakePaymentProvider | null {
   if (process.env.NODE_ENV === "production") return null;
   const provider = ctx.payments === lazyPaymentProvider ? getPaymentProvider() : ctx.payments;
   return provider instanceof FakePaymentProvider ? provider : null;

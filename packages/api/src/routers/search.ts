@@ -470,6 +470,9 @@ export const searchRouter = router({
           instantBook: isInstantBookable(business, service),
           // Fixed-price services book online now; quotes come later (SPEC §19).
           bookable: service.pricingType === "fixed",
+          /** How often it can be booked as a recurring job (SPEC §21). */
+          recurrenceFrequencies:
+            service.pricingType === "fixed" ? service.recurrenceFrequencies : [],
         })),
         photos: photos.map((photo) => ({
           id: photo.id,

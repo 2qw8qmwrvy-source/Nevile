@@ -196,6 +196,7 @@ export async function listingView(
       durationMinutes: service.durationMinutes,
       instantBook: service.pricingType === "fixed" && service.instantBook !== false,
       active: service.active,
+      recurrenceFrequencies: service.recurrenceFrequencies,
     })),
     photos: photos.map((photo) => ({
       id: photo.id,

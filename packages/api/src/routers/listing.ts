@@ -68,6 +68,7 @@ function serviceValues(input: z.output<typeof serviceInputSchema>, categoryId: s
     durationMinutes: input.durationMinutes,
     instantBook: input.pricingType === "fixed" && !input.instantBook ? false : null,
     active: input.active,
+    recurrenceFrequencies: input.pricingType === "fixed" ? input.recurrenceFrequencies : [],
   };
 }
 

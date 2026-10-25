@@ -5,6 +5,7 @@ import { z } from "zod";
 import { CANCELLATION_POLICY_IDS } from "./cancellation.ts";
 import { CATEGORY_SLUGS } from "./categories.ts";
 import { launchPointSchema } from "./geo.ts";
+import { RECURRENCE_FREQUENCIES } from "./recurrence.ts";
 import { BUSINESS_NAME_MAX_LENGTH, BUSINESS_NAME_MIN_LENGTH } from "./schemas.ts";
 
 export const LISTING_ABOUT_MIN_LENGTH = 40;
@@ -115,8 +116,24 @@ export const serviceInputSchema = z
       .max(SERVICE_DURATION_MAX_MINUTES, { message: "At most 24 hours" }),
     instantBook: z.boolean(),
     active: z.boolean(),
+    /** How often customers can book it as a recurring job (SPEC §21); fixed prices only. */
+    recurrenceFrequencies: z.array(z.enum(RECURRENCE_FREQUENCIES)).max(3).default([]),
   })
   .superRefine((service, ctx) => {
+    if (new Set(service.recurrenceFrequencies).size !== service.recurrenceFrequencies.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["recurrenceFrequencies"],
+        message: "Pick each one once",
+      });
+    }
+    if (service.pricingType === "quote" && service.recurrenceFrequencies.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["recurrenceFrequencies"],
+        message: "Recurring visits need a fixed price",
+      });
+    }
     if (service.pricingType === "fixed") {
       if (service.priceCents === null) {
         ctx.addIssue({

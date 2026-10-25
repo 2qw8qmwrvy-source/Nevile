@@ -9,6 +9,17 @@ export const NOTIFICATION_TYPES = {
   quoteExpired: "quote.expired",
   requestClosed: "quote_request.closed",
   noQuotes: "quote_request.no_quotes",
+  // Recurring jobs and snow contracts (SPEC §21).
+  ongoingRequested: "ongoing.requested",
+  ongoingAccepted: "ongoing.accepted",
+  ongoingDeclined: "ongoing.declined",
+  ongoingEnded: "ongoing.ended",
+  visitReminder: "visit.reminder",
+  visitMoved: "visit.moved",
+  visitCancelled: "visit.cancelled",
+  visitLogged: "visit.logged",
+  paymentFailed: "payment.failed",
+  bookingPaused: "booking.paused",
 } as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 

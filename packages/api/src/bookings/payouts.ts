@@ -14,6 +14,8 @@ import {
 } from "@nevile/db";
 import type { PaymentEvent } from "@nevile/payments";
 import { TRPCError } from "@trpc/server";
+import { finishCardSetupFromProvider } from "../cards/flows.ts";
+import { afterCardSaved } from "../ongoing/charges.ts";
 import { type BookingDeps, completeAppCheckout, completeCheckout } from "./flows.ts";
 
 /** Acts on a verified provider notification (webhook, or the fake provider's pages). */
@@ -44,6 +46,11 @@ export async function handlePaymentEvent(deps: BookingDeps, event: PaymentEvent)
       if (checkout) await completeAppCheckout(deps, checkout.id);
       return;
     }
+    case "card_setup_completed":
+      await finishCardSetupFromProvider(deps, event.setupId, (userId) =>
+        afterCardSaved(deps, userId),
+      );
+      return;
     case "account_updated":
       await deps.db
         .update(businesses)
