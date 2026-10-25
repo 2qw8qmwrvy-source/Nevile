@@ -99,9 +99,8 @@ export function seriesLastAllowedDate(first: CalendarDate): CalendarDate {
 // Inputs
 // ---------------------------------------------------------------------------------------
 
-/** The schedule of a recurring booking: service, frequency, first visit, end, changes. */
-const recurringScheduleShape = {
-  serviceId: z.uuid(),
+/** The schedule of a recurring booking: frequency, first visit, end, changes. */
+const scheduleShape = {
   frequency: z.enum(RECURRENCE_FREQUENCIES),
   /** First visit's date and arrival window. */
   date: isoDate,
@@ -141,21 +140,30 @@ function checkSchedule(
   }
 }
 
+const recurringScheduleShape = { serviceId: z.uuid(), ...scheduleShape };
+const quotedScheduleShape = { quoteId: z.uuid(), ...scheduleShape };
+const jobDetailsShape = {
+  address: jobAddressSchema,
+  notes: z
+    .string()
+    .trim()
+    .max(500)
+    .transform((value) => value || null),
+};
+
 /** A recurring schedule on its own, for previews before the address is entered. */
 export const recurringScheduleSchema = z.object(recurringScheduleShape).superRefine(checkSchedule);
 export type RecurringScheduleInput = z.input<typeof recurringScheduleSchema>;
 
 /** A customer's recurring booking request (SPEC §21). */
 export const recurringRequestSchema = z
-  .object({
-    ...recurringScheduleShape,
-    address: jobAddressSchema,
-    notes: z
-      .string()
-      .trim()
-      .max(500)
-      .transform((value) => value || null),
-  })
+  .object({ ...recurringScheduleShape, ...jobDetailsShape })
+  .superRefine(checkSchedule);
+
+/** The same, for a pro's recurring offer in a quote (SPEC §21). */
+export const quotedScheduleSchema = z.object(quotedScheduleShape).superRefine(checkSchedule);
+export const quotedRecurringRequestSchema = z
+  .object({ ...quotedScheduleShape, ...jobDetailsShape })
   .superRefine(checkSchedule);
 export type RecurringRequestInput = z.input<typeof recurringRequestSchema>;
 
@@ -220,19 +228,18 @@ export const snowContractListingSchema = snowContractTermsSchema.and(
   }),
 );
 
-/** A customer signing up for a snow contract (SPEC §21). */
-export const snowSignupSchema = z.object({
-  serviceId: z.uuid(),
-  address: jobAddressSchema,
-  notes: z
-    .string()
-    .trim()
-    .max(500)
-    .transform((value) => value || null),
+const signupShape = {
+  ...jobDetailsShape,
   /** Required when the contract's season price can be paid either way. */
   seasonPayment: z.enum(["upfront", "monthly"]).nullable().default(null),
   agreed: z.literal(true, { message: "Read and agree to the terms" }),
-});
+};
+
+/** A customer signing up for a listed snow contract (SPEC §21). */
+export const snowSignupSchema = z.object({ serviceId: z.uuid(), ...signupShape });
+
+/** A customer signing up for snow contract terms a pro sent in a quote (SPEC §21). */
+export const quotedSnowSignupSchema = z.object({ quoteId: z.uuid(), ...signupShape });
 
 /** Which payment plan a customer ends up on for a season price. */
 export function seasonPaymentFor(

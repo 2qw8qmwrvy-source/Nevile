@@ -449,6 +449,15 @@ async function quoteTarget(
     quoteId,
     deps.now(),
   );
+  if (quote.kind !== "one_off") {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        quote.kind === "recurring"
+          ? "This quote is for recurring visits: pick a schedule to book it."
+          : "This quote is a snow contract: sign up for it instead.",
+    });
+  }
   const [row] = await deps.db
     .select({ business: businesses, area: serviceAreas })
     .from(businesses)

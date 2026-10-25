@@ -88,8 +88,11 @@ describe("quote requests (SPEC §20)", () => {
 describe("quotes", () => {
   it("is one price from $5 to $20,000 with a listed duration", () => {
     expect(quoteReplySchema.parse({ priceCents: 12_000, durationMinutes: 120, note: "" })).toEqual({
+      kind: "one_off",
       priceCents: 12_000,
       durationMinutes: 120,
+      frequencies: [],
+      contract: null,
       note: "",
     });
     expect(
@@ -104,6 +107,44 @@ describe("quotes", () => {
     expect(
       quoteReplySchema.safeParse({ priceCents: 50.5, durationMinutes: 60, note: "" }).success,
     ).toBe(false);
+  });
+
+  it("can be a recurring offer with the schedules on offer (SPEC §21)", () => {
+    const offer = { kind: "recurring", priceCents: 6000, durationMinutes: 60, note: "" } as const;
+    expect(quoteReplySchema.safeParse({ ...offer, frequencies: ["weekly", "biweekly"] }).success).toBe(
+      true,
+    );
+    expect(quoteReplySchema.safeParse({ ...offer, frequencies: [] }).success).toBe(false);
+    expect(quoteReplySchema.safeParse({ ...offer, frequencies: ["weekly", "weekly"] }).success).toBe(
+      false,
+    );
+    // Only recurring offers have schedules.
+    expect(
+      quoteReplySchema.safeParse({ ...offer, kind: "one_off", frequencies: ["weekly"] }).success,
+    ).toBe(false);
+  });
+
+  it("can be snow contract terms checked like a listed contract (SPEC §21)", () => {
+    const contract = {
+      triggerCm: 5,
+      seasonStart: "2026-11-15",
+      seasonEnd: "2027-03-31",
+      pricing: "season",
+      seasonBilling: "monthly",
+    } as const;
+    const reply = { kind: "snow_contract", priceCents: 60_000, contract, note: "" } as const;
+    expect(quoteReplySchema.parse(reply)).toMatchObject({ kind: "snow_contract", contract });
+    expect(quoteReplySchema.safeParse({ ...reply, contract: null }).success).toBe(false);
+    const noBilling = quoteReplySchema.safeParse({
+      ...reply,
+      contract: { ...contract, seasonBilling: null },
+    });
+    expect(noBilling.error?.issues[0]?.path).toEqual(["contract", "seasonBilling"]);
+    const longSeason = quoteReplySchema.safeParse({
+      ...reply,
+      contract: { ...contract, seasonEnd: "2027-07-01" },
+    });
+    expect(longSeason.success).toBe(false);
   });
 
   it("expires 7 days after it is sent", () => {

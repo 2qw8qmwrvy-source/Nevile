@@ -26,9 +26,11 @@ import {
   MS_PER_HOUR,
   occurrenceDates,
   parseIsoDate,
+  postalAreaOf,
   type RecurrenceFrequency,
   type recurringRequestSchema,
   refundForBusinessCancellation,
+  sameQuoteArea,
   seriesSummary,
   toLocal,
   visitReminderAt,
@@ -51,6 +53,7 @@ import {
   type RecurringSeries,
   recurringOverrides,
   recurringSeries,
+  serviceAreas,
   type Visit,
   visits,
 } from "@nevile/db";
@@ -79,6 +82,7 @@ import { savedCardOf } from "../cards/flows.ts";
 import { openConversation } from "../chat/flows.ts";
 import { businessTeamUserIds, NOTIFICATION_TYPES, notify } from "../inbox.ts";
 import { sendAll } from "../notify.ts";
+import { acceptQuoteInTx, bookableQuote } from "../quotes/flows.ts";
 import { API_ERROR_REASONS, reasonError } from "../trpc.ts";
 import { type Amounts, chargeOngoing, chargeTarget } from "./charges.ts";
 import { type SeriesMailFacts, seriesEmails } from "./emails.ts";
@@ -257,16 +261,87 @@ export function seriesProblem(
 }
 
 /** A fixed-price service offered on this schedule, or an error saying why not. */
-async function recurringService(db: DbExecutor, serviceId: string, frequency: RecurrenceFrequency) {
-  const target = await bookableService(db, serviceId);
-  if (!target.service.recurrenceFrequencies.includes(frequency)) {
+/** What a series books: a listed service, or a pro's recurring offer in a quote. */
+export type SeriesSource = {
+  business: Business;
+  area: { lat: number; lng: number; radiusKm: number };
+  serviceId: string;
+  title: string;
+  priceCents: number;
+  workMinutes: number;
+  quoteId: string | null;
+  /** Quotes: the address must be in the request's postal code area. */
+  requiredArea: string | null;
+};
+
+/** A fixed-price service offered on this schedule, or an error saying why not. */
+export async function serviceSeriesSource(
+  db: DbExecutor,
+  serviceId: string,
+  frequency: RecurrenceFrequency,
+): Promise<SeriesSource> {
+  const { service, business, area, priceCents } = await bookableService(db, serviceId);
+  if (!service.recurrenceFrequencies.includes(frequency)) {
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: `This pro doesn't offer “${FREQUENCY_LABELS[frequency].toLowerCase()}” for this service.`,
     });
   }
-  return target;
+  return {
+    business,
+    area,
+    serviceId: service.id,
+    title: service.title,
+    priceCents,
+    workMinutes: service.durationMinutes,
+    quoteId: null,
+    requiredArea: null,
+  };
 }
+
+/** A pro's recurring offer the customer may book on this schedule (SPEC §21). */
+export async function quoteSeriesSource(
+  db: DbExecutor,
+  customerId: string,
+  quoteId: string,
+  frequency: RecurrenceFrequency,
+  now: Date,
+): Promise<SeriesSource> {
+  const { quote, request, group, category } = await bookableQuote(db, customerId, quoteId, now);
+  if (quote.kind !== "recurring") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "This quote isn't for recurring visits." });
+  }
+  if (!quote.frequencies.includes(frequency)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `The pro didn't offer “${FREQUENCY_LABELS[frequency].toLowerCase()}”.`,
+    });
+  }
+  const [row] = await db
+    .select({ business: businesses, area: serviceAreas })
+    .from(businesses)
+    .innerJoin(serviceAreas, eq(serviceAreas.businessId, businesses.id))
+    .where(eq(businesses.id, request.businessId))
+    .limit(1);
+  if (!row?.business.publishedAt || row.business.suspendedAt) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "This pro isn't on Nevile right now." });
+  }
+  return {
+    business: row.business,
+    area: row.area,
+    serviceId: request.serviceId,
+    title: `${category.name} (quoted)`,
+    priceCents: quote.priceCents,
+    workMinutes: quote.durationMinutes ?? 60,
+    quoteId: quote.id,
+    requiredArea: group.postalCode,
+  };
+}
+
+export type ScheduleInput = Pick<
+  SeriesInput,
+  "frequency" | "date" | "endDate" | "windowStart" | "overrides"
+>;
 
 function choiceOf(
   input: Pick<SeriesInput, "frequency" | "date" | "endDate" | "windowStart" | "overrides">,
@@ -350,21 +425,15 @@ const seriesPath = (booking: Pick<Booking, "id" | "businessId">) =>
 /** Every date of a proposed series with what fits, the price per visit and the total. */
 export async function previewSeries(
   deps: Pick<BookingDeps, "db" | "now">,
-  input: Pick<
-    SeriesInput,
-    "serviceId" | "frequency" | "date" | "endDate" | "windowStart" | "overrides"
-  >,
+  source: SeriesSource,
+  input: ScheduleInput,
 ) {
   const now = deps.now();
-  const { service, business, priceCents } = await recurringService(
-    deps.db,
-    input.serviceId,
-    input.frequency,
-  );
+  const { business, priceCents } = source;
   const { dates, windows } = await planSeries(
     deps.db,
     business,
-    choiceOf(input, service.durationMinutes),
+    choiceOf(input, source.workMinutes),
     now,
     "request",
   );
@@ -403,19 +472,23 @@ export async function previewSeries(
 
 /**
  * Sends a recurring booking request (SPEC §21): every date checked, nothing charged; the
- * business has 24 hours (or until the first visit) to accept.
+ * business has 24 hours (or until the first visit) to accept. A booking from the pro's own
+ * recurring offer counts as accepted at once.
  */
 export async function requestSeries(
   deps: BookingDeps,
   customer: { id: string; name: string | null },
-  input: SeriesInput,
-): Promise<{ bookingId: string }> {
+  source: SeriesSource,
+  input: ScheduleInput & Pick<SeriesInput, "address" | "notes">,
+): Promise<{ bookingId: string; status: "requested" | "confirmed" }> {
   const now = deps.now();
-  const { service, business, area, priceCents } = await recurringService(
-    deps.db,
-    input.serviceId,
-    input.frequency,
-  );
+  const { business, area, priceCents, requiredArea } = source;
+  if (requiredArea && !sameQuoteArea(requiredArea, input.address.postalCode)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `The quote is for ${postalAreaOf(requiredArea)}. Use an address with a postal code starting ${postalAreaOf(requiredArea)}, or ask for a new quote.`,
+    });
+  }
   await assertCanBook(
     deps.db,
     { business, area, customerId: customer.id, now },
@@ -428,7 +501,7 @@ export async function requestSeries(
       API_ERROR_REASONS.CARD_REQUIRED,
     );
   }
-  const choice = choiceOf(input, service.durationMinutes);
+  const choice = choiceOf(input, source.workMinutes);
   const charge = calculateCharge({
     priceCents,
     province: business.province,
@@ -438,18 +511,20 @@ export async function requestSeries(
   const mail: Mail = [];
 
   const bookingId = await deps.db.transaction(async (tx) => {
-    const [open] = await tx
-      .select({ id: bookings.id })
-      .from(bookings)
-      .where(
-        and(
-          eq(bookings.customerId, customer.id),
-          eq(bookings.serviceId, service.id),
-          eq(bookings.kind, "recurring"),
-          eq(bookings.status, "requested"),
-        ),
-      )
-      .limit(1);
+    const [open] = source.quoteId
+      ? []
+      : await tx
+          .select({ id: bookings.id })
+          .from(bookings)
+          .where(
+            and(
+              eq(bookings.customerId, customer.id),
+              eq(bookings.serviceId, source.serviceId),
+              eq(bookings.kind, "recurring"),
+              eq(bookings.status, "requested"),
+            ),
+          )
+          .limit(1);
     if (open) {
       throw new TRPCError({
         code: "CONFLICT",
@@ -480,9 +555,10 @@ export async function requestSeries(
       .values({
         customerId: customer.id,
         businessId: business.id,
-        serviceId: service.id,
+        serviceId: source.serviceId,
+        quoteId: source.quoteId,
         addressId: address?.id ?? "",
-        title: service.title,
+        title: source.title,
         kind: "recurring",
         status: "requested",
         createdAt: now,
@@ -510,7 +586,7 @@ export async function requestSeries(
         frequency: input.frequency,
         startsAt: first.startsAt,
         endsAt: fromLocal(addCalendarDays(choice.endDate, 1), business.timezone),
-        durationMinutes: service.durationMinutes,
+        durationMinutes: source.workMinutes,
         firstDate: input.date,
         endDate: input.endDate,
         windowStartMinute: input.windowStart,
@@ -529,6 +605,36 @@ export async function requestSeries(
         })),
       );
     }
+    const schedule = FREQUENCY_LABELS[input.frequency].toLowerCase();
+    const facts = seriesFacts(booking, business, series, deps.config.siteUrl);
+    if (source.quoteId) {
+      // The pro's own offer: chat carries on from the quote, other pros' copies close.
+      const closed = await acceptQuoteInTx(tx, deps, source.quoteId, booking.id, now);
+      if (!closed) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "The pro changed their quote while you were booking. Check the new one.",
+        });
+      }
+      mail.push(...closed);
+      await notify(
+        tx,
+        await businessTeamUserIds(tx, business.id),
+        NOTIFICATION_TYPES.ongoingRequested,
+        {
+          text: `${firstName(customer.name)} booked your recurring offer, ${schedule}`,
+          path: seriesPath(booking),
+        },
+      );
+      mail.push(
+        ...seriesEmails.bookedForBusiness(
+          await businessTeamEmails(tx, business.id),
+          facts,
+          placed.length,
+        ),
+      );
+      return booking.id;
+    }
     await openConversation(tx, {
       customerId: customer.id,
       businessId: business.id,
@@ -539,13 +645,10 @@ export async function requestSeries(
       await businessTeamUserIds(tx, business.id),
       NOTIFICATION_TYPES.ongoingRequested,
       {
-        text: `${firstName(customer.name)} asked for ${service.title}, ${FREQUENCY_LABELS[
-          input.frequency
-        ].toLowerCase()}`,
+        text: `${firstName(customer.name)} asked for ${source.title}, ${schedule}`,
         path: seriesPath(booking),
       },
     );
-    const facts = seriesFacts(booking, business, series, deps.config.siteUrl);
     mail.push(
       ...seriesEmails.requestedForCustomer(
         await customerEmail(tx, customer.id),
@@ -562,7 +665,16 @@ export async function requestSeries(
   });
   await sendAll(deps.email, mail);
   await pushNotifications(deps);
-  return { bookingId };
+  if (!source.quoteId) return { bookingId, status: "requested" };
+  // Booked from the pro's own offer: accepted at once. If the dates stopped fitting in
+  // the meantime it stays a request the pro can still accept.
+  try {
+    await acceptSeries(deps, null, business.id, bookingId, { fromQuote: true });
+    return { bookingId, status: "confirmed" };
+  } catch (error) {
+    console.error("[recurring] could not confirm a quoted series", bookingId, error);
+    return { bookingId, status: "requested" };
+  }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -576,9 +688,10 @@ export async function requestSeries(
  */
 export async function acceptSeries(
   deps: BookingDeps,
-  actorUserId: string,
+  actorUserId: string | null,
   businessId: string,
   bookingId: string,
+  options: { fromQuote?: boolean } = {},
 ): Promise<{ visits: number; skipped: string[] }> {
   const now = deps.now();
   const mail: Mail = [];
@@ -668,6 +781,7 @@ export async function acceptSeries(
         seriesFacts(updated ?? booking, business, series, deps.config.siteUrl),
         placed.length,
         skippedLabels,
+        options.fromQuote === true,
       ),
     );
     await startPayoutClock(tx, business, now);

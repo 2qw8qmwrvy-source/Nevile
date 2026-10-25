@@ -1,4 +1,4 @@
-import { formatCad, formatDurationMinutes } from "@nevile/core";
+import { formatCad } from "@nevile/core";
 import { emailsTo } from "../bookings/emails.ts";
 
 /** What quote emails need to say. */
@@ -31,14 +31,15 @@ export const quoteEmails = {
     ),
   quoteForCustomer: (
     recipients: string[],
-    facts: QuoteMailFacts & { priceCents: number; durationMinutes: number; revised: boolean },
+    /** `offer`: "$90.00 (about 2 hours)", "$60.00 per visit, every week"… */
+    facts: QuoteMailFacts & { priceCents: number; offer: string; revised: boolean },
   ) =>
     emailsTo(
       recipients,
       facts.revised
         ? `${facts.businessName} updated their quote: ${formatCad(facts.priceCents)}`
         : `Quote from ${facts.businessName}: ${formatCad(facts.priceCents)}`,
-      `${facts.businessName} ${facts.revised ? "sent a new quote" : "quoted"} ${formatCad(facts.priceCents)} for your ${facts.categoryName.toLowerCase()} job (about ${formatDurationMinutes(facts.durationMinutes)}).\n\nThe quote is open for 7 days. Compare quotes and book a time: ${customerLink(facts)}`,
+      `${facts.businessName} ${facts.revised ? "sent a new quote" : "quoted"} for your ${facts.categoryName.toLowerCase()} job: ${facts.offer}.\n\nThe quote is open for 7 days. Compare quotes and book: ${customerLink(facts)}`,
     ),
   declinedForCustomer: (recipients: string[], facts: QuoteMailFacts & { reason: string }) =>
     emailsTo(

@@ -32,20 +32,32 @@ export const seriesEmails = {
       `Recurring booking request: ${facts.serviceTitle}`,
       `A customer asked to book you for recurring visits.\n\n${facts.serviceTitle}\n${facts.schedule}\n${visits} visits\n\nAccept or decline within 24 hours: ${seriesLink(facts)}`,
     ),
+  /** `booked`: from the pro's own offer, so it's confirmed straight away. */
   acceptedForCustomer: (
     recipients: string[],
     facts: SeriesMailFacts,
     visits: number,
     skipped: readonly string[],
+    booked = false,
   ) =>
     emailsTo(
       recipients,
-      `Accepted: ${facts.serviceTitle} with ${facts.businessName}`,
-      `${facts.businessName} accepted your recurring booking.\n\n${facts.serviceTitle}\n${facts.schedule}\n${visits} visits at ${formatCad(facts.perVisitCents)} each, charged to your saved card 3 days before each visit.${
+      `${booked ? "Booked" : "Accepted"}: ${facts.serviceTitle} with ${facts.businessName}`,
+      `${
+        booked
+          ? `You're booked for recurring visits with ${facts.businessName}.`
+          : `${facts.businessName} accepted your recurring booking.`
+      }\n\n${facts.serviceTitle}\n${facts.schedule}\n${visits} visits at ${formatCad(facts.perVisitCents)} each, charged to your saved card 3 days before each visit.${
         skipped.length > 0
           ? `\n\nThese dates stopped fitting their calendar, so they're skipped (nothing is charged for them):\n${dateList(skipped)}`
           : ""
       }\n\nSkip a visit or end the series: ${bookingLink(facts)}`,
+    ),
+  bookedForBusiness: (recipients: string[], facts: SeriesMailFacts, visits: number) =>
+    emailsTo(
+      recipients,
+      `Booked: your recurring offer, ${facts.serviceTitle}`,
+      `A customer booked the recurring visits you quoted.\n\n${facts.serviceTitle}\n${facts.schedule}\n${visits} visits\n\nAssign a crew member: ${seriesLink(facts)}`,
     ),
   reminderForCustomer: (recipients: string[], facts: SeriesMailFacts, when: string) =>
     emailsTo(

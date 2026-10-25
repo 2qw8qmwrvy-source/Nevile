@@ -7,6 +7,8 @@ import { QUOTE_EXPIRY_DAYS } from "./booking-lifecycle.ts";
 import { CATEGORY_SLUGS } from "./categories.ts";
 import { postalAreaOf } from "./geo.ts";
 import { hasDisallowedControlCharacters, SERVICE_DURATION_CHOICES } from "./listing.ts";
+import { CONTRACT_PRICINGS, SEASON_BILLINGS, snowContractTermsSchema } from "./ongoing.ts";
+import { RECURRENCE_FREQUENCIES } from "./recurrence.ts";
 import { launchPostalCodeSchema } from "./region.ts";
 import { MS_PER_DAY, MS_PER_MINUTE } from "./time.ts";
 
@@ -94,24 +96,89 @@ export const quoteRequestInputSchema = z.object({
 });
 export type QuoteRequestInput = z.input<typeof quoteRequestInputSchema>;
 
-/** A business's quote: one price, how long the job takes, what's included. */
-export const quoteReplySchema = z.object({
-  priceCents: z
-    .number({ message: "Enter the price" })
-    .int()
-    .min(QUOTE_LIMITS.minPriceCents, { message: "Quotes start at $5" })
-    .max(QUOTE_LIMITS.maxPriceCents, { message: "Quotes can be up to $20,000" }),
-  durationMinutes: z
-    .number({ message: "Pick how long the job takes" })
-    .int()
-    .refine((minutes) => (SERVICE_DURATION_CHOICES as readonly number[]).includes(minutes), {
-      message: "Pick how long the job takes",
-    }),
-  note: plainText(0, QUOTE_LIMITS.noteMaxLength, {
-    min: "",
-    max: `Keep the note under ${QUOTE_LIMITS.noteMaxLength} characters`,
-  }),
+/** What a quote offers (SPEC §21): a one-off job, recurring visits or a snow contract. */
+export const QUOTE_KINDS = ["one_off", "recurring", "snow_contract"] as const;
+export type QuoteKind = (typeof QUOTE_KINDS)[number];
+
+/** A snow contract offered in a quote: the listed terms minus price and spots. */
+const quoteContractSchema = z.object({
+  triggerCm: z.number().int(),
+  seasonStart: z.string(),
+  seasonEnd: z.string(),
+  pricing: z.enum(CONTRACT_PRICINGS),
+  seasonBilling: z.enum(SEASON_BILLINGS).nullable(),
 });
+
+/**
+ * A business's quote: one price and what's included. A one-off job or a recurring offer
+ * (price per visit, the schedules on offer) says how long the job takes; snow contract
+ * terms carry the trigger, season and how a season price is paid (SPEC §20, §21).
+ */
+export const quoteReplySchema = z
+  .object({
+    kind: z.enum(QUOTE_KINDS).default("one_off"),
+    priceCents: z
+      .number({ message: "Enter the price" })
+      .int()
+      .min(QUOTE_LIMITS.minPriceCents, { message: "Quotes start at $5" })
+      .max(QUOTE_LIMITS.maxPriceCents, { message: "Quotes can be up to $20,000" }),
+    durationMinutes: z
+      .number({ message: "Pick how long the job takes" })
+      .int()
+      .refine((minutes) => (SERVICE_DURATION_CHOICES as readonly number[]).includes(minutes), {
+        message: "Pick how long the job takes",
+      })
+      .optional(),
+    /** Recurring offers: the schedules the customer can pick from. */
+    frequencies: z.array(z.enum(RECURRENCE_FREQUENCIES)).max(3).default([]),
+    /** Snow contract terms. */
+    contract: quoteContractSchema.nullable().default(null),
+    note: plainText(0, QUOTE_LIMITS.noteMaxLength, {
+      min: "",
+      max: `Keep the note under ${QUOTE_LIMITS.noteMaxLength} characters`,
+    }),
+  })
+  .superRefine((reply, ctx) => {
+    if (reply.kind !== "snow_contract" && reply.durationMinutes === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["durationMinutes"],
+        message: "Pick how long the job takes",
+      });
+    }
+    if (reply.kind === "recurring") {
+      if (reply.frequencies.length === 0) {
+        ctx.addIssue({ code: "custom", path: ["frequencies"], message: "Pick at least one schedule" });
+      } else if (new Set(reply.frequencies).size !== reply.frequencies.length) {
+        ctx.addIssue({ code: "custom", path: ["frequencies"], message: "Pick each schedule once" });
+      }
+    } else if (reply.frequencies.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["frequencies"],
+        message: "Only a recurring offer has schedules",
+      });
+    }
+    if (reply.kind === "snow_contract") {
+      if (!reply.contract) {
+        ctx.addIssue({ code: "custom", path: ["contract"], message: "Add the contract terms" });
+        return;
+      }
+      const terms = snowContractTermsSchema.safeParse({
+        ...reply.contract,
+        priceCents: reply.priceCents,
+      });
+      for (const issue of terms.success ? [] : terms.error.issues) {
+        ctx.addIssue({ code: "custom", path: ["contract", ...issue.path], message: issue.message });
+      }
+    } else if (reply.contract) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["contract"],
+        message: "Only snow contract terms have a season",
+      });
+    }
+  });
 export type QuoteReplyInput = z.input<typeof quoteReplySchema>;
 
 export const quoteDeclineSchema = z.object({

@@ -19,7 +19,9 @@ import {
   MS_PER_MINUTE,
   parseIsoDate,
   periodReleaseAt,
+  postalAreaOf,
   type SeasonPayment,
+  sameQuoteArea,
   seasonEndActions,
   seasonPaymentFor,
   seasonPeriods,
@@ -83,6 +85,7 @@ import { cardView, savedCardOf } from "../cards/flows.ts";
 import { openConversation } from "../chat/flows.ts";
 import { businessTeamUserIds, NOTIFICATION_TYPES, notify } from "../inbox.ts";
 import { sendAll } from "../notify.ts";
+import { acceptQuoteInTx, bookableQuote } from "../quotes/flows.ts";
 import { API_ERROR_REASONS, reasonError } from "../trpc.ts";
 import {
   type AgreementFacts,
@@ -192,8 +195,31 @@ export async function setContractTerms(
     .onConflictDoUpdate({ target: serviceContractTerms.serviceId, set: values });
 }
 
+type ContractTerms = Pick<
+  ContractListing,
+  "triggerCm" | "seasonStart" | "seasonEnd" | "pricing" | "priceCents" | "seasonBilling"
+>;
+
+/** What a sign-up is for: a listed contract, or snow contract terms a pro sent in a quote. */
+export type ContractSource = {
+  service: Service;
+  business: Business;
+  area: { lat: number; lng: number; radiusKm: number };
+  terms: ContractTerms;
+  /** Listed contracts take a limited number of customers; quoted terms are for one. */
+  spots: number | null;
+  title: string;
+  description: string;
+  quoteId: string | null;
+  /** Quotes: the address must be in the request's postal code area. */
+  requiredArea: string | null;
+};
+
 /** A listed contract of a published business, or an error saying why not. */
-async function contractService(db: DbExecutor, serviceId: string) {
+export async function listedContractSource(
+  db: DbExecutor,
+  serviceId: string,
+): Promise<ContractSource> {
   const [row] = await db
     .select({
       service: services,
@@ -210,7 +236,64 @@ async function contractService(db: DbExecutor, serviceId: string) {
   if (!row?.service.active || !row.business.publishedAt || row.business.suspendedAt) {
     throw new TRPCError({ code: "NOT_FOUND", message: "That contract isn't available." });
   }
-  return row;
+  return {
+    service: row.service,
+    business: row.business,
+    area: row.area,
+    terms: row.terms,
+    spots: row.terms.spots,
+    title: row.service.title,
+    description: row.service.description ?? "",
+    quoteId: null,
+    requiredArea: null,
+  };
+}
+
+/** Snow contract terms a pro sent the customer in a quote (SPEC §21). */
+export async function quotedContractSource(
+  db: DbExecutor,
+  customerId: string,
+  quoteId: string,
+  now: Date,
+): Promise<ContractSource> {
+  const { quote, request, group, category } = await bookableQuote(db, customerId, quoteId, now);
+  if (
+    quote.kind !== "snow_contract" ||
+    !quote.priceBasis ||
+    !quote.triggerCm ||
+    !quote.seasonStart ||
+    !quote.seasonEnd
+  ) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "This quote isn't a snow contract." });
+  }
+  const [row] = await db
+    .select({ service: services, business: businesses, area: serviceAreas })
+    .from(services)
+    .innerJoin(businesses, eq(businesses.id, services.businessId))
+    .innerJoin(serviceAreas, eq(serviceAreas.businessId, businesses.id))
+    .where(eq(services.id, request.serviceId))
+    .limit(1);
+  if (!row?.business.publishedAt || row.business.suspendedAt) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "This pro isn't on Nevile right now." });
+  }
+  return {
+    service: row.service,
+    business: row.business,
+    area: row.area,
+    terms: {
+      triggerCm: quote.triggerCm,
+      seasonStart: quote.seasonStart,
+      seasonEnd: quote.seasonEnd,
+      pricing: quote.priceBasis,
+      priceCents: quote.priceCents,
+      seasonBilling: quote.seasonBilling,
+    },
+    spots: null,
+    title: `${category.name} (quoted)`,
+    description: quote.message ?? "",
+    quoteId: quote.id,
+    requiredArea: group.postalCode,
+  };
 }
 
 // ---------------------------------------------------------------------------------------
@@ -347,7 +430,8 @@ function agreementFacts(input: {
   reference: string;
   agreedAt: Date;
   business: Business;
-  service: Service;
+  title: string;
+  description: string;
   customerName: string;
   address: string[];
   notes: string | null;
@@ -364,8 +448,8 @@ function agreementFacts(input: {
     businessName: input.business.name,
     customerName: input.customerName,
     addressLines: input.address,
-    serviceTitle: input.service.title,
-    serviceDescription: input.service.description ?? "",
+    serviceTitle: input.title,
+    serviceDescription: input.description,
     notes: input.notes,
     triggerCm: input.terms.triggerCm,
     seasonStart: longDate(input.terms.seasonStart),
@@ -411,12 +495,15 @@ function paymentFor(
  */
 export async function contractOffer(
   deps: Pick<ContractDeps, "db" | "now" | "payments">,
-  serviceId: string,
+  source: ContractSource,
   options: { seasonPayment: SeasonPayment | null; customer: { id: string; name: string } | null },
 ) {
   const now = deps.now();
-  const { service, business, terms } = await contractService(deps.db, serviceId);
-  const listing = (await contractTermsFor(deps.db, [serviceId])).get(serviceId);
+  const { service, business, terms } = source;
+  const spotsLeft =
+    source.spots === null
+      ? null
+      : ((await contractTermsFor(deps.db, [service.id])).get(service.id)?.spotsLeft ?? 0);
   const payment =
     terms.pricing === "season" && terms.seasonBilling
       ? (seasonPaymentFor(terms.seasonBilling, options.seasonPayment) ?? "upfront")
@@ -427,7 +514,8 @@ export async function contractOffer(
     ? await savedCardOf(deps.db, options.customer.id, deps.payments.name)
     : null;
   return {
-    service: { id: service.id, title: service.title, description: service.description ?? "" },
+    service: { id: service.id, title: source.title, description: source.description },
+    quoteId: source.quoteId,
     business: { name: business.name, slug: business.slug },
     terms: {
       triggerCm: terms.triggerCm,
@@ -438,11 +526,12 @@ export async function contractOffer(
       priceCents: terms.priceCents,
       seasonBilling: terms.seasonBilling,
     },
-    spotsLeft: listing?.spotsLeft ?? 0,
+    /** Null for terms quoted to this customer alone. */
+    spotsLeft,
     seasonOver,
     open:
       !seasonOver &&
-      (listing?.spotsLeft ?? 0) > 0 &&
+      (spotsLeft === null || spotsLeft > 0) &&
       canTakeBookings({
         payoutsEnabled: business.payoutsEnabled,
         payoutSetupDueAt: business.payoutSetupDueAt,
@@ -465,7 +554,8 @@ export async function contractOffer(
             reference: "given when you sign up",
             agreedAt: now,
             business,
-            service,
+            title: source.title,
+            description: source.description,
             customerName: options.customer?.name || "You",
             address: ["The address you enter"],
             notes: null,
@@ -509,10 +599,17 @@ const businessPath = (booking: Pick<Booking, "id" | "businessId">) =>
 export async function signUpForContract(
   deps: ContractDeps,
   customer: { id: string; name: string },
-  input: SnowSignupInput,
-): Promise<{ bookingId: string }> {
+  source: ContractSource,
+  input: Omit<SnowSignupInput, "serviceId">,
+): Promise<{ bookingId: string; status: "requested" | "confirmed" }> {
   const now = deps.now();
-  const { service, business, area, terms } = await contractService(deps.db, input.serviceId);
+  const { service, business, area, terms, requiredArea } = source;
+  if (requiredArea && !sameQuoteArea(requiredArea, input.address.postalCode)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `The quote is for ${postalAreaOf(requiredArea)}. Use an address with a postal code starting ${postalAreaOf(requiredArea)}, or ask for a new quote.`,
+    });
+  }
   await assertCanBook(
     deps.db,
     { business, area, customerId: customer.id, now },
@@ -538,7 +635,8 @@ export async function signUpForContract(
       reference: bookingId,
       agreedAt: now,
       business,
-      service,
+      title: source.title,
+      description: source.description,
       customerName: customer.name,
       address,
       notes: input.notes,
@@ -556,18 +654,20 @@ export async function signUpForContract(
   try {
     await deps.db.transaction(async (tx) => {
       await lockContractSpots(tx, service.id);
-      const [mine] = await tx
-        .select({ id: bookings.id })
-        .from(bookings)
-        .where(
-          and(
-            eq(bookings.customerId, customer.id),
-            eq(bookings.serviceId, service.id),
-            eq(bookings.kind, "snow_contract"),
-            inArray(bookings.status, [...LIVE_CONTRACT_STATES]),
-          ),
-        )
-        .limit(1);
+      const [mine] = source.quoteId
+        ? []
+        : await tx
+            .select({ id: bookings.id })
+            .from(bookings)
+            .where(
+              and(
+                eq(bookings.customerId, customer.id),
+                eq(bookings.serviceId, service.id),
+                eq(bookings.kind, "snow_contract"),
+                inArray(bookings.status, [...LIVE_CONTRACT_STATES]),
+              ),
+            )
+            .limit(1);
       if (mine) {
         throw new TRPCError({
           code: "CONFLICT",
@@ -584,7 +684,7 @@ export async function signUpForContract(
             inArray(bookings.status, [...LIVE_CONTRACT_STATES]),
           ),
         );
-      if ((taken?.n ?? 0) >= terms.spots) {
+      if (source.spots !== null && (taken?.n ?? 0) >= source.spots) {
         throw new TRPCError({ code: "CONFLICT", message: "No spots left on this contract." });
       }
       const [addressRow] = await tx
@@ -611,8 +711,9 @@ export async function signUpForContract(
           customerId: customer.id,
           businessId: business.id,
           serviceId: service.id,
+          quoteId: source.quoteId,
           addressId: addressRow?.id ?? "",
-          title: service.title,
+          title: source.title,
           kind: "snow_contract",
           status: "requested",
           createdAt: now,
@@ -646,6 +747,34 @@ export async function signUpForContract(
         contentSha256: pdf.sha256,
         acceptedByCustomerAt: now,
       });
+      await audit(tx, "contract.requested", "booking", bookingId, customer.id, {
+        agreementSha256: pdf.sha256,
+      });
+      const attachments: EmailAttachment[] = [
+        { filename: PDF_FILENAME, contentType: "application/pdf", content: pdf.bytes },
+      ];
+      const season = seasonLabel(terms.seasonStart, terms.seasonEnd);
+      if (source.quoteId) {
+        // The pro's own terms: chat carries on from the quote, other pros' copies close.
+        const closed = await acceptQuoteInTx(tx, deps, source.quoteId, bookingId, now);
+        if (!closed) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "The pro changed their quote while you were signing up. Check the new one.",
+          });
+        }
+        mail.push(...closed);
+        await notify(
+          tx,
+          await businessTeamUserIds(tx, business.id),
+          NOTIFICATION_TYPES.ongoingRequested,
+          {
+            text: `${firstName(customer.name)} signed up for the snow contract you quoted`,
+            path: businessPath(booking),
+          },
+        );
+        return;
+      }
       await openConversation(tx, {
         customerId: customer.id,
         businessId: business.id,
@@ -656,31 +785,24 @@ export async function signUpForContract(
         await businessTeamUserIds(tx, business.id),
         NOTIFICATION_TYPES.ongoingRequested,
         {
-          text: `${firstName(customer.name)} signed up for ${service.title}`,
+          text: `${firstName(customer.name)} signed up for ${source.title}`,
           path: businessPath(booking),
         },
       );
-      await audit(tx, "contract.requested", "booking", bookingId, customer.id, {
-        agreementSha256: pdf.sha256,
-      });
-      const attachments: EmailAttachment[] = [
-        { filename: PDF_FILENAME, contentType: "application/pdf", content: pdf.bytes },
-      ];
-      const season = seasonLabel(terms.seasonStart, terms.seasonEnd);
       mail.push(
         ...withAttachments(
           emailsTo(
             await customerEmail(tx, customer.id),
             `Sign-up sent to ${business.name}`,
-            `We've sent your snow contract sign-up to ${business.name}.\n\n${service.title}\n${season}\n\nNothing is charged now. They have 24 hours to accept; then your saved card is charged as the agreement says. Your copy of the agreement is attached.\n\n${deps.config.siteUrl}${bookingPath(booking)}`,
+            `We've sent your snow contract sign-up to ${business.name}.\n\n${source.title}\n${season}\n\nNothing is charged now. They have 24 hours to accept; then your saved card is charged as the agreement says. Your copy of the agreement is attached.\n\n${deps.config.siteUrl}${bookingPath(booking)}`,
           ),
           attachments,
         ),
         ...withAttachments(
           emailsTo(
             await businessTeamEmails(tx, business.id),
-            `Snow contract sign-up: ${service.title}`,
-            `A customer signed up for your snow contract.\n\n${service.title}\n${season}\n\nAccept or decline within 24 hours: ${deps.config.siteUrl}${businessPath(booking)}\n\nThe agreement they agreed to is attached.`,
+            `Snow contract sign-up: ${source.title}`,
+            `A customer signed up for your snow contract.\n\n${source.title}\n${season}\n\nAccept or decline within 24 hours: ${deps.config.siteUrl}${businessPath(booking)}\n\nThe agreement they agreed to is attached.`,
           ),
           attachments,
         ),
@@ -692,7 +814,16 @@ export async function signUpForContract(
   }
   await sendAll(deps.email, mail);
   await pushNotifications(deps);
-  return { bookingId };
+  if (!source.quoteId) return { bookingId, status: "requested" };
+  // Signed up for the pro's own terms: accepted at once (the acceptance emails carry the
+  // agreement to both sides). If that fails it stays a request the pro can accept.
+  try {
+    await acceptContract(deps, null, business.id, bookingId, { fromQuote: true });
+    return { bookingId, status: "confirmed" };
+  } catch (error) {
+    console.error("[snow] could not confirm a quoted contract", bookingId, error);
+    return { bookingId, status: "requested" };
+  }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -714,9 +845,10 @@ async function contractOf(db: DbExecutor, bookingId: string): Promise<SnowContra
  */
 export async function acceptContract(
   deps: ContractDeps,
-  actorUserId: string,
+  actorUserId: string | null,
   businessId: string,
   bookingId: string,
+  options: { fromQuote?: boolean } = {},
 ): Promise<{ months: number }> {
   const now = deps.now();
   const mail: Mail = [];
@@ -740,7 +872,8 @@ export async function acceptContract(
           eq(bookings.status, "confirmed"),
         ),
       );
-    if (terms && (active?.n ?? 0) >= terms.spots) {
+    // Terms quoted to one customer don't use the listed contract's spots.
+    if (terms && booking.quoteId === null && (active?.n ?? 0) >= terms.spots) {
       throw new TRPCError({
         code: "CONFLICT",
         message: "This contract is full. Add spots to it, or decline.",
@@ -814,8 +947,12 @@ export async function acceptContract(
       ...withAttachments(
         emailsTo(
           await customerEmail(tx, booking.customerId),
-          `Accepted: ${booking.title} with ${business.name}`,
-          `${business.name} accepted your snow contract, so you're all set for the season.\n\n${booking.title}\n${season}\n\nThe signed agreement is attached. ${
+          `${options.fromQuote ? "Booked" : "Accepted"}: ${booking.title} with ${business.name}`,
+          `${
+            options.fromQuote
+              ? `You're signed up for ${business.name}'s snow contract`
+              : `${business.name} accepted your snow contract`
+          }, so you're all set for the season.\n\n${booking.title}\n${season}\n\nThe signed agreement is attached. ${
             contract.seasonPriceCents === null
               ? "Each visit is charged once you confirm it (or 48 hours after it's logged)."
               : contract.seasonPayment === "upfront"
@@ -829,7 +966,11 @@ export async function acceptContract(
         emailsTo(
           await businessTeamEmails(tx, businessId),
           `Contract confirmed: ${booking.title}`,
-          `You accepted a snow contract; the address is on your snow route.\n\n${booking.title}\n${season}\n\nThe signed agreement is attached.\n\n${deps.config.siteUrl}/business/snow-route?b=${businessId}`,
+          `${
+            options.fromQuote
+              ? "A customer signed up for the snow contract you quoted"
+              : "You accepted a snow contract"
+          }; the address is on your snow route.\n\n${booking.title}\n${season}\n\nThe signed agreement is attached.\n\n${deps.config.siteUrl}/business/snow-route?b=${businessId}`,
         ),
         attachments,
       ),

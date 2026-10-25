@@ -29,9 +29,10 @@ export const businessQuotesRouter = router({
     return row;
   }),
 
-  /** Sends a quote, or a revised one that replaces it. */
+  /** Sends a quote (one-off, recurring offer or snow contract terms), or a revision. */
   reply: handler
-    .input(requestIdInput.extend(quoteReplySchema.shape))
+    .input(requestIdInput)
+    .input(quoteReplySchema)
     .mutation(async ({ ctx, input }) => {
       const { requestId, businessId: _businessId, ...quote } = input;
       await sendQuote(bookingDeps(ctx), ctx.user.id, ctx.business.id, requestId, quote);

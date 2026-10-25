@@ -2,6 +2,8 @@ import type { EmailMessage } from "@nevile/auth";
 import {
   calculateCharge,
   canTakeBookings,
+  FREQUENCY_LABELS,
+  formatCad,
   formatDurationMinutes,
   haversineKm,
   isCategorySlug,
@@ -354,20 +356,37 @@ export async function sendQuote(
         message: "This request is closed, so it can't get a quote any more.",
       });
     }
+    if (input.kind === "snow_contract" && category.slug !== "snow-ice-removal") {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Snow contract terms are for Snow & Ice Removal requests.",
+      });
+    }
     const revised = request.status === "quoted";
     await withdrawPendingQuotes(tx, request.id, now);
     const expiresAt = quoteExpiresAt(now);
-    await tx.insert(quotes).values({
-      quoteRequestId: request.id,
-      kind: request.kind,
-      createdByUserId: actorUserId,
-      priceCents: input.priceCents,
-      durationMinutes: input.durationMinutes,
-      message: input.note || null,
-      expiresAt,
-      createdAt: now,
-      updatedAt: now,
-    });
+    const contract = input.kind === "snow_contract" ? input.contract : null;
+    const [quote] = await tx
+      .insert(quotes)
+      .values({
+        quoteRequestId: request.id,
+        kind: input.kind,
+        createdByUserId: actorUserId,
+        priceCents: input.priceCents,
+        durationMinutes: input.kind === "snow_contract" ? null : input.durationMinutes,
+        frequencies: input.kind === "recurring" ? input.frequencies : [],
+        priceBasis: contract?.pricing ?? null,
+        triggerCm: contract?.triggerCm ?? null,
+        seasonStart: contract?.seasonStart ?? null,
+        seasonEnd: contract?.seasonEnd ?? null,
+        seasonBilling: contract?.pricing === "season" ? contract.seasonBilling : null,
+        message: input.note || null,
+        expiresAt,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    if (!quote) throw new Error("quote insert returned nothing");
     await tx
       .update(quoteRequests)
       .set({
@@ -393,7 +412,7 @@ export async function sendQuote(
       ...quoteEmails.quoteForCustomer(await customerEmail(tx, request.customerId), {
         ...facts,
         priceCents: input.priceCents,
-        durationMinutes: input.durationMinutes,
+        offer: offerSummary(quote),
         revised,
       }),
     );
@@ -758,6 +777,32 @@ function statusLabel(request: QuoteRequest, side: "customer" | "business"): stri
   return (side === "customer" ? CUSTOMER_LABELS : BUSINESS_LABELS)[request.status];
 }
 
+const SHORT_DATE = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "UTC",
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+});
+const shortDate = (iso: string) => SHORT_DATE.format(new Date(`${iso}T12:00:00Z`));
+
+/** What a quote offers, in a phrase: "$60.00 per visit, every week or every 2 weeks". */
+export function offerSummary(quote: Quote): string {
+  const price = formatCad(quote.priceCents);
+  if (quote.kind === "recurring") {
+    const schedules = quote.frequencies.map((frequency) =>
+      FREQUENCY_LABELS[frequency].toLowerCase(),
+    );
+    return `${price} per visit, ${schedules.join(" or ")}`;
+  }
+  if (quote.kind === "snow_contract" && quote.seasonStart && quote.seasonEnd) {
+    const season = `${shortDate(quote.seasonStart)} to ${shortDate(quote.seasonEnd)}`;
+    return quote.priceBasis === "season"
+      ? `${price} for the season (${season}), clearing from ${quote.triggerCm} cm`
+      : `${price} per visit (${season}), clearing from ${quote.triggerCm} cm`;
+  }
+  return `${price} (about ${formatDurationMinutes(quote.durationMinutes ?? 60)})`;
+}
+
 function quoteView(
   quote: Quote,
   business: Pick<Business, "province" | "taxRegistered">,
@@ -776,6 +821,21 @@ function quoteView(
     durationMinutes: quote.durationMinutes ?? 60,
     duration: formatDurationMinutes(quote.durationMinutes ?? 60),
     note: quote.message ?? "",
+    /** One-off price, recurring offer or snow contract terms (SPEC §21). */
+    kind: quote.kind,
+    summary: offerSummary(quote),
+    frequencies: quote.frequencies.map((value) => ({ value, label: FREQUENCY_LABELS[value] })),
+    contract:
+      quote.kind === "snow_contract" && quote.seasonStart && quote.seasonEnd && quote.priceBasis
+        ? {
+            triggerCm: quote.triggerCm ?? 0,
+            seasonStart: quote.seasonStart,
+            seasonEnd: quote.seasonEnd,
+            season: `${shortDate(quote.seasonStart)} to ${shortDate(quote.seasonEnd)}`,
+            pricing: quote.priceBasis,
+            seasonBilling: quote.seasonBilling,
+          }
+        : null,
     expiresAt: quote.expiresAt,
     sentAt: quote.createdAt,
     total: {
