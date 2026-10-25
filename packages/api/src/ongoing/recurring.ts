@@ -341,7 +341,7 @@ function seriesFacts(
 }
 
 const seriesPath = (booking: Pick<Booking, "id" | "businessId">) =>
-  `/business/series/${booking.id}?b=${booking.businessId}`;
+  `/business/bookings/${booking.id}?b=${booking.businessId}`;
 
 // ---------------------------------------------------------------------------------------
 // Preview and request

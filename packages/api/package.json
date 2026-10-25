@@ -17,6 +17,7 @@
     "@nevile/payments": "workspace:*",
     "@nevile/storage": "workspace:*",
     "@trpc/server": "11.19.0",
+    "pdf-lib": "1.17.1",
     "superjson": "2.2.6",
     "zod": "4.6.7"
   },

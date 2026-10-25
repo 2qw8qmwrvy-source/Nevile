@@ -16,7 +16,7 @@ export type SeriesMailFacts = {
 
 const bookingLink = (facts: SeriesMailFacts) => `${facts.siteUrl}/bookings/${facts.bookingId}`;
 const seriesLink = (facts: SeriesMailFacts) =>
-  `${facts.siteUrl}/business/series/${facts.bookingId}?b=${facts.businessId}`;
+  `${facts.siteUrl}/business/bookings/${facts.bookingId}?b=${facts.businessId}`;
 const dateList = (dates: readonly string[]) => dates.map((date) => `- ${date}`).join("\n");
 
 export const seriesEmails = {

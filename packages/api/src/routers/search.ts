@@ -53,6 +53,7 @@ import type { MediaStorage } from "@nevile/storage";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { isInstantBookable, servicePrice } from "../listing-state.ts";
+import { contractTermsFor } from "../ongoing/contract-terms.ts";
 import { lookupPostalArea } from "../postal.ts";
 import { publicProcedure, router } from "../trpc.ts";
 
@@ -432,6 +433,10 @@ export const searchRouter = router({
         .limit(PROFILE_REVIEW_LIMIT);
 
       const instantBook = serviceRows.some(({ service }) => isInstantBookable(business, service));
+      const contracts = await contractTermsFor(
+        ctx.db,
+        serviceRows.map(({ service }) => service.id),
+      );
       const categories = [
         ...new Map(
           serviceRows.map(({ categorySlug, categoryName }) => [
@@ -468,11 +473,13 @@ export const searchRouter = router({
           priceText: servicePrice(service),
           durationMinutes: service.durationMinutes,
           instantBook: isInstantBookable(business, service),
-          // Fixed-price services book online now; quotes come later (SPEC §19).
-          bookable: service.pricingType === "fixed",
+          // Fixed-price services book online; seasonal contracts are signed up for instead.
+          bookable: service.pricingType === "fixed" && !contracts.has(service.id),
           /** How often it can be booked as a recurring job (SPEC §21). */
           recurrenceFrequencies:
             service.pricingType === "fixed" ? service.recurrenceFrequencies : [],
+          /** A seasonal snow contract's terms and spots left (SPEC §21). */
+          contract: contracts.get(service.id) ?? null,
         })),
         photos: photos.map((photo) => ({
           id: photo.id,

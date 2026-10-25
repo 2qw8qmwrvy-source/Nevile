@@ -652,7 +652,8 @@ kinds.
   month) and the price evenly over them (leftover cents go to the first months).
   **Monthly** charges the first month when the request is accepted and each later month on
   its 1st; **upfront** charges everything at acceptance. Either way the business is paid
-  each month's share after that month ends.
+  each month's share after that month ends. Signing up mid-season, months already over
+  aren't charged (the current month counts in full).
 - **Cancelling:** either side can end a contract any time. Visits already done are owed
   (per visit). With a season price: when the **customer** ends it, the current month is
   kept and later months aren't charged (or are refunded, if paid upfront); when the

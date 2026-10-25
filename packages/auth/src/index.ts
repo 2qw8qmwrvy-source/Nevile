@@ -33,6 +33,7 @@ export {
   type DevOutboxMessage,
   devOutboxDirFromEnv,
   type EmailMessage,
+  type EmailAttachment,
   type EmailSender,
   type SmsMessage,
   type SmsSender,

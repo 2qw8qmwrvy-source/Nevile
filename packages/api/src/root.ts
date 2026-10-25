@@ -16,6 +16,7 @@ import { pushRouter } from "./routers/push.ts";
 import { quotesRouter } from "./routers/quotes.ts";
 import { recurringRouter } from "./routers/recurring.ts";
 import { searchRouter } from "./routers/search.ts";
+import { snowRouter } from "./routers/snow.ts";
 import { teamRouter } from "./routers/team.ts";
 import { createCallerFactory, router } from "./trpc.ts";
 
@@ -39,6 +40,7 @@ export const appRouter = router({
   push: pushRouter,
   cards: cardsRouter,
   recurring: recurringRouter,
+  snow: snowRouter,
 });
 
 export type AppRouter = typeof appRouter;

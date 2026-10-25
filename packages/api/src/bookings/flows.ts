@@ -52,7 +52,9 @@ import {
   refunds,
   type Service,
   serviceAreas,
+  serviceContractTerms,
   services,
+  snowContracts,
   type Visit,
   visits,
 } from "@nevile/db";
@@ -217,7 +219,12 @@ export function snapshotOf(parts: BookingParts): BookingSnapshot {
   const { booking, visit, dispute } = parts;
   const startsAt = visit?.startsAt ?? booking.requestedStartsAt;
   if (!visit) {
-    return { state: booking.status as BookingState, enteredAt: booking.createdAt, startsAt };
+    // A contract sign-up has no job start to cap its 24 hours at (SPEC §21).
+    return {
+      state: booking.status as BookingState,
+      enteredAt: booking.createdAt,
+      startsAt: booking.kind === "snow_contract" ? null : startsAt,
+    };
   }
   const state = visit.status as BookingState;
   const enteredAt =
@@ -370,6 +377,17 @@ export async function bookableService(db: DbExecutor, serviceId: string) {
   if (!service.active || service.pricingType !== "fixed" || service.priceCents === null)
     throw unavailable;
   if (!business.publishedAt || business.suspendedAt) throw unavailable;
+  // A service listed as a seasonal contract is signed up for, not booked (SPEC §21).
+  const [contract] = await db
+    .select({ id: serviceContractTerms.serviceId })
+    .from(serviceContractTerms)
+    .where(eq(serviceContractTerms.serviceId, service.id));
+  if (contract) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "This is a seasonal contract: sign up for it from the pro's page.",
+    });
+  }
   return { service, business, area, priceCents: service.priceCents };
 }
 
@@ -1448,9 +1466,16 @@ async function completeJob(
   await setSingleVisitStatus(tx, parts, "completed");
   if (parts.payment) {
     await tx.update(payments).set({ releasedAt: now }).where(eq(payments.id, parts.payment.id));
-  } else if (isOngoing(parts.booking) && parts.visit) {
-    // A per-visit snow visit is charged once it's confirmed (SPEC §7, §21).
-    await tx.update(visits).set({ chargeDueAt: now }).where(eq(visits.id, parts.visit.id));
+  } else if (parts.booking.kind === "snow_contract" && parts.visit) {
+    // A per-visit snow visit is charged once it's confirmed (SPEC §7, §21); a season
+    // price is charged by the month instead.
+    const [contract] = await tx
+      .select({ perVisitCents: snowContracts.perVisitCents })
+      .from(snowContracts)
+      .where(eq(snowContracts.bookingId, parts.booking.id));
+    if (contract?.perVisitCents !== null && contract?.perVisitCents !== undefined) {
+      await tx.update(visits).set({ chargeDueAt: now }).where(eq(visits.id, parts.visit.id));
+    }
   }
   if (parts.dispute) {
     await tx

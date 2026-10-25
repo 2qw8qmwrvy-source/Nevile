@@ -35,6 +35,7 @@ import { customerBookingView } from "../bookings/views.ts";
 import type { Context } from "../context.ts";
 import { isInstantBookable } from "../listing-state.ts";
 import { endSeries } from "../ongoing/recurring.ts";
+import { endContract } from "../ongoing/snow.ts";
 import { ongoingDetails } from "../ongoing/views.ts";
 import { protectedProcedure, publicProcedure, router, verifiedProcedure } from "../trpc.ts";
 
@@ -278,7 +279,7 @@ export const bookingsRouter = router({
     .input(bookingIdInput)
     .query(({ ctx, input }) => ownBooking(ctx, input.bookingId)),
 
-  /** Cancels a one-off job or a request; ends a running recurring series (SPEC §21). */
+  /** Cancels a one-off job or a request; ends a running series or snow contract (SPEC §21). */
   cancel: verifiedProcedure.input(bookingIdInput).mutation(async ({ ctx, input }) => {
     const [booking] = await ctx.db
       .select({ kind: bookings.kind, customerId: bookings.customerId })
@@ -286,6 +287,11 @@ export const bookingsRouter = router({
       .where(eq(bookings.id, input.bookingId));
     if (booking?.kind === "recurring") {
       await endSeries(bookingDeps(ctx), input.bookingId, {
+        by: "customer",
+        customerId: ctx.user.id,
+      });
+    } else if (booking?.kind === "snow_contract") {
+      await endContract(bookingDeps(ctx), input.bookingId, {
         by: "customer",
         customerId: ctx.user.id,
       });

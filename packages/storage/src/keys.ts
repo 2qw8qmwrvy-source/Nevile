@@ -21,8 +21,8 @@ export function businessMediaKey(businessId: string, kind: MediaKind): string {
   return key;
 }
 
-/** Where a private photo is for (SPEC §20): a quote request or a chat message. */
-export type PrivatePhotoPurpose = "quotes" | "chat";
+/** Where a private photo is for: a quote request, a chat message (SPEC §20) or a visit log (§21). */
+export type PrivatePhotoPurpose = "quotes" | "chat" | "visits";
 
 /**
  * `private/<purpose>/<uuid>.webp`. Private photos are never served from the public media
@@ -30,6 +30,13 @@ export type PrivatePhotoPurpose = "quotes" | "chat";
  */
 export function privatePhotoKey(purpose: PrivatePhotoPurpose): string {
   const key = `private/${purpose}/${randomUUID()}.webp`;
+  assertSafeKey(key);
+  return key;
+}
+
+/** `private/agreements/<uuid>.pdf`: a contract's agreement (SPEC §21), never public. */
+export function agreementKey(): string {
+  const key = `private/agreements/${randomUUID()}.pdf`;
   assertSafeKey(key);
   return key;
 }
@@ -45,6 +52,7 @@ const CONTENT_TYPES: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
+  pdf: "application/pdf",
 };
 
 export function contentTypeOfKey(key: string): string {

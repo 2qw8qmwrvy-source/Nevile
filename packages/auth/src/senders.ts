@@ -9,11 +9,20 @@ import { OTP_LENGTH } from "./constants.ts";
  * for local development only.
  */
 
+/** A file sent with an email, e.g. an agreement PDF (SPEC §21). */
+export interface EmailAttachment {
+  filename: string;
+  contentType: string;
+  content: Uint8Array;
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
   text: string;
   html?: string;
+  /** Production senders must deliver these; the console sender lists them. */
+  attachments?: EmailAttachment[];
 }
 
 export interface EmailSender {
@@ -109,6 +118,9 @@ export function createConsoleEmailSender(
           "──── [dev email] ─────────────────────────────",
           `To:      ${message.to}`,
           `Subject: ${message.subject}`,
+          ...(message.attachments ?? []).map(
+            (file) => `Attached: ${file.filename} (${Math.ceil(file.content.byteLength / 1024)} KB)`,
+          ),
           "",
           message.text,
           "──────────────────────────────────────────────",

@@ -304,7 +304,7 @@ describe.skipIf(!TEST_DATABASE_URL)("recurring jobs (SPEC §21)", () => {
     expect(jobs).toMatchObject([
       { key: visitIds[0], visitId: visitIds[0], series: "Every week · visit 1 of 3" },
     ]);
-    const page = await call(owner).businessBookings.series({ businessId, bookingId: seriesId });
+    const page = await call(owner).businessBookings.ongoing({ businessId, bookingId: seriesId });
     expect(page).toMatchObject({
       status: "confirmed",
       customer: { firstName: "Cora", email: "cora@example.com" },

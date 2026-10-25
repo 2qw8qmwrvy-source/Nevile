@@ -13,20 +13,25 @@ import {
   percentOf,
 } from "@nevile/core";
 import {
+  agreements,
   and,
   asc,
   type Booking,
+  contractPeriods,
   count,
   type DbExecutor,
   type Dispute,
+  desc,
   disputes,
   eq,
   inArray,
   type Payment,
   payments,
   refunds,
+  snowContracts,
   sql,
   type Visit,
+  visitPhotos,
   visits,
 } from "@nevile/db";
 import { whenLabel } from "../bookings/emails.ts";
@@ -37,6 +42,7 @@ import {
   CUSTOMER_STATUS_LABELS,
 } from "../bookings/views.ts";
 import { loadSeries, scheduleLabel, skipTerms } from "./recurring.ts";
+import { periodLabel, seasonLabel } from "./snow.ts";
 
 export type Audience = "customer" | "business";
 
@@ -129,8 +135,17 @@ export async function visitViews(
             .groupBy(refunds.paymentId)
         ).map((row) => [row.paymentId, row.cents]),
   );
+  const photoRows =
+    ids.length === 0
+      ? []
+      : await db
+          .select({ id: visitPhotos.id, visitId: visitPhotos.visitId })
+          .from(visitPhotos)
+          .where(inArray(visitPhotos.visitId, ids))
+          .orderBy(asc(visitPhotos.createdAt));
   const labels = audience === "customer" ? CUSTOMER_STATUS_LABELS : BUSINESS_STATUS_LABELS;
   const running = booking.status === "confirmed";
+  const snow = booking.kind === "snow_contract";
 
   return rows.map((visit) => {
     const payment = live.find((row) => row.visitId === visit.id) ?? null;
@@ -159,8 +174,15 @@ export async function visitViews(
       window: {
         startsAt: visit.startsAt,
         endsAt: visit.endsAt,
-        label: whenLabel(visit.startsAt, visit.endsAt, booking.timezone),
+        // Snow visits are logged when the address is cleared, not booked into a window.
+        label: snow
+          ? clearedLabel(visit.startsAt, booking.timezone)
+          : whenLabel(visit.startsAt, visit.endsAt, booking.timezone),
       },
+      /** Photos the pro added when logging it (SPEC §21). */
+      photos: photoRows
+        .filter((photo) => photo.visitId === visit.id)
+        .map((photo) => ({ id: photo.id, url: `/api/visit-photos/${photo.id}` })),
       charge: {
         state: chargeState(visit, payment, failed),
         dueAt: payment ? null : visit.chargeDueAt,
@@ -215,7 +237,128 @@ export async function visitViews(
 }
 export type VisitView = Awaited<ReturnType<typeof visitViews>>[number];
 
-/** The series part of an ongoing booking's view; null for one-off jobs. */
+const CLEARED_DAY = (timeZone: string) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+/** "Cleared Tuesday, January 12 at 7:05 a.m." */
+export function clearedLabel(at: Date, timeZone: string): string {
+  const parts = CLEARED_DAY(timeZone).formatToParts(at);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `Cleared ${value("weekday")}, ${value("month")} ${value("day")} at ${value("hour")}:${value(
+    "minute",
+  )} ${value("dayPeriod")}`.trim();
+}
+
+function pausedNotice(booking: Booking, audience: Audience) {
+  if (!booking.pausedAt) return null;
+  return {
+    since: booking.pausedAt,
+    text:
+      audience === "customer"
+        ? "Paused: your card didn't go through. Update it to resume."
+        : booking.kind === "snow_contract"
+          ? "Paused: the customer's card didn't go through. Don't clear it until they update it."
+          : "Paused: the customer's card didn't go through. No visits are charged until they update it.",
+  };
+}
+
+/** Where a season month's money stands. */
+export type MonthChargeState =
+  | "scheduled"
+  | "charging"
+  | "charged"
+  | "partly_refunded"
+  | "refunded"
+  | "failed"
+  | "cancelled";
+
+async function seasonMonths(db: DbExecutor, bookingId: string) {
+  const periods = await db
+    .select()
+    .from(contractPeriods)
+    .where(eq(contractPeriods.bookingId, bookingId))
+    .orderBy(asc(contractPeriods.sequence));
+  if (periods.length === 0) return [];
+  const ids = periods.map((period) => period.id);
+  const rows = await db.select().from(payments).where(inArray(payments.periodId, ids));
+  const live = rows.filter((payment) => LIVE_PAYMENT_STATES.includes(payment.status));
+  const refunded =
+    live.length === 0
+      ? []
+      : await db
+          .select({
+            paymentId: refunds.paymentId,
+            cents: sql<number>`coalesce(sum(${refunds.amountCents}), 0)`.mapWith(Number),
+          })
+          .from(refunds)
+          .where(
+            and(
+              inArray(
+                refunds.paymentId,
+                live.map((payment) => payment.id),
+              ),
+              eq(refunds.status, "succeeded"),
+            ),
+          )
+          .groupBy(refunds.paymentId);
+  return periods.map((period) => {
+    const payment = live.find((row) => row.periodId === period.id);
+    const failed = rows.some((row) => row.periodId === period.id && row.status === "failed");
+    const state: MonthChargeState = payment
+      ? payment.status === "pending"
+        ? "charging"
+        : payment.status === "partially_refunded"
+          ? "partly_refunded"
+          : payment.status === "refunded"
+            ? "refunded"
+            : "charged"
+      : period.status === "cancelled"
+        ? "cancelled"
+        : failed
+          ? "failed"
+          : "scheduled";
+    return {
+      sequence: period.sequence,
+      label: periodLabel(period.periodStart, period.periodEnd, monthDays(period)),
+      start: period.periodStart,
+      end: period.periodEnd,
+      totalCents: period.totalCents,
+      /** The business's share: price + HST on it − 3%. */
+      payoutCents:
+        period.priceCents + period.priceTaxCents - percentOf(period.priceCents, BUSINESS_FEE_BPS),
+      state,
+      chargeDueAt: state === "scheduled" || state === "failed" ? period.chargeDueAt : null,
+      refundedCents: payment
+        ? (refunded.find((row) => row.paymentId === payment.id)?.cents ?? 0)
+        : 0,
+    };
+  });
+}
+
+function monthDays(period: { periodStart: string; periodEnd: string }): number {
+  const start = parseIsoDate(period.periodStart);
+  const end = parseIsoDate(period.periodEnd);
+  if (!start || !end) return 1;
+  return (
+    Math.round(
+      (Date.UTC(end.year, end.month - 1, end.day) -
+        Date.UTC(start.year, start.month - 1, start.day)) /
+        86_400_000,
+    ) + 1
+  );
+}
+
+/**
+ * The ongoing part of a booking's view (SPEC §21): a recurring series' schedule and
+ * visits, or a snow contract's terms, months and logged visits. Null for one-off jobs.
+ */
 export async function ongoingDetails(
   db: DbExecutor,
   parts: BookingParts,
@@ -224,8 +367,7 @@ export async function ongoingDetails(
   memberNames?: ReadonlyMap<string, string>,
 ) {
   const { booking } = parts;
-  if (!isOngoing(booking) || booking.kind !== "recurring") return null;
-  const { series } = await loadSeries(db, booking.id);
+  if (!isOngoing(booking)) return null;
   const list = await visitViews(db, parts, audience, now, memberNames);
   const upcoming = list.filter(
     (visit) => visit.status === "confirmed" && visit.window.endsAt.getTime() >= now.getTime(),
@@ -235,51 +377,98 @@ export async function ongoingDetails(
       visit.status,
     ),
   );
-  const fee = percentOf(booking.priceCents, BUSINESS_FEE_BPS);
-  return {
-    kind: "recurring" as const,
-    frequency: series.frequency,
-    frequencyLabel: FREQUENCY_LABELS[series.frequency],
-    schedule: scheduleLabel(booking, series),
-    firstDate: series.firstDate,
-    endDate: series.endDate,
-    perVisit: {
-      priceCents: booking.priceCents,
-      serviceFeeCents: booking.serviceFeeCents,
-      taxCents: booking.priceTaxCents + booking.feeTaxCents,
-      totalCents: booking.totalCents,
-      /** What the business gets per visit: price + HST on it − 3%. */
-      payoutCents: booking.priceCents + booking.priceTaxCents - fee,
-    },
-    paused: booking.pausedAt
-      ? {
-          since: booking.pausedAt,
-          text:
-            audience === "customer"
-              ? "Paused: your card didn't go through. Update it to resume."
-              : "Paused: the customer's card didn't go through. No visits are charged until they update it.",
-        }
-      : null,
-    /** When the series was ended early (by either side). */
+  const perVisit = {
+    priceCents: booking.priceCents,
+    serviceFeeCents: booking.serviceFeeCents,
+    taxCents: booking.priceTaxCents + booking.feeTaxCents,
+    totalCents: booking.totalCents,
+    /** What the business gets per visit: price + HST on it − 3%. */
+    payoutCents:
+      booking.priceCents + booking.priceTaxCents - percentOf(booking.priceCents, BUSINESS_FEE_BPS),
+  };
+  const common = {
+    paused: pausedNotice(booking, audience),
+    /** When it was ended early (by either side). */
     endedAt: booking.cancelledAt,
     counts: { visits: list.length, upcoming: upcoming.length, done: done.length },
-    nextVisit: upcoming[0] ?? null,
-    visits: list,
     needsAttention: list.some((visit) =>
       "confirmDone" in visit.actions
         ? visit.actions.confirmDone || visit.actions.reportProblem
         : visit.actions.scheduleFix || visit.actions.markFixed,
     ),
   };
+
+  if (booking.kind === "snow_contract") {
+    const [contract] = await db
+      .select()
+      .from(snowContracts)
+      .where(eq(snowContracts.bookingId, booking.id));
+    if (!contract) return null;
+    const [agreement] = await db
+      .select()
+      .from(agreements)
+      .where(eq(agreements.bookingId, booking.id))
+      .orderBy(desc(agreements.version))
+      .limit(1);
+    const months = contract.seasonPriceCents === null ? [] : await seasonMonths(db, booking.id);
+    return {
+      kind: "snow_contract" as const,
+      ...common,
+      terms: {
+        triggerCm: contract.triggerCm,
+        seasonStart: contract.seasonStart,
+        seasonEnd: contract.seasonEnd,
+        season: seasonLabel(contract.seasonStart, contract.seasonEnd),
+      },
+      pricing: contract.seasonPriceCents === null ? ("per_visit" as const) : ("season" as const),
+      perVisit: contract.seasonPriceCents === null ? perVisit : null,
+      season:
+        contract.seasonPriceCents === null
+          ? null
+          : {
+              payment: contract.seasonPayment,
+              paymentLabel: contract.seasonPayment === "monthly" ? "Paid monthly" : "Paid upfront",
+              totalCents: booking.totalCents,
+              months,
+            },
+      agreement: agreement
+        ? {
+            path: `/api/agreements/${booking.id}`,
+            acceptedByCustomerAt: agreement.acceptedByCustomerAt,
+            acceptedByBusinessAt: agreement.acceptedByBusinessAt,
+          }
+        : null,
+      // Newest first: the route log reads back from the last storm.
+      nextVisit: null,
+      visits: [...list].reverse(),
+    };
+  }
+
+  const { series } = await loadSeries(db, booking.id);
+  return {
+    kind: "recurring" as const,
+    ...common,
+    frequency: series.frequency,
+    frequencyLabel: FREQUENCY_LABELS[series.frequency],
+    schedule: scheduleLabel(booking, series),
+    firstDate: series.firstDate,
+    endDate: series.endDate,
+    perVisit,
+    nextVisit: upcoming[0] ?? null,
+    visits: list,
+  };
 }
 export type OngoingDetails = NonNullable<Awaited<ReturnType<typeof ongoingDetails>>>;
 
-/** A calendar badge for a recurring job: "Every week · visit 3 of 12" (null otherwise). */
+/** A calendar badge: "Every week · visit 3 of 12", "Snow contract · visit 2" (null otherwise). */
 export async function seriesBadge(
   db: DbExecutor,
   booking: Booking,
   visit: Visit | null,
 ): Promise<string | null> {
+  if (booking.kind === "snow_contract") {
+    return visit ? `Snow contract · visit ${visit.sequence}` : "Snow contract sign-up";
+  }
   if (booking.kind !== "recurring") return null;
   const { series, overrides } = await loadSeries(db, booking.id);
   const label = FREQUENCY_LABELS[series.frequency];

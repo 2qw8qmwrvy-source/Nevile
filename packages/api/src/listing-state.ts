@@ -25,6 +25,7 @@ import {
 } from "@nevile/db";
 import type { MediaStorage } from "@nevile/storage";
 import { TRPCError } from "@trpc/server";
+import { contractTermsFor } from "./ongoing/contract-terms.ts";
 
 /** Roles that may edit a listing; crew can only view it (SPEC §18). */
 export const LISTING_EDITOR_ROLES = ["owner", "manager"] as const satisfies BusinessMemberRole[];
@@ -154,6 +155,10 @@ export async function listingView(
     .where(eq(businessPhotos.businessId, business.id))
     .orderBy(asc(businessPhotos.sortOrder), asc(businessPhotos.createdAt));
   const readiness = await readinessOf(db, business);
+  const contracts = await contractTermsFor(
+    db,
+    serviceRows.map(({ service }) => service.id),
+  );
 
   return {
     business: {
@@ -197,6 +202,8 @@ export async function listingView(
       instantBook: service.pricingType === "fixed" && service.instantBook !== false,
       active: service.active,
       recurrenceFrequencies: service.recurrenceFrequencies,
+      /** Listed as a seasonal snow contract (SPEC §21), with spots left. */
+      contract: contracts.get(service.id) ?? null,
     })),
     photos: photos.map((photo) => ({
       id: photo.id,

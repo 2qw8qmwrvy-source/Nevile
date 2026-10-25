@@ -52,6 +52,13 @@ import {
   moveOptions,
   moveVisit,
 } from "../ongoing/recurring.ts";
+import {
+  acceptContract,
+  endContract,
+  markCleared,
+  reorderRoute,
+  snowRoute,
+} from "../ongoing/snow.ts";
 import { ongoingDetails, seriesBadge } from "../ongoing/views.ts";
 import { businessMemberProcedure, router } from "../trpc.ts";
 import { bookingDeps } from "./bookings.ts";
@@ -188,14 +195,18 @@ async function assertCanWork(ctx: MemberCtx, bookingId: string, visitId?: string
   }
 }
 
-/** Ongoing bookings act on one visit: it must be named. */
-async function bookingOf(ctx: MemberCtx, input: { bookingId: string; visitId?: string }) {
+/** The business's booking; visit-level actions on an ongoing booking must name the visit. */
+async function bookingOf(
+  ctx: MemberCtx,
+  input: { bookingId: string; visitId?: string },
+  scope: "visit" | "booking" = "visit",
+) {
   const [booking] = await ctx.db
     .select()
     .from(bookings)
     .where(and(eq(bookings.id, input.bookingId), eq(bookings.businessId, ctx.business.id)));
   if (!booking) throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found." });
-  if (isOngoing(booking) && booking.status !== "requested" && !input.visitId) {
+  if (scope === "visit" && isOngoing(booking) && booking.status !== "requested" && !input.visitId) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Pick the visit." });
   }
   return booking;
@@ -318,8 +329,11 @@ export const businessBookingsRouter = router({
     return view;
   }),
 
-  /** A recurring series with all its visits (SPEC §21). Crew see their own visits. */
-  series: member.input(bookingIdInput).query(async ({ ctx, input }) => {
+  /**
+   * A recurring series or snow contract with all its visits (SPEC §21). Crew see their
+   * own visits.
+   */
+  ongoing: member.input(bookingIdInput).query(async ({ ctx, input }) => {
     const now = ctx.now();
     const parts = await loadBookingParts(ctx.db, input.bookingId);
     if (!parts || parts.booking.businessId !== ctx.business.id || !isOngoing(parts.booking)) {
@@ -378,7 +392,7 @@ export const businessBookingsRouter = router({
       actions: {
         accept: open && !crew,
         decline: open && !crew,
-        end: booking.kind === "recurring" && booking.status === "confirmed" && !crew,
+        end: booking.status === "confirmed" && !crew,
       },
     };
   }),
@@ -402,7 +416,16 @@ export const businessBookingsRouter = router({
 
   /** Accepts a request; a recurring series reports dates that no longer fit (skipped). */
   accept: editor.input(bookingIdInput).mutation(async ({ ctx, input }) => {
-    const booking = await bookingOf(ctx, input);
+    const booking = await bookingOf(ctx, input, "booking");
+    if (booking.kind === "snow_contract") {
+      await acceptContract(
+        { ...bookingDeps(ctx), storage: ctx.storage },
+        ctx.user.id,
+        ctx.business.id,
+        input.bookingId,
+      );
+      return { ok: true as const, visits: 0, skipped: [] as string[] };
+    }
     if (booking.kind === "recurring") {
       const outcome = await acceptSeries(
         bookingDeps(ctx),
@@ -530,16 +553,53 @@ export const businessBookingsRouter = router({
       return { ok: true as const };
     }),
 
-  /** Ends a recurring series: upcoming visits are cancelled and refunded in full. */
-  endSeries: editor
+  /**
+   * Ends a recurring series (upcoming visits refunded in full) or a snow contract (the
+   * rest of a season price refunded day by day) early (SPEC §21).
+   */
+  endOngoing: editor
     .input(bookingIdInput.extend({ reason: reasonInput }))
-    .mutation(async ({ ctx, input }) =>
-      endSeries(bookingDeps(ctx), input.bookingId, {
-        by: "business",
+    .mutation(async ({ ctx, input }) => {
+      const booking = await bookingOf(ctx, input, "booking");
+      const how = {
+        by: "business" as const,
         actorUserId: ctx.user.id,
         businessId: ctx.business.id,
         reason: input.reason,
-      }),
+      };
+      if (booking.kind === "snow_contract") {
+        const { refundCents } = await endContract(bookingDeps(ctx), input.bookingId, how);
+        return { refundCents };
+      }
+      if (booking.kind !== "recurring") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Cancel the job instead." });
+      }
+      const { refundCents } = await endSeries(bookingDeps(ctx), input.bookingId, how);
+      return { refundCents };
+    }),
+
+  /** Active snow contracts in route order (SPEC §21). */
+  snowRoute: member.query(({ ctx }) => snowRoute(ctx.db, ctx.business, ctx.now())),
+
+  /** Puts the snow route in a new order: every active contract, each once. */
+  reorderRoute: editor
+    .input(z.object({ bookingIds: z.array(z.uuid()).max(500) }))
+    .mutation(async ({ ctx, input }) => {
+      await reorderRoute(ctx.db, ctx.business.id, input.bookingIds);
+      return { ok: true as const };
+    }),
+
+  /** Marks an address on the snow route Cleared, with optional photos (SPEC §21). */
+  markCleared: member
+    .input(bookingIdInput.extend({ photoIds: z.array(z.uuid()).max(3).default([]) }))
+    .mutation(({ ctx, input }) =>
+      markCleared(
+        bookingDeps(ctx),
+        { userId: ctx.user.id, memberId: ctx.membership.id },
+        ctx.business.id,
+        input.bookingId,
+        input.photoIds,
+      ),
     ),
 
   scheduleFix: member.input(jobInput).mutation(async ({ ctx, input }) => {

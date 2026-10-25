@@ -3,6 +3,7 @@ import {
   photoAltSchema,
   serviceAreaInputSchema,
   serviceInputSchema,
+  snowContractListingSchema,
 } from "@nevile/core";
 import {
   and,
@@ -24,6 +25,8 @@ import {
   withListingLock,
 } from "../listing-state.ts";
 import { deleteQuietly } from "../media.ts";
+import { isContractService } from "../ongoing/contract-terms.ts";
+import { setContractTerms } from "../ongoing/snow.ts";
 import { nearestPlaceName } from "../postal.ts";
 import { businessMemberProcedure, router } from "../trpc.ts";
 
@@ -139,6 +142,15 @@ export const listingRouter = router({
     .input(serviceIdInput.extend({ service: serviceInputSchema }))
     .mutation(async ({ ctx, input }) => {
       const categoryId = await categoryIdFor(ctx.db, input.service.categorySlug);
+      if (
+        input.service.recurrenceFrequencies.length > 0 &&
+        (await isContractService(ctx.db, input.serviceId))
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A seasonal contract can't also be booked as recurring visits.",
+        });
+      }
       const unpublished = await withListingLock(ctx.db, ctx.business.id, async (tx) => {
         const [row] = await tx
           .update(services)
@@ -172,6 +184,19 @@ export const listingRouter = router({
       throw error;
     }
   }),
+
+  /**
+   * Lists a Snow & Ice Removal service as a seasonal contract (SPEC §21), or stops
+   * offering it with `terms: null`. Signed contracts keep their own terms.
+   */
+  setContractTerms: editor
+    .input(serviceIdInput.extend({ terms: snowContractListingSchema.nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      await withListingLock(ctx.db, ctx.business.id, (tx) =>
+        setContractTerms(tx, ctx.business.id, input.serviceId, input.terms),
+      );
+      return { ok: true as const };
+    }),
 
   updatePhoto: editor
     .input(photoIdInput.extend({ altText: photoAltSchema }))

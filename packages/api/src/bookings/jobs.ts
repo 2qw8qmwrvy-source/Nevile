@@ -23,6 +23,7 @@ import { emailUnreadMessages } from "../chat/flows.ts";
 import { sendAll } from "../notify.ts";
 import { chargeOngoing, releaseSeasonMonths } from "../ongoing/charges.ts";
 import { endSeries, finishSeries, remindVisits } from "../ongoing/recurring.ts";
+import { endContract, finishContracts } from "../ongoing/snow.ts";
 import { cleanUpUnattachedPhotos } from "../photos.ts";
 import { defaultPushSender, deliverPendingNotifications } from "../push.ts";
 import { expireQuoteRequests } from "../quotes/flows.ts";
@@ -137,8 +138,8 @@ async function enforcePayoutSetup(
 }
 
 /**
- * Cancels (full refund) a business's upcoming jobs, ends its running series (upcoming
- * visits refunded) and declines its open requests.
+ * Cancels (full refund) a business's upcoming jobs, ends its running series and snow
+ * contracts (as if the business ended them) and declines its open requests.
  */
 async function cancelUpcoming(deps: BookingDeps, business: Business): Promise<number> {
   const now = deps.now();
@@ -149,7 +150,10 @@ async function cancelUpcoming(deps: BookingDeps, business: Business): Promise<nu
       and(
         eq(bookings.businessId, business.id),
         inArray(bookings.status, ["confirmed", "requested"]),
-        or(gt(bookings.requestedStartsAt, now), eq(bookings.kind, "recurring")),
+        or(
+          gt(bookings.requestedStartsAt, now),
+          inArray(bookings.kind, ["recurring", "snow_contract"]),
+        ),
       ),
     );
   const reason = "The pro didn't finish setting up payments on Nevile in time.";
@@ -157,6 +161,10 @@ async function cancelUpcoming(deps: BookingDeps, business: Business): Promise<nu
     if (booking.status === "requested") {
       await endRequest(deps, booking.id, { by: "system" }).catch((error) =>
         console.error("[jobs] could not end request", booking.id, error),
+      );
+    } else if (booking.kind === "snow_contract") {
+      await endContract(deps, booking.id, { by: "business", actorUserId: null, reason }).catch(
+        (error) => console.error("[jobs] could not end contract", booking.id, error),
       );
     } else if (booking.kind === "recurring") {
       await endSeries(deps, booking.id, { by: "business", actorUserId: null, reason }).catch(
@@ -300,6 +308,7 @@ export async function runScheduledJobs(
     ["seasonMonthsReleased", () => releaseSeasonMonths(deps)],
     ["visitsReminded", () => remindVisits(deps)],
     ["seriesFinished", () => finishSeries(deps)],
+    ["contractsFinished", () => finishContracts(deps)],
     ["disputesEscalated", () => escalateDisputes(deps)],
     ["payoutSetup", () => enforcePayoutSetup(deps)],
     ["payouts", () => runPayouts(deps)],

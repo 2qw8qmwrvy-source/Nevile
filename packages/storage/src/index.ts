@@ -17,6 +17,7 @@ export {
   processImage,
 } from "./image.ts";
 export {
+  agreementKey,
   assertSafeKey,
   businessIdOfKey,
   businessMediaKey,
