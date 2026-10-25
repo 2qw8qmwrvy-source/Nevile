@@ -34,12 +34,16 @@ import { loadSchedule, noticeRules } from "../bookings/schedule.ts";
 import { customerBookingView } from "../bookings/views.ts";
 import type { Context } from "../context.ts";
 import { isInstantBookable } from "../listing-state.ts";
+import { endSeries } from "../ongoing/recurring.ts";
+import { ongoingDetails } from "../ongoing/views.ts";
 import { protectedProcedure, publicProcedure, router, verifiedProcedure } from "../trpc.ts";
 
 const isoDate = z
   .string()
   .refine((value) => parseIsoDate(value) !== null, { message: "Pick a day" });
 const bookingIdInput = z.object({ bookingId: z.uuid() });
+/** A booking, or one visit of a recurring series or snow contract (SPEC §21). */
+const jobInput = bookingIdInput.extend({ visitId: z.uuid().optional() });
 
 export function bookingDeps(ctx: Context): BookingDeps {
   return {
@@ -83,7 +87,8 @@ async function ownBooking(ctx: Context & { user: { id: string } }, bookingId: st
     .from(addresses)
     .where(eq(addresses.id, parts.booking.addressId));
   if (!address) throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found." });
-  return customerBookingView(ctx.db, parts, address, ctx.now());
+  const ongoing = await ongoingDetails(ctx.db, parts, "customer", ctx.now());
+  return customerBookingView(ctx.db, parts, address, ctx.now(), ongoing);
 }
 
 /** Open arrival windows for a job of `workMinutes` at a business, from a day (or its first). */
@@ -153,6 +158,8 @@ export const bookingsRouter = router({
           description: service.description ?? "",
           duration: formatDurationMinutes(service.durationMinutes),
           priceText: priceSummary({ pricingType: "fixed", priceCents }),
+          /** Recurring schedules the customer can pick from (SPEC §21). */
+          recurrenceFrequencies: service.recurrenceFrequencies,
         },
         business: { name: business.name, slug: business.slug },
         instantBook: isInstantBookable(business, service),
@@ -254,13 +261,15 @@ export const bookingsRouter = router({
     const views = [];
     for (const row of rows) views.push(await ownBooking(ctx, row.id));
     const now = ctx.now().getTime();
+    // A running series stays upcoming until it ends; one-off jobs until their window ends.
     const upcoming = views
       .filter(
         (view) =>
-          ["requested", "confirmed"].includes(view.status) && view.window.endsAt.getTime() >= now,
+          ["requested", "confirmed"].includes(view.status) &&
+          (view.ongoing !== null || view.window.endsAt.getTime() >= now),
       )
       .sort((a, b) => a.window.startsAt.getTime() - b.window.startsAt.getTime());
-    const needsYou = views.filter((view) => view.actions.confirmDone || view.actions.reportProblem);
+    const needsYou = views.filter((view) => view.needsAttention);
     const ids = new Set([...upcoming, ...needsYou].map((view) => view.id));
     return { needsYou, upcoming, past: views.filter((view) => !ids.has(view.id)) };
   }),
@@ -269,19 +278,31 @@ export const bookingsRouter = router({
     .input(bookingIdInput)
     .query(({ ctx, input }) => ownBooking(ctx, input.bookingId)),
 
+  /** Cancels a one-off job or a request; ends a running recurring series (SPEC §21). */
   cancel: verifiedProcedure.input(bookingIdInput).mutation(async ({ ctx, input }) => {
-    await cancelByCustomer(bookingDeps(ctx), ctx.user.id, input.bookingId);
+    const [booking] = await ctx.db
+      .select({ kind: bookings.kind, customerId: bookings.customerId })
+      .from(bookings)
+      .where(eq(bookings.id, input.bookingId));
+    if (booking?.kind === "recurring") {
+      await endSeries(bookingDeps(ctx), input.bookingId, {
+        by: "customer",
+        customerId: ctx.user.id,
+      });
+    } else {
+      await cancelByCustomer(bookingDeps(ctx), ctx.user.id, input.bookingId);
+    }
     return ownBooking(ctx, input.bookingId);
   }),
 
-  confirmDone: verifiedProcedure.input(bookingIdInput).mutation(async ({ ctx, input }) => {
-    await confirmDone(bookingDeps(ctx), ctx.user.id, input.bookingId);
+  confirmDone: verifiedProcedure.input(jobInput).mutation(async ({ ctx, input }) => {
+    await confirmDone(bookingDeps(ctx), ctx.user.id, input.bookingId, input.visitId);
     return ownBooking(ctx, input.bookingId);
   }),
 
   reportProblem: verifiedProcedure
     .input(
-      bookingIdInput.extend({
+      jobInput.extend({
         reason: z
           .string()
           .trim()
@@ -293,7 +314,13 @@ export const bookingsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      await reportProblem(bookingDeps(ctx), ctx.user.id, input.bookingId, input.reason);
+      await reportProblem(
+        bookingDeps(ctx),
+        ctx.user.id,
+        input.bookingId,
+        input.reason,
+        input.visitId,
+      );
       return ownBooking(ctx, input.bookingId);
     }),
 });

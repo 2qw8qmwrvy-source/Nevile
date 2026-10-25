@@ -21,6 +21,7 @@ import {
   type DbExecutor,
   eq,
   inArray,
+  isNotNull,
   isNull,
   lte,
   payments,
@@ -37,7 +38,7 @@ import { sendAll } from "../notify.ts";
 /** Payment states that hold or collected money (anything else may be retried). */
 const LIVE = ["pending", "authorized", "succeeded", "partially_refunded", "refunded"] as const;
 
-type Amounts = {
+export type Amounts = {
   priceCents: number;
   serviceFeeCents: number;
   priceTaxCents: number;
@@ -52,6 +53,8 @@ export type ChargeTarget =
       visitId: string;
       /** Snow visits are already confirmed: release the money for the next payout. */
       releaseNow: boolean;
+      /** What to charge instead of the booking's per-visit amounts (a late skip). */
+      amounts?: Amounts;
       description: string;
     }
   | { kind: "periods"; booking: Booking; periods: ContractPeriod[]; description: string };
@@ -85,10 +88,12 @@ export async function chargeTarget(
     target.kind === "visit"
       ? [
           {
-            priceCents: booking.priceCents,
-            serviceFeeCents: booking.serviceFeeCents,
-            priceTaxCents: booking.priceTaxCents,
-            feeTaxCents: booking.feeTaxCents,
+            ...(target.amounts ?? {
+              priceCents: booking.priceCents,
+              serviceFeeCents: booking.serviceFeeCents,
+              priceTaxCents: booking.priceTaxCents,
+              feeTaxCents: booking.feeTaxCents,
+            }),
             visitId: target.visitId,
             periodId: null,
           },
@@ -121,6 +126,8 @@ export async function chargeTarget(
         businessFeeCents: percentOf(row.priceCents, BUSINESS_FEE_BPS),
         status: "pending" as const,
         scheduledFor: now,
+        // Retries are measured from here, on the app's clock.
+        createdAt: now,
       })),
     )
     .returning({ id: payments.id });
@@ -372,40 +379,51 @@ export async function chargeOngoing(
   const now = deps.now();
   const report = { charged: 0, failed: 0, paused: 0, cancelled: 0 };
 
+  // Visits and months already owed are collected even after the booking has ended.
   for (const { visit, booking } of await dueVisits(deps.db, now, options.customerId)) {
-    if (booking.status !== "confirmed") continue;
+    const failures = await failuresFor(deps.db, { visitId: visit.id });
+    const target: ChargeTarget = {
+      kind: "visit",
+      booking,
+      visitId: visit.id,
+      releaseNow: booking.kind === "snow_contract",
+      description: `${booking.title}, visit ${visit.sequence}`,
+    };
     if (booking.kind === "recurring") {
       if (visit.status !== "confirmed") continue;
-      if (now.getTime() >= recurringPaymentDeadline(visit.startsAt).getTime()) {
+      // Unpaid 24 hours before it starts: cancelled, unless it was never tried (a late
+      // acceptance, or a visit moved closer) or the card was just updated; those get one try.
+      const pastDeadline = now.getTime() >= recurringPaymentDeadline(visit.startsAt).getTime();
+      const tried = failures.length > 0 || booking.pausedAt !== null;
+      if (pastDeadline && tried && !options.force) {
         await cancelUnpaidVisit(deps, booking, visit.id);
         report.cancelled += 1;
         continue;
       }
       // A paused series takes no new charges until the card is updated.
       if (booking.pausedAt && !options.force) continue;
+      if (pastDeadline) {
+        const outcome = await chargeTarget(deps, target);
+        if (outcome === "succeeded") {
+          report.charged += 1;
+        } else {
+          if (failures.length === 0) await notifyFailure(deps, booking);
+          await cancelUnpaidVisit(deps, booking, visit.id);
+          report.failed += 1;
+          report.cancelled += 1;
+        }
+        continue;
+      }
     } else if (visit.status !== "completed") {
       continue;
     }
-    const failures = await failuresFor(deps.db, { visitId: visit.id });
-    const outcome = await attempt(
-      deps,
-      {
-        kind: "visit",
-        booking,
-        visitId: visit.id,
-        releaseNow: booking.kind === "snow_contract",
-        description: `${booking.title}, visit ${visit.sequence}`,
-      },
-      failures,
-      options.force === true,
-    );
+    const outcome = await attempt(deps, target, failures, options.force === true);
     if (outcome === "succeeded") report.charged += 1;
     if (outcome === "failed") report.failed += 1;
     if (outcome === "paused") report.paused += 1;
   }
 
   for (const group of await duePeriodCharges(deps.db, now, options.customerId)) {
-    if (group.booking.status !== "confirmed") continue;
     if (group.booking.pausedAt && !options.force) continue;
     const first = group.periods[0];
     if (!first) continue;
@@ -465,13 +483,12 @@ export async function afterCardSaved(deps: BookingDeps, customerId: string): Pro
     .where(
       and(
         eq(bookings.customerId, customerId),
-        eq(bookings.status, "confirmed"),
         inArray(bookings.kind, ["recurring", "snow_contract"]),
+        isNotNull(bookings.pausedAt),
       ),
     );
   const now = deps.now();
   for (const booking of paused) {
-    if (!booking.pausedAt) continue;
     const owedVisits = (await dueVisits(deps.db, now, customerId)).filter(
       (row) => row.booking.id === booking.id,
     );

@@ -88,6 +88,8 @@ export const bookingEmails = {
     recipients: string[],
     facts: BookingMailFacts,
     reason: "declined" | "expired",
+    /** A card hold was released (one-off requests); recurring requests charge nothing. */
+    held = true,
   ) =>
     to(
       recipients,
@@ -98,7 +100,11 @@ export const bookingEmails = {
         reason === "declined"
           ? `${facts.businessName} can't take this job.`
           : `${facts.businessName} didn't answer in time.`
-      }\n\n${facts.serviceTitle}\n${facts.when}\n\nThe hold on your card has been released; you weren't charged. Find another pro: ${facts.siteUrl}/search`,
+      }\n\n${facts.serviceTitle}\n${facts.when}\n\n${
+        held
+          ? "The hold on your card has been released; you weren't charged."
+          : "You weren't charged."
+      } Find another pro: ${facts.siteUrl}/search`,
     ),
   cancelledForCustomer: (
     recipients: string[],

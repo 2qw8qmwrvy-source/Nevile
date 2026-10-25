@@ -14,6 +14,7 @@ import { payoutsRouter } from "./routers/payouts.ts";
 import { profileRouter } from "./routers/profile.ts";
 import { pushRouter } from "./routers/push.ts";
 import { quotesRouter } from "./routers/quotes.ts";
+import { recurringRouter } from "./routers/recurring.ts";
 import { searchRouter } from "./routers/search.ts";
 import { teamRouter } from "./routers/team.ts";
 import { createCallerFactory, router } from "./trpc.ts";
@@ -37,6 +38,7 @@ export const appRouter = router({
   chat: chatRouter,
   push: pushRouter,
   cards: cardsRouter,
+  recurring: recurringRouter,
 });
 
 export type AppRouter = typeof appRouter;

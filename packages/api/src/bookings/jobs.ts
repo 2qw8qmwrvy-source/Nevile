@@ -22,6 +22,7 @@ import { lazyStorage, type MediaStorage } from "@nevile/storage";
 import { emailUnreadMessages } from "../chat/flows.ts";
 import { sendAll } from "../notify.ts";
 import { chargeOngoing, releaseSeasonMonths } from "../ongoing/charges.ts";
+import { endSeries, finishSeries, remindVisits } from "../ongoing/recurring.ts";
 import { cleanUpUnattachedPhotos } from "../photos.ts";
 import { defaultPushSender, deliverPendingNotifications } from "../push.ts";
 import { expireQuoteRequests } from "../quotes/flows.ts";
@@ -135,29 +136,36 @@ async function enforcePayoutSetup(
   return { reminded, enforced };
 }
 
-/** Cancels (full refund) a business's upcoming jobs and declines its open requests. */
+/**
+ * Cancels (full refund) a business's upcoming jobs, ends its running series (upcoming
+ * visits refunded) and declines its open requests.
+ */
 async function cancelUpcoming(deps: BookingDeps, business: Business): Promise<number> {
   const now = deps.now();
   const upcoming = await deps.db
-    .select({ id: bookings.id, status: bookings.status })
+    .select({ id: bookings.id, status: bookings.status, kind: bookings.kind })
     .from(bookings)
     .where(
       and(
         eq(bookings.businessId, business.id),
         inArray(bookings.status, ["confirmed", "requested"]),
-        gt(bookings.requestedStartsAt, now),
+        or(gt(bookings.requestedStartsAt, now), eq(bookings.kind, "recurring")),
       ),
     );
+  const reason = "The pro didn't finish setting up payments on Nevile in time.";
   for (const booking of upcoming) {
     if (booking.status === "requested") {
       await endRequest(deps, booking.id, { by: "system" }).catch((error) =>
         console.error("[jobs] could not end request", booking.id, error),
       );
+    } else if (booking.kind === "recurring") {
+      await endSeries(deps, booking.id, { by: "business", actorUserId: null, reason }).catch(
+        (error) => console.error("[jobs] could not end series", booking.id, error),
+      );
     } else {
-      await cancelByBusiness(deps, booking.id, {
-        actorUserId: null,
-        reason: "The pro didn't finish setting up payments on Nevile in time.",
-      }).catch((error) => console.error("[jobs] could not cancel booking", booking.id, error));
+      await cancelByBusiness(deps, booking.id, { actorUserId: null, reason }).catch((error) =>
+        console.error("[jobs] could not cancel booking", booking.id, error),
+      );
     }
   }
   return upcoming.length;
@@ -290,6 +298,8 @@ export async function runScheduledJobs(
     // Recurring jobs and snow contracts (SPEC §21), before payouts so they include them.
     ["ongoingCharges", () => chargeOngoing(deps)],
     ["seasonMonthsReleased", () => releaseSeasonMonths(deps)],
+    ["visitsReminded", () => remindVisits(deps)],
+    ["seriesFinished", () => finishSeries(deps)],
     ["disputesEscalated", () => escalateDisputes(deps)],
     ["payoutSetup", () => enforcePayoutSetup(deps)],
     ["payouts", () => runPayouts(deps)],

@@ -1,9 +1,11 @@
 import { contactEmail } from "@nevile/auth";
 import {
   type BookingState,
+  BUSINESS_FEE_BPS,
   CANCELLATION_POLICIES,
   eventsFrom,
   formatCad,
+  percentOf,
   transition,
 } from "@nevile/core";
 import {
@@ -20,6 +22,7 @@ import {
   sql,
   type User,
 } from "@nevile/db";
+import type { OngoingDetails } from "../ongoing/views.ts";
 import { whenLabel } from "./emails.ts";
 import { type BookingParts, customerCancellationQuote, snapshotOf } from "./flows.ts";
 
@@ -77,16 +80,20 @@ async function refundedCents(db: DbExecutor, paymentId: string | undefined): Pro
   return row?.cents ?? 0;
 }
 
-/** A booking as its customer sees it, with what they can do now. */
+/**
+ * A booking as its customer sees it, with what they can do now. Recurring series pass
+ * their `ongoing` details: the series has its own status, and visits their own actions.
+ */
 export async function customerBookingView(
   db: DbExecutor,
   parts: BookingParts,
   address: Address,
   now: Date,
+  ongoing: OngoingDetails | null = null,
 ) {
   const { booking, business, payment, visit } = parts;
-  const status = (visit?.status ?? booking.status) as BookingState;
-  const allowed = allowedEvents(parts, now);
+  const status = (ongoing ? booking.status : (visit?.status ?? booking.status)) as BookingState;
+  const allowed = ongoing ? new Set<string>() : allowedEvents(parts, now);
   const quote = allowed.has("cancel_by_customer") ? customerCancellationQuote(parts, now) : null;
   const policy = CANCELLATION_POLICIES[booking.cancellationPolicy];
   const [conversation] = await db
@@ -95,13 +102,16 @@ export async function customerBookingView(
     .where(eq(conversations.bookingId, booking.id));
   return {
     id: booking.id,
+    kind: booking.kind,
     status,
-    statusLabel: CUSTOMER_STATUS_LABELS[status],
+    statusLabel:
+      ongoing?.paused && status === "confirmed" ? "Paused" : CUSTOMER_STATUS_LABELS[status],
     business: { name: business.name, slug: business.slug },
     service: { title: booking.title },
     /** Booked from a quote (SPEC §20). */
     fromQuote: booking.quoteId !== null,
-    window: windowOf(parts),
+    /** The job's window; a series shows its next visit (or its first). */
+    window: ongoing?.nextVisit?.window ?? windowOf(parts),
     address: addressLines(address),
     notes: booking.customerNotes,
     amounts: {
@@ -109,16 +119,22 @@ export async function customerBookingView(
       serviceFeeCents: booking.serviceFeeCents,
       taxCents: booking.priceTaxCents + booking.feeTaxCents,
       totalCents: booking.totalCents,
-      held: payment?.status === "authorized",
-      refundedCents: await refundedCents(db, payment?.id),
+      held: !ongoing && payment?.status === "authorized",
+      refundedCents: ongoing ? 0 : await refundedCents(db, payment?.id),
     },
     cancellationPolicy: { label: policy.label, description: policy.description },
     approvalExpiresAt: booking.status === "requested" ? booking.approvalExpiresAt : null,
     /** Why the pro cancelled (customers are told; SPEC §5). */
-    cancellationReason: status === "cancelled_by_business" ? booking.cancellationReason : null,
-    autoConfirmAt: visit?.autoConfirmAt ?? null,
+    cancellationReason:
+      status === "cancelled_by_business" || (ongoing && booking.cancelledAt)
+        ? booking.cancellationReason
+        : null,
+    autoConfirmAt: ongoing ? null : (visit?.autoConfirmAt ?? null),
     actions: {
-      cancel: allowed.has("cancel_by_customer"),
+      /** One-off: cancel the job. Series: cancel the request, or end the series. */
+      cancel: ongoing
+        ? booking.status === "requested" || booking.status === "confirmed"
+        : allowed.has("cancel_by_customer"),
       confirmDone: allowed.has("confirm_completion"),
       reportProblem: allowed.has("report_problem"),
     },
@@ -134,6 +150,13 @@ export async function customerBookingView(
               : `Late cancellation: no refund is due under the ${policy.label} policy.`,
         }
       : null,
+    /** Recurring series (SPEC §21): schedule, visits and what can be done to each. */
+    ongoing,
+    /** Something here waits for the customer (a visit to confirm). */
+    needsAttention:
+      allowed.has("confirm_completion") ||
+      allowed.has("report_problem") ||
+      (ongoing?.needsAttention ?? false),
     createdAt: booking.createdAt,
     /** Chat with the business about this job (SPEC §20). */
     conversationId: conversation?.id ?? null,
@@ -156,6 +179,8 @@ export function businessBookingView(
     workMinutes: number;
     /** Only for owners and managers (crew don't see chat). */
     conversationId?: string | null;
+    /** Recurring visits: "Every week · visit 3 of 12" (SPEC §21). */
+    series?: string | null;
   },
   now: Date,
 ) {
@@ -164,8 +189,14 @@ export function businessBookingView(
   const allowed = allowedEvents(parts, now);
   // Contact details only once the booking is paid (SPEC §7).
   const paid = payment?.status === "succeeded" || payment?.status === "partially_refunded";
+  const recurring = booking.kind === "recurring";
   return {
     id: booking.id,
+    /** Unique per calendar entry: a series has one entry per visit. */
+    key: visit?.id ?? booking.id,
+    visitId: visit?.id ?? null,
+    kind: booking.kind,
+    series: extra.series ?? null,
     status,
     statusLabel: BUSINESS_STATUS_LABELS[status],
     service: { id: parts.service.id, title: booking.title },
@@ -184,7 +215,7 @@ export function businessBookingView(
       cents:
         (payment?.priceCents ?? booking.priceCents) +
         (payment?.priceTaxCents ?? booking.priceTaxCents) -
-        (payment?.businessFeeCents ?? 0),
+        (payment?.businessFeeCents ?? percentOf(booking.priceCents, BUSINESS_FEE_BPS)),
     },
     approvalExpiresAt: booking.status === "requested" ? booking.approvalExpiresAt : null,
     conversationId: extra.conversationId ?? null,
@@ -197,7 +228,14 @@ export function businessBookingView(
           status,
         ),
       markDone: allowed.has("mark_complete"),
-      cancel: allowed.has("cancel_by_business"),
+      /** One-off: cancel the job. Series: cancel this visit (full refund). */
+      cancel: allowed.has("cancel_by_business") && (!recurring || booking.status === "confirmed"),
+      /** Series only: move this visit to another window or day. */
+      move:
+        recurring &&
+        booking.status === "confirmed" &&
+        visit?.status === "confirmed" &&
+        visit.startsAt.getTime() > now.getTime(),
       scheduleFix: allowed.has("schedule_fix"),
       markFixed: allowed.has("mark_fixed"),
     },

@@ -60,6 +60,7 @@ import type { PaymentProvider } from "@nevile/payments";
 import { TRPCError } from "@trpc/server";
 import { openConversation } from "../chat/flows.ts";
 import type { ApiConfig } from "../config.ts";
+import { NOTIFICATION_TYPES, notify } from "../inbox.ts";
 import { isInstantBookable } from "../listing-state.ts";
 import { sendAll } from "../notify.ts";
 import { lookupPostalArea } from "../postal.ts";
@@ -1043,7 +1044,7 @@ export async function expireCheckouts(deps: BookingDeps): Promise<number> {
 // Requests (approval)
 // ---------------------------------------------------------------------------------------
 
-async function lockedParts(
+export async function lockedParts(
   tx: DbExecutor,
   bookingId: string,
   businessId?: string,
@@ -1185,10 +1186,21 @@ export async function endRequest(
         await customerEmail(tx, parts.booking.customerId),
         mailFacts(parts, deps.config),
         how.by === "business" ? "declined" : "expired",
+        parts.payment?.status === "authorized",
       ),
     );
+    if (isOngoing(parts.booking)) {
+      await notify(tx, [parts.booking.customerId], NOTIFICATION_TYPES.ongoingDeclined, {
+        text:
+          how.by === "business"
+            ? `${parts.business.name} can't take ${parts.booking.title}`
+            : `${parts.business.name} didn't answer in time: ${parts.booking.title}`,
+        path: `/bookings/${bookingId}`,
+      });
+    }
   });
   await sendAll(deps.email, mail);
+  await pushNotifications(deps);
 }
 
 // ---------------------------------------------------------------------------------------

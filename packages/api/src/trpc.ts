@@ -20,6 +20,8 @@ import type { Context } from "./context.ts";
 export const API_ERROR_REASONS = {
   VERIFICATION_REQUIRED: "VERIFICATION_REQUIRED",
   NEIGHBOURS_DISABLED: "NEIGHBOURS_DISABLED",
+  /** Recurring jobs and snow contracts charge a saved card: add one first (SPEC §21). */
+  CARD_REQUIRED: "CARD_REQUIRED",
 } as const;
 export type ApiErrorReason = (typeof API_ERROR_REASONS)[keyof typeof API_ERROR_REASONS];
 

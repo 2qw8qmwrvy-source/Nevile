@@ -600,9 +600,9 @@ kinds.
 - **A charge that fails** is retried once a day for 3 days, and the customer is told right
   away (in-app, email, push) with a link to update the card; updating it retries at once.
   If it still fails: a recurring visit not paid **24 hours before** it starts is cancelled
-  and the series is **paused** (no more charges or visits until the customer updates the
-  card and resumes it); a snow contract is **paused** (no new visits or instalments) and
-  the unpaid amount stays owed.
+  and the series is **paused** (no more charges, and unpaid visits are cancelled, until the
+  customer updates the card, which resumes it once nothing is owed); a snow contract is
+  **paused** (no new visits or instalments) and the unpaid amount stays owed.
 
 ### Recurring jobs
 

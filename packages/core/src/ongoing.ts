@@ -99,21 +99,56 @@ export function seriesLastAllowedDate(first: CalendarDate): CalendarDate {
 // Inputs
 // ---------------------------------------------------------------------------------------
 
+/** The schedule of a recurring booking: service, frequency, first visit, end, changes. */
+const recurringScheduleShape = {
+  serviceId: z.uuid(),
+  frequency: z.enum(RECURRENCE_FREQUENCIES),
+  /** First visit's date and arrival window. */
+  date: isoDate,
+  windowStart: z.number().int().min(0).max(1439),
+  /** Last day the series may run (inclusive). */
+  endDate: isoDate,
+  /** Full dates the customer skips (null) or moves to another window that day. */
+  overrides: z
+    .array(z.object({ date: isoDate, windowStart: z.number().int().min(0).max(1439).nullable() }))
+    .max(SERIES_LIMITS.maxOverrides)
+    .default([]),
+};
+
+function checkSchedule(
+  input: { date: string; endDate: string; overrides: Array<{ date: string }> },
+  ctx: z.RefinementCtx,
+): void {
+  const first = parseIsoDate(input.date);
+  const last = parseIsoDate(input.endDate);
+  if (!first || !last) return;
+  if (compareDates(last, first) <= 0) {
+    ctx.addIssue({ code: "custom", path: ["endDate"], message: "End after the first visit" });
+  } else if (compareDates(last, seriesLastAllowedDate(first)) > 0) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["endDate"],
+      message: `A series can run up to ${SERIES_LIMITS.maxMonths} months`,
+    });
+  }
+  const seen = new Set<string>();
+  for (const override of input.overrides) {
+    if (seen.has(override.date)) {
+      ctx.addIssue({ code: "custom", path: ["overrides"], message: "One change per date" });
+      return;
+    }
+    seen.add(override.date);
+  }
+}
+
+/** A recurring schedule on its own, for previews before the address is entered. */
+export const recurringScheduleSchema = z.object(recurringScheduleShape).superRefine(checkSchedule);
+export type RecurringScheduleInput = z.input<typeof recurringScheduleSchema>;
+
 /** A customer's recurring booking request (SPEC §21). */
 export const recurringRequestSchema = z
   .object({
-    serviceId: z.uuid(),
-    frequency: z.enum(RECURRENCE_FREQUENCIES),
-    /** First visit's date and arrival window. */
-    date: isoDate,
-    windowStart: z.number().int().min(0).max(1439),
-    /** Last day the series may run (inclusive). */
-    endDate: isoDate,
-    /** Full dates the customer skips (null) or moves to another window that day. */
-    overrides: z
-      .array(z.object({ date: isoDate, windowStart: z.number().int().min(0).max(1439).nullable() }))
-      .max(SERIES_LIMITS.maxOverrides)
-      .default([]),
+    ...recurringScheduleShape,
     address: jobAddressSchema,
     notes: z
       .string()
@@ -121,28 +156,7 @@ export const recurringRequestSchema = z
       .max(500)
       .transform((value) => value || null),
   })
-  .superRefine((input, ctx) => {
-    const first = parseIsoDate(input.date);
-    const last = parseIsoDate(input.endDate);
-    if (!first || !last) return;
-    if (compareDates(last, first) <= 0) {
-      ctx.addIssue({ code: "custom", path: ["endDate"], message: "End after the first visit" });
-    } else if (compareDates(last, seriesLastAllowedDate(first)) > 0) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["endDate"],
-        message: `A series can run up to ${SERIES_LIMITS.maxMonths} months`,
-      });
-    }
-    const seen = new Set<string>();
-    for (const override of input.overrides) {
-      if (seen.has(override.date)) {
-        ctx.addIssue({ code: "custom", path: ["overrides"], message: "One change per date" });
-        return;
-      }
-      seen.add(override.date);
-    }
-  });
+  .superRefine(checkSchedule);
 export type RecurringRequestInput = z.input<typeof recurringRequestSchema>;
 
 /** A snow contract's terms, as a business lists them or offers them in a quote. */
