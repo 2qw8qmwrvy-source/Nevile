@@ -5,8 +5,11 @@ import {
   type CategorySlug,
   centsToDollarInput,
   DEFAULT_CATEGORIES,
+  FREQUENCY_LABELS,
   formatDurationMinutes,
   parseDollarsToCents,
+  RECURRENCE_FREQUENCIES,
+  type RecurrenceFrequency,
   SERVICE_DESCRIPTION_MAX_LENGTH,
   SERVICE_DURATION_CHOICES,
   SERVICE_TITLE_MAX_LENGTH,
@@ -26,6 +29,8 @@ type ServiceFormProps = {
   pending: boolean;
   /** Server-side problems, by field. */
   errors?: Partial<Record<keyof ServiceFormValues | "form", string>>;
+  /** Listed as a seasonal contract: no recurring visits. */
+  contract?: boolean;
   onSubmit: (values: ServiceFormValues) => void;
   onCancel: () => void;
 };
@@ -40,6 +45,7 @@ const BLANK: ServiceFormValues = {
   durationMinutes: 60,
   instantBook: true,
   active: true,
+  recurrenceFrequencies: [],
 };
 
 /** Add or edit a service: category, title, pricing (fixed or quote), duration (SPEC §18). */
@@ -50,6 +56,7 @@ export function ServiceForm({
   errors,
   onSubmit,
   onCancel,
+  contract = false,
 }: ServiceFormProps) {
   const [values, setValues] = useState(initial);
   const [price, setPrice] = useState(
@@ -84,6 +91,7 @@ export function ServiceForm({
       priceCents,
       fromPriceCents: fromCents,
       instantBook: fixed ? values.instantBook : false,
+      recurrenceFrequencies: fixed && !contract ? (values.recurrenceFrequencies ?? []) : [],
     });
   }
 
@@ -215,6 +223,39 @@ export function ServiceForm({
           label="Allow Instant Book for this service"
           description="Applies when Instant Book is on in your profile."
         />
+      ) : null}
+      {fixed && !contract ? (
+        <fieldset>
+          <legend className="mb-1 ml-0.5 text-[13px] font-semibold">Recurring visits</legend>
+          <p className="mb-1.5 ml-0.5 text-sm text-muted">
+            Let customers book this on a schedule (up to 6 months). You accept each series.
+          </p>
+          <div className="flex flex-wrap gap-x-5">
+            {RECURRENCE_FREQUENCIES.map((frequency: RecurrenceFrequency) => {
+              const chosen = values.recurrenceFrequencies ?? [];
+              return (
+                <Checkbox
+                  key={frequency}
+                  label={FREQUENCY_LABELS[frequency]}
+                  checked={chosen.includes(frequency)}
+                  onChange={(event) =>
+                    set(
+                      "recurrenceFrequencies",
+                      event.target.checked
+                        ? RECURRENCE_FREQUENCIES.filter(
+                            (option) => option === frequency || chosen.includes(option),
+                          )
+                        : chosen.filter((option) => option !== frequency),
+                    )
+                  }
+                />
+              );
+            })}
+          </div>
+          {errors?.recurrenceFrequencies ? (
+            <p className="text-sm text-danger">{errors.recurrenceFrequencies}</p>
+          ) : null}
+        </fieldset>
       ) : null}
       <Checkbox
         checked={values.active}

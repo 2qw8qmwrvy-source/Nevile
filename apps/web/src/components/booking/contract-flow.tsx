@@ -218,7 +218,13 @@ export function ContractFlow({ source, defaultPostal, returnPath }: ContractFlow
           <p className="mt-1 text-[15px] text-muted">
             Please read it. You and the pro both get a PDF copy by email.
           </p>
-          <div className="mt-4 grid max-h-[28rem] gap-4 overflow-y-auto rounded-input border border-border bg-ground p-4">
+          {/* Scrolls on its own, so keyboard users can focus it to scroll. */}
+          <section
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable.
+            tabIndex={0}
+            aria-label="Agreement text"
+            className="mt-4 grid max-h-[28rem] gap-4 overflow-y-auto rounded-input border border-border bg-ground p-4 focus-visible:outline-2 focus-visible:outline-primary"
+          >
             {data.agreement.map((section) => (
               <section key={section.heading}>
                 <h3 className="text-[15px] font-semibold">{section.heading}</h3>
@@ -229,7 +235,7 @@ export function ContractFlow({ source, defaultPostal, returnPath }: ContractFlow
                 ))}
               </section>
             ))}
-          </div>
+          </section>
           <Checkbox
             className="mt-4"
             label="I agree to this agreement"

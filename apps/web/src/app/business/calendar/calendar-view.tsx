@@ -4,7 +4,7 @@ import type { AppRouter, inferRouterOutputs } from "@nevile/api";
 import { addCalendarDays, formatCad, formatIsoDate, parseIsoDate, toLocal } from "@nevile/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Route } from "next";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { FormAlert } from "@/app/(auth)/_components/form-alert.tsx";
 import { StatusPill } from "@/app/bookings/status-pill.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -52,18 +52,23 @@ function JobCard({
   businessId,
   members,
   canManage,
+  wholeSeries = false,
 }: {
   job: Job;
   businessId: string;
   members: Member[];
   canManage: boolean;
+  /** Assigning from "Needs you" sets the crew for every upcoming visit of a series. */
+  wholeSeries?: boolean;
 }) {
   const trpc = useTRPC();
   const refresh = useBookingAction(businessId);
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
+  const fieldId = useId();
   const options = { onSuccess: refresh };
   const accept = useMutation(trpc.businessBookings.accept.mutationOptions(options));
+  const skipped = accept.data?.skipped ?? [];
   const decline = useMutation(trpc.businessBookings.decline.mutationOptions(options));
   const assign = useMutation(trpc.businessBookings.assign.mutationOptions(options));
   const markDone = useMutation(trpc.businessBookings.markDone.mutationOptions(options));
@@ -77,6 +82,9 @@ function JobCard({
     (m) => m.isPending,
   );
   const input = { businessId, bookingId: job.id };
+  // Visits of a series or contract are acted on one by one.
+  const visitInput = { ...input, visitId: job.visitId ?? undefined };
+  const ongoing = job.kind !== "one_off";
   const { actions } = job;
 
   return (
@@ -90,7 +98,18 @@ function JobCard({
           <p className="text-sm text-muted">
             {job.customer.firstName} · {hours(job.workMinutes)} · you get{" "}
             {formatCad(job.payout.cents)}
+            {ongoing ? " per visit" : ""}
           </p>
+          {job.series ? (
+            <p className="text-sm">
+              <a
+                href={`/business/bookings/${job.id}?b=${businessId}`}
+                className="font-semibold text-primary"
+              >
+                {job.series}
+              </a>
+            </p>
+          ) : null}
         </div>
         <StatusPill status={job.status} label={job.statusLabel} />
       </div>
@@ -112,17 +131,27 @@ function JobCard({
           {error.message}
         </FormAlert>
       ) : null}
+      {skipped.length > 0 ? (
+        <FormAlert tone="success" className="mt-2">
+          Accepted. These dates no longer fit and are skipped: {skipped.join(", ")}.
+        </FormAlert>
+      ) : null}
       {actions.assign && canManage ? (
         <div className="mt-3">
-          <label className="sr-only" htmlFor={`assign-${job.id}`}>
+          <label className="sr-only" htmlFor={`assign-${fieldId}`}>
             Crew member
           </label>
           <Select
-            id={`assign-${job.id}`}
+            id={`assign-${fieldId}`}
             value={job.assignee?.id ?? ""}
             disabled={busy}
             className="h-11"
-            onChange={(event) => assign.mutate({ ...input, memberId: event.target.value || null })}
+            onChange={(event) =>
+              assign.mutate({
+                ...(wholeSeries ? input : visitInput),
+                memberId: event.target.value || null,
+              })
+            }
           >
             <option value="">Not assigned yet</option>
             {members.map((member) => (
@@ -152,17 +181,17 @@ function JobCard({
           </Button>
         ) : null}
         {actions.markDone ? (
-          <Button size="sm" disabled={busy} onClick={() => markDone.mutate(input)}>
+          <Button size="sm" disabled={busy} onClick={() => markDone.mutate(visitInput)}>
             Mark done
           </Button>
         ) : null}
         {actions.scheduleFix ? (
-          <Button size="sm" disabled={busy} onClick={() => scheduleFix.mutate(input)}>
+          <Button size="sm" disabled={busy} onClick={() => scheduleFix.mutate(visitInput)}>
             We'll come back to fix it
           </Button>
         ) : null}
         {actions.markFixed ? (
-          <Button size="sm" disabled={busy} onClick={() => markFixed.mutate(input)}>
+          <Button size="sm" disabled={busy} onClick={() => markFixed.mutate(visitInput)}>
             Mark fixed
           </Button>
         ) : null}
@@ -178,7 +207,7 @@ function JobCard({
             className="text-danger hover:text-danger"
             onClick={() => setCancelling(true)}
           >
-            Cancel job
+            {ongoing ? "Cancel this visit" : "Cancel job"}
           </Button>
         ) : null}
       </div>
@@ -188,15 +217,16 @@ function JobCard({
           className="mt-3 grid gap-2 rounded-input bg-ground p-3"
           onSubmit={(event) => {
             event.preventDefault();
-            cancel.mutate({ ...input, reason });
+            cancel.mutate({ ...visitInput, reason });
           }}
         >
-          <label htmlFor={`reason-${job.id}`} className="text-sm font-semibold">
-            Why are you cancelling? The customer gets a full refund, and it counts on your
-            reliability.
+          <label htmlFor={`reason-${fieldId}`} className="text-sm font-semibold">
+            {ongoing
+              ? "Why are you cancelling this visit? The customer gets it back in full if it was charged."
+              : "Why are you cancelling? The customer gets a full refund, and it counts on your reliability."}
           </label>
           <Input
-            id={`reason-${job.id}`}
+            id={`reason-${fieldId}`}
             value={reason}
             maxLength={500}
             onChange={(event) => setReason(event.target.value)}
@@ -253,13 +283,14 @@ export function CalendarView({
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {needsAnswer.map((job) => (
-              <div key={job.id}>
+              <div key={job.key}>
                 <p className="mb-1 text-sm font-semibold">{job.window.label}</p>
                 <JobCard
                   job={job}
                   businessId={businessId}
                   members={members}
                   canManage={canManage}
+                  wholeSeries
                 />
               </div>
             ))}
@@ -333,7 +364,7 @@ export function CalendarView({
                             <div className="mt-3 grid gap-2">
                               {window.jobs.map((job) => (
                                 <JobCard
-                                  key={job.id}
+                                  key={job.key}
                                   job={job}
                                   businessId={businessId}
                                   members={members}
@@ -358,7 +389,7 @@ export function CalendarView({
                   </p>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     {calendar.data.other.map((job) => (
-                      <div key={job.id}>
+                      <div key={job.key}>
                         <p className="mb-1 text-sm font-semibold">{job.window.label}</p>
                         <JobCard
                           job={job}

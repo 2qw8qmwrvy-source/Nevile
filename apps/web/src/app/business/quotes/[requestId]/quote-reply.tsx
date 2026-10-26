@@ -3,10 +3,14 @@
 import type { AppRouter, inferRouterOutputs } from "@nevile/api";
 import {
   centsToDollarInput,
+  FREQUENCY_LABELS,
   formatCad,
   formatDurationMinutes,
   parseDollarsToCents,
   QUOTE_LIMITS,
+  type QuoteKind,
+  RECURRENCE_FREQUENCIES,
+  type RecurrenceFrequency,
   SERVICE_DURATION_CHOICES,
 } from "@nevile/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,7 +21,8 @@ import { FormAlert } from "@/app/(auth)/_components/form-alert.tsx";
 import { PrivatePhotoGrid } from "@/components/photos/private-photos.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
-import { Field, Input, Select, Textarea } from "@/components/ui/field.tsx";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field.tsx";
+import { cn } from "@/lib/cn.ts";
 import { useTRPC } from "@/lib/trpc.ts";
 import { replyByFormat } from "../quote-inbox.tsx";
 
@@ -37,6 +42,25 @@ export function QuoteReply({ businessId, initial }: { businessId: string; initia
   );
   const [duration, setDuration] = useState<number>(request.quote?.durationMinutes ?? 60);
   const [note, setNote] = useState(request.quote?.note ?? "");
+  // What the quote offers (SPEC §21): one job, recurring visits, or snow contract terms.
+  const snowRequest = request.category.slug === "snow-ice-removal";
+  const [kind, setKind] = useState<QuoteKind>(() => {
+    const sent = request.quote?.kind;
+    return sent === "recurring" || sent === "snow_contract" ? sent : "one_off";
+  });
+  const [frequencies, setFrequencies] = useState<RecurrenceFrequency[]>(
+    request.quote?.frequencies.map((option) => option.value) ?? ["weekly"],
+  );
+  const year =
+    new Date().getUTCMonth() >= 3 ? new Date().getUTCFullYear() : new Date().getUTCFullYear() - 1;
+  const [contract, setContract] = useState({
+    triggerCm: String(request.quote?.contract?.triggerCm ?? 5),
+    seasonStart: request.quote?.contract?.seasonStart ?? `${year}-11-15`,
+    seasonEnd: request.quote?.contract?.seasonEnd ?? `${year + 1}-03-31`,
+    pricing: request.quote?.contract?.pricing ?? ("season" as "season" | "per_visit"),
+    seasonBilling:
+      request.quote?.contract?.seasonBilling ?? ("either" as "upfront" | "monthly" | "either"),
+  });
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -66,14 +90,37 @@ export function QuoteReply({ businessId, initial }: { businessId: string; initia
     setSent(false);
     const cents = parseDollarsToCents(price);
     if (cents === null) return setProblem("Enter the price, like 120 or 120.50.");
+    if (kind === "recurring" && frequencies.length === 0) {
+      return setProblem("Pick at least one schedule.");
+    }
     reply.mutate({
       businessId,
       requestId: request.id,
+      kind,
       priceCents: cents,
-      durationMinutes: duration,
+      durationMinutes: kind === "snow_contract" ? undefined : duration,
+      frequencies: kind === "recurring" ? frequencies : [],
+      contract:
+        kind === "snow_contract"
+          ? {
+              triggerCm: Number(contract.triggerCm),
+              seasonStart: contract.seasonStart,
+              seasonEnd: contract.seasonEnd,
+              pricing: contract.pricing,
+              seasonBilling: contract.pricing === "season" ? contract.seasonBilling : null,
+            }
+          : null,
       note,
     });
   }
+  const fieldErrors = reply.error?.data?.zodError?.fieldErrors as
+    | Record<string, string[] | undefined>
+    | undefined;
+  const kinds: Array<[QuoteKind, string]> = [
+    ["one_off", "One job"],
+    ["recurring", "Recurring visits"],
+    ...(snowRequest ? [["snow_contract", "Snow contract"] as [QuoteKind, string]] : []),
+  ];
 
   return (
     <div className="grid gap-6">
@@ -109,8 +156,16 @@ export function QuoteReply({ businessId, initial }: { businessId: string; initia
               </Button>
             ) : null}
             {request.bookingId ? (
-              <Button href={`/business/calendar?b=${businessId}` as Route}>
-                Booked: open the calendar
+              <Button
+                href={
+                  (request.quote && request.quote.kind !== "one_off"
+                    ? `/business/bookings/${request.bookingId}?b=${businessId}`
+                    : `/business/calendar?b=${businessId}`) as Route
+                }
+              >
+                {request.quote && request.quote.kind !== "one_off"
+                  ? "Booked: open it"
+                  : "Booked: open the calendar"}
               </Button>
             ) : null}
           </div>
@@ -123,13 +178,43 @@ export function QuoteReply({ businessId, initial }: { businessId: string; initia
             </h2>
             {request.quote ? (
               <p className="text-[15px]">
-                Sent: <strong>{formatCad(request.quote.priceCents)}</strong>, about{" "}
-                {request.quote.duration}. Sending a new one replaces it.
+                Sent: <strong>{request.quote.summary}</strong>. Sending a new one replaces it.
               </p>
             ) : null}
             <form method="post" noValidate onSubmit={onQuote} className="grid gap-4">
+              <fieldset>
+                <legend className="mb-1.5 ml-0.5 text-[13px] font-semibold">What you offer</legend>
+                <div className="flex flex-wrap gap-2">
+                  {kinds.map(([value, label]) => (
+                    <label
+                      key={value}
+                      className={cn(
+                        "inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-input border px-3.5 text-[15px] font-semibold",
+                        kind === value
+                          ? "border-primary bg-primary-soft"
+                          : "border-border hover:border-field",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="kind"
+                        checked={kind === value}
+                        onChange={() => setKind(value)}
+                        className="size-4 accent-primary"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <Field
-                label="Price for the job ($)"
+                label={
+                  kind === "one_off"
+                    ? "Price for the job ($)"
+                    : kind === "recurring" || contract.pricing === "per_visit"
+                      ? "Price per visit ($)"
+                      : "Price for the season ($)"
+                }
                 hint="Before Nevile's service fee, which the customer pays."
               >
                 <Input
@@ -138,18 +223,118 @@ export function QuoteReply({ businessId, initial }: { businessId: string; initia
                   onChange={(event) => setPrice(event.target.value)}
                 />
               </Field>
-              <Field label="How long the job takes">
-                <Select
-                  value={duration}
-                  onChange={(event) => setDuration(Number(event.target.value))}
+              {kind !== "snow_contract" ? (
+                <Field
+                  label={
+                    kind === "recurring" ? "How long each visit takes" : "How long the job takes"
+                  }
                 >
-                  {SERVICE_DURATION_CHOICES.map((minutes) => (
-                    <option key={minutes} value={minutes}>
-                      {formatDurationMinutes(minutes)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+                  <Select
+                    value={duration}
+                    onChange={(event) => setDuration(Number(event.target.value))}
+                  >
+                    {SERVICE_DURATION_CHOICES.map((minutes) => (
+                      <option key={minutes} value={minutes}>
+                        {formatDurationMinutes(minutes)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
+              {kind === "recurring" ? (
+                <fieldset>
+                  <legend className="mb-1 ml-0.5 text-[13px] font-semibold">
+                    Schedules the customer can pick
+                  </legend>
+                  <div className="flex flex-wrap gap-x-5">
+                    {RECURRENCE_FREQUENCIES.map((frequency) => (
+                      <Checkbox
+                        key={frequency}
+                        label={FREQUENCY_LABELS[frequency]}
+                        checked={frequencies.includes(frequency)}
+                        onChange={(event) =>
+                          setFrequencies((current) =>
+                            event.target.checked
+                              ? RECURRENCE_FREQUENCIES.filter(
+                                  (option) => option === frequency || current.includes(option),
+                                )
+                              : current.filter((option) => option !== frequency),
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                </fieldset>
+              ) : null}
+              {kind === "snow_contract" ? (
+                <div className="grid gap-3 rounded-input bg-ground p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Pricing">
+                      <Select
+                        value={contract.pricing}
+                        onChange={(event) =>
+                          setContract((current) => ({
+                            ...current,
+                            pricing: event.target.value as "season" | "per_visit",
+                          }))
+                        }
+                      >
+                        <option value="season">For the whole season</option>
+                        <option value="per_visit">Per visit</option>
+                      </Select>
+                    </Field>
+                    <Field label="Clear from (cm)" error={fieldErrors?.contract?.[0]}>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={contract.triggerCm}
+                        onChange={(event) =>
+                          setContract((current) => ({ ...current, triggerCm: event.target.value }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Season starts">
+                      <Input
+                        type="date"
+                        value={contract.seasonStart}
+                        onChange={(event) =>
+                          setContract((current) => ({
+                            ...current,
+                            seasonStart: event.target.value,
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Season ends">
+                      <Input
+                        type="date"
+                        value={contract.seasonEnd}
+                        onChange={(event) =>
+                          setContract((current) => ({ ...current, seasonEnd: event.target.value }))
+                        }
+                      />
+                    </Field>
+                  </div>
+                  {contract.pricing === "season" ? (
+                    <Field label="The customer pays">
+                      <Select
+                        value={contract.seasonBilling}
+                        onChange={(event) =>
+                          setContract((current) => ({
+                            ...current,
+                            seasonBilling: event.target.value as "upfront" | "monthly" | "either",
+                          }))
+                        }
+                      >
+                        <option value="either">Upfront or monthly (they choose)</option>
+                        <option value="upfront">Upfront</option>
+                        <option value="monthly">Monthly</option>
+                      </Select>
+                    </Field>
+                  ) : null}
+                </div>
+              ) : null}
               <Field
                 label="What's included (optional)"
                 hint={`${note.length}/${QUOTE_LIMITS.noteMaxLength}`}
@@ -212,7 +397,7 @@ export function QuoteReply({ businessId, initial }: { businessId: string; initia
             <p className="font-display text-[28px] font-bold">
               {formatCad(request.quote.priceCents)}
             </p>
-            <p className="text-sm text-muted">About {request.quote.duration}</p>
+            <p className="text-sm text-muted">{request.quote.summary}</p>
           </Card>
         ) : null}
       </div>

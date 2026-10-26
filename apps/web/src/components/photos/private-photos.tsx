@@ -9,8 +9,10 @@ import { cn } from "@/lib/cn.ts";
 const ACCEPT = "image/jpeg,image/png,image/webp";
 
 export type UploadedPhoto = { id: string; preview: string };
+/** Quote requests and chat (SPEC §20), or a snow route visit log (§21). */
+export type PrivatePhotoPurpose = "quotes" | "chat" | "visits";
 
-async function uploadPrivatePhoto(purpose: "quotes" | "chat", file: File): Promise<string> {
+async function uploadPrivatePhoto(purpose: PrivatePhotoPurpose, file: File): Promise<string> {
   if (file.size > PHOTO_MAX_BYTES) throw new Error(`${file.name} is over 10 MB.`);
   const body = new FormData();
   body.set("purpose", purpose);
@@ -27,7 +29,7 @@ async function uploadPrivatePhoto(purpose: "quotes" | "chat", file: File): Promi
 }
 
 /**
- * Adds up to `max` private photos (quote requests and chat, SPEC §20). Each is uploaded
+ * Adds up to `max` private photos (quote requests, chat, visit logs). Each is uploaded
  * straight away (re-encoded on the server, metadata removed); the parent keeps the ids.
  */
 export function PrivatePhotoPicker({
@@ -38,7 +40,7 @@ export function PrivatePhotoPicker({
   label = "Add photos",
   compact = false,
 }: {
-  purpose: "quotes" | "chat";
+  purpose: PrivatePhotoPurpose;
   photos: UploadedPhoto[];
   onChange: (photos: UploadedPhoto[]) => void;
   max: number;

@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDurationMinutes } from "@nevile/core";
+import { FREQUENCY_LABELS, formatDurationMinutes } from "@nevile/core";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { FormAlert } from "@/app/(auth)/_components/form-alert.tsx";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { useTRPC } from "@/lib/trpc.ts";
+import { ContractTerms } from "./contract-terms.tsx";
 import type { SectionProps } from "./listing-dashboard.tsx";
 import { ServiceForm, type ServiceFormValues } from "./service-form.tsx";
 import { sectionTitleClass, useRefreshListing } from "./use-listing.ts";
@@ -111,7 +112,9 @@ export function ServicesSection({ listing, businessId, onUnpublished }: SectionP
                     durationMinutes: service.durationMinutes,
                     instantBook: service.instantBook,
                     active: service.active,
+                    recurrenceFrequencies: service.recurrenceFrequencies,
                   }}
+                  contract={service.contract !== null}
                   submitLabel="Save service"
                   pending={update.isPending}
                   errors={errorsOf(update.error)}
@@ -136,7 +139,21 @@ export function ServicesSection({ listing, businessId, onUnpublished }: SectionP
                     <p className="mt-0.5 text-sm text-muted">
                       {service.categoryName} · {service.priceText} · about{" "}
                       {formatDurationMinutes(service.durationMinutes)}
+                      {service.recurrenceFrequencies.length > 0
+                        ? ` · also ${service.recurrenceFrequencies
+                            .map((frequency) => FREQUENCY_LABELS[frequency].toLowerCase())
+                            .join(" or ")}`
+                        : ""}
                     </p>
+                    {service.categorySlug === "snow-ice-removal" ? (
+                      <ContractTerms
+                        businessId={businessId}
+                        serviceId={service.id}
+                        contract={service.contract}
+                        canEdit={canEdit}
+                        recurring={service.recurrenceFrequencies.length > 0}
+                      />
+                    ) : null}
                   </div>
                   {canEdit ? (
                     <div className="-ml-2 flex flex-wrap gap-1.5 sm:ml-0">
@@ -162,6 +179,7 @@ export function ServicesSection({ listing, businessId, onUnpublished }: SectionP
                               durationMinutes: service.durationMinutes,
                               instantBook: service.instantBook,
                               active: !service.active,
+                              recurrenceFrequencies: service.recurrenceFrequencies,
                             },
                           })
                         }

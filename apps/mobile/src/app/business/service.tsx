@@ -61,6 +61,7 @@ function ServiceForm({
         durationMinutes: existing.durationMinutes,
         instantBook: existing.instantBook,
         active: existing.active,
+        recurrenceFrequencies: existing.recurrenceFrequencies,
       }
     : BLANK;
   const [values, setValues] = useState(initial);
@@ -106,6 +107,8 @@ function ServiceForm({
       priceCents,
       fromPriceCents: fromCents,
       instantBook: fixed ? values.instantBook : false,
+      // Recurring schedules are for fixed prices only; keep them unless that changes.
+      recurrenceFrequencies: fixed ? (values.recurrenceFrequencies ?? []) : [],
     };
     if (existing) update.mutate({ businessId, serviceId: existing.id, service });
     else create.mutate({ businessId, ...service });
