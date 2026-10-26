@@ -10,13 +10,13 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { FormAlert } from "@/app/(auth)/_components/form-alert.tsx";
+import { asDate, DayWindowPicker, longDay } from "@/components/booking/day-window-picker.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Field, Input, Select, Textarea } from "@/components/ui/field.tsx";
 import { ArrowRightIcon, LockIcon } from "@/components/ui/icons.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
-import { cn } from "@/lib/cn.ts";
 import { useTRPC } from "@/lib/trpc.ts";
 
 /** What is being booked: one of a pro's fixed-price services, or an accepted quote. */
@@ -49,20 +49,6 @@ type BookingView = {
 };
 
 const DAYS_PER_PAGE = 7;
-const dayName = new Intl.DateTimeFormat("en-CA", { weekday: "short", timeZone: "UTC" });
-const dayNumber = new Intl.DateTimeFormat("en-CA", {
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
-const longDay = new Intl.DateTimeFormat("en-CA", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  timeZone: "UTC",
-});
-/** Calendar dates are shown as-is (they're already local days), so format them in UTC. */
-const asDate = (iso: string) => new Date(`${iso}T12:00:00Z`);
 
 /**
  * Pick a day and arrival window, enter the address, review the price, then pay on the
@@ -177,116 +163,23 @@ export function BookingFlow({ source, defaultPostal }: BookingFlowProps) {
           </Card>
         ) : null}
 
-        <Card as="section" aria-labelledby="when-title">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id="when-title" className="font-display text-[20px] font-bold">
-              When
-            </h2>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" disabled={!canGoBack} onClick={() => page(-1)}>
-                Earlier
-              </Button>
-              <Button variant="ghost" size="sm" disabled={!canGoForward} onClick={() => page(1)}>
-                Later
-              </Button>
-            </div>
-          </div>
-          <p className="mt-1 text-[15px] text-muted">
-            Pick a day, then the window when the crew can arrive.
-          </p>
-          {availability.isPending ? (
-            <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-7">
-              {Array.from({ length: 7 }, (_, index) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: placeholders.
-                <Skeleton key={index} className="h-16" />
-              ))}
-            </div>
-          ) : availability.isError ? (
-            <FormAlert tone="error" className="mt-4">
-              {availability.error.message}
-            </FormAlert>
-          ) : (
-            <>
-              <fieldset className="mt-4">
-                <legend className="sr-only">Day</legend>
-                <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
-                  {data?.days.map((candidate) => {
-                    const open = candidate.windows.some((window) => window.available);
-                    const selected = candidate.date === date;
-                    return (
-                      <button
-                        key={candidate.date}
-                        type="button"
-                        disabled={!open}
-                        aria-pressed={selected}
-                        onClick={() => {
-                          setDate(candidate.date);
-                          setWindowStart(null);
-                        }}
-                        className={cn(
-                          "flex min-h-16 flex-col items-center justify-center rounded-input border text-center transition-colors disabled:cursor-not-allowed disabled:opacity-45",
-                          selected
-                            ? "border-primary bg-primary-soft text-primary"
-                            : "border-border bg-surface hover:border-field",
-                        )}
-                      >
-                        <span className="text-xs font-semibold uppercase">
-                          {dayName.format(asDate(candidate.date))}
-                        </span>
-                        <span className="text-[15px] font-semibold">
-                          {dayNumber.format(asDate(candidate.date))}
-                        </span>
-                        <span className="sr-only">{open ? "" : " (full)"}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </fieldset>
-              {day ? (
-                <fieldset className="mt-5">
-                  <legend className="mb-2 text-[15px] font-semibold">
-                    {longDay.format(asDate(day.date))}
-                  </legend>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {day.windows.map((window) => (
-                      <label
-                        key={window.startMinute}
-                        className={cn(
-                          "flex min-h-12 cursor-pointer items-center gap-2.5 rounded-input border px-3.5 py-2 text-[15px] font-semibold transition-colors",
-                          !window.available && "cursor-not-allowed opacity-45",
-                          windowStart === window.startMinute
-                            ? "border-primary bg-primary-soft"
-                            : "border-border hover:border-field",
-                        )}
-                      >
-                        <input
-                          type="radio"
-                          name="window"
-                          value={window.startMinute}
-                          disabled={!window.available}
-                          checked={windowStart === window.startMinute}
-                          onChange={() => setWindowStart(window.startMinute)}
-                          className="size-4 accent-primary"
-                        />
-                        {window.label}
-                        {window.available ? null : (
-                          <span className="ml-auto text-sm font-medium text-muted">Full</span>
-                        )}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-              ) : data &&
-                !data.days.some((candidate) =>
-                  candidate.windows.some((window) => window.available),
-                ) ? (
-                <p className="mt-4 text-[15px] text-muted">
-                  Nothing open these days. Try later dates.
-                </p>
-              ) : null}
-            </>
-          )}
-        </Card>
+        <DayWindowPicker
+          title="When"
+          hint="Pick a day, then the window when the crew can arrive."
+          days={data?.days}
+          loading={availability.isPending}
+          error={availability.isError ? availability.error.message : null}
+          date={date}
+          windowStart={windowStart}
+          onDate={(next) => {
+            setDate(next);
+            setWindowStart(null);
+          }}
+          onWindow={setWindowStart}
+          canGoBack={canGoBack}
+          canGoForward={canGoForward}
+          onPage={page}
+        />
 
         <Card as="section" aria-labelledby="where-title">
           <h2 id="where-title" className="font-display text-[20px] font-bold">

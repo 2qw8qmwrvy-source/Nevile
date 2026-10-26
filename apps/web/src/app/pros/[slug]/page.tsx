@@ -1,4 +1,4 @@
-import { formatDurationMinutes } from "@nevile/core";
+import { FREQUENCY_LABELS, formatCad, formatDurationMinutes } from "@nevile/core";
 import { TRPCError } from "@trpc/server";
 import type { Metadata, Route } from "next";
 import { notFound } from "next/navigation";
@@ -42,6 +42,13 @@ export async function generateMetadata({ params }: ProPageProps): Promise<Metada
 }
 
 const monthYear = new Intl.DateTimeFormat("en-CA", { month: "long", year: "numeric" });
+const seasonDay = new Intl.DateTimeFormat("en-CA", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+/** "Nov 15" for a contract's season date. */
+const seasonDate = (iso: string) => seasonDay.format(new Date(`${iso}T12:00:00Z`));
 const reviewDate = new Intl.DateTimeFormat("en-CA", { month: "short", year: "numeric" });
 
 /** A business's public page (SPEC §18). Contact details stay hidden until booking (§7). */
@@ -159,7 +166,11 @@ export default async function ProPage({ params }: ProPageProps) {
                         <p className="text-sm text-muted">{service.categoryName}</p>
                       </div>
                       <p className="text-[17px] font-semibold whitespace-nowrap">
-                        {service.priceText}
+                        {service.contract
+                          ? `${formatCad(service.contract.priceCents)} ${
+                              service.contract.pricing === "season" ? "for the season" : "per visit"
+                            }`
+                          : service.priceText}
                       </p>
                     </div>
                     {service.description ? (
@@ -172,17 +183,63 @@ export default async function ProPage({ params }: ProPageProps) {
                         <ClockIcon size={15} />
                         About {formatDurationMinutes(service.durationMinutes)}
                       </span>
-                      {service.instantBook ? <Badge variant="instant" /> : null}
+                      {service.instantBook && !service.contract ? (
+                        <Badge variant="instant" />
+                      ) : null}
+                      {service.recurrenceFrequencies.length > 0 ? (
+                        <span>
+                          Also{" "}
+                          {service.recurrenceFrequencies
+                            .map((frequency) => FREQUENCY_LABELS[frequency].toLowerCase())
+                            .join(" or ")}
+                        </span>
+                      ) : null}
                     </p>
-                    {canBook && service.bookable ? (
-                      <Button
-                        href={`/pros/${profile.slug}/book?service=${service.id}` as Route}
-                        size="sm"
-                        className="mt-3"
-                      >
-                        Book
-                      </Button>
-                    ) : !service.bookable && canAskQuote ? (
+                    {service.contract ? (
+                      <div className="mt-2.5 rounded-input bg-ground px-3.5 py-2.5 text-sm">
+                        <p className="font-semibold text-ink">Seasonal snow contract</p>
+                        <p className="text-muted">
+                          Cleared from {service.contract.triggerCm} cm ·{" "}
+                          {seasonDate(service.contract.seasonStart)} to{" "}
+                          {seasonDate(service.contract.seasonEnd)} ·{" "}
+                          {service.contract.spotsLeft > 0
+                            ? `${service.contract.spotsLeft} ${
+                                service.contract.spotsLeft === 1 ? "spot" : "spots"
+                              } left`
+                            : "No spots left"}
+                        </p>
+                      </div>
+                    ) : null}
+                    {service.contract ? (
+                      canBook && service.contract.spotsLeft > 0 ? (
+                        <Button
+                          href={`/pros/${profile.slug}/contract?service=${service.id}` as Route}
+                          size="sm"
+                          className="mt-3"
+                        >
+                          Sign up
+                        </Button>
+                      ) : null
+                    ) : canBook && service.bookable ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          href={`/pros/${profile.slug}/book?service=${service.id}` as Route}
+                          size="sm"
+                        >
+                          Book
+                        </Button>
+                        {service.recurrenceFrequencies.length > 0 ? (
+                          <Button
+                            href={`/pros/${profile.slug}/recurring?service=${service.id}` as Route}
+                            size="sm"
+                            variant="secondary"
+                          >
+                            Book recurring visits
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {!service.contract && !service.bookable && canAskQuote ? (
                       <Button
                         href={quoteHref(service.categorySlug)}
                         size="sm"

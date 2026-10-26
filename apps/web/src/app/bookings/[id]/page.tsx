@@ -10,6 +10,7 @@ import { getSession } from "@/lib/auth.ts";
 import { getServerCaller } from "@/lib/trpc-server.ts";
 import { StatusPill } from "../status-pill.tsx";
 import { BookingActions } from "./booking-actions.tsx";
+import { OngoingBooking } from "./ongoing-booking.tsx";
 
 export const metadata: Metadata = { title: "Booking", robots: { index: false } };
 
@@ -49,8 +50,12 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
       {isNew ? (
         <FormAlert tone="success" className="mb-4">
           {booking.status === "requested"
-            ? `Request sent. ${booking.business.name} has 24 hours to accept; your card is only held until then.`
-            : "You're booked. We've emailed you a receipt."}
+            ? booking.ongoing
+              ? `Request sent. ${booking.business.name} has 24 hours to accept; nothing is charged until then.`
+              : `Request sent. ${booking.business.name} has 24 hours to accept; your card is only held until then.`
+            : booking.ongoing
+              ? "You're booked. We've emailed you the details."
+              : "You're booked. We've emailed you a receipt."}
         </FormAlert>
       ) : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -82,76 +87,147 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
         <StatusPill status={booking.status} label={booking.statusLabel} />
       </div>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
-        <div className="grid gap-5">
-          <Card>
-            <h2 className="font-display text-[20px] font-bold">When and where</h2>
-            <p className="mt-2 text-[16px] font-semibold">{booking.window.label}</p>
-            <p className="text-sm text-muted">The crew arrives during this window.</p>
-            <address className="mt-3 text-[15px] not-italic">
-              {booking.address.map((line) => (
-                <span key={line} className="block">
-                  {line}
-                </span>
-              ))}
-            </address>
-            {booking.notes ? (
-              <p className="mt-3 text-[15px] whitespace-pre-line text-muted">“{booking.notes}”</p>
-            ) : null}
-            {booking.approvalExpiresAt ? (
-              <p className="mt-3 text-sm text-muted">
-                Waiting for {booking.business.name} until{" "}
-                {dateTime.format(booking.approvalExpiresAt)}.
-              </p>
-            ) : null}
-            {booking.cancellationReason ? (
-              <p className="mt-3 text-[15px]">
-                {booking.business.name} cancelled: “{booking.cancellationReason}”
-              </p>
-            ) : null}
-            {booking.autoConfirmAt ? (
-              <p className="mt-3 text-sm text-muted">
-                Confirm or report a problem by {dateTime.format(booking.autoConfirmAt)}; after that
-                it confirms automatically.
-              </p>
-            ) : null}
-          </Card>
-          <BookingActions booking={booking} />
+      {booking.ongoing ? (
+        <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+          <div className="grid gap-5">
+            <OngoingBooking booking={booking} />
+          </div>
+          <div className="grid gap-5">
+            <Card as="section" aria-labelledby="where-title">
+              <h2 id="where-title" className="font-display text-[20px] font-bold">
+                Where
+              </h2>
+              <address className="mt-2 text-[15px] not-italic">
+                {booking.address.map((line) => (
+                  <span key={line} className="block">
+                    {line}
+                  </span>
+                ))}
+              </address>
+              {booking.notes ? (
+                <p className="mt-3 text-[15px] whitespace-pre-line text-muted">“{booking.notes}”</p>
+              ) : null}
+              {booking.approvalExpiresAt ? (
+                <p className="mt-3 text-sm text-muted">
+                  Waiting for {booking.business.name} until{" "}
+                  {dateTime.format(booking.approvalExpiresAt)}.
+                </p>
+              ) : null}
+              {booking.cancellationReason ? (
+                <p className="mt-3 text-[15px]">
+                  {booking.business.name} ended it: “{booking.cancellationReason}”
+                </p>
+              ) : null}
+            </Card>
+            <Card as="aside" aria-label="Payment">
+              <h2 className="font-display text-[20px] font-bold">
+                {booking.ongoing.kind === "snow_contract" && booking.ongoing.pricing === "season"
+                  ? "Season price"
+                  : "Each visit"}
+              </h2>
+              <dl className="mt-3 grid gap-1.5 text-[15px]">
+                <div className="flex justify-between">
+                  <dt>Price</dt>
+                  <dd>{formatCad(amounts.priceCents)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt>Service fee</dt>
+                  <dd>{formatCad(amounts.serviceFeeCents)}</dd>
+                </div>
+                {amounts.taxCents > 0 ? (
+                  <div className="flex justify-between">
+                    <dt>HST</dt>
+                    <dd>{formatCad(amounts.taxCents)}</dd>
+                  </div>
+                ) : null}
+                <div className="mt-1 flex justify-between border-t border-border pt-2 font-semibold">
+                  <dt>Total</dt>
+                  <dd>{formatCad(amounts.totalCents)}</dd>
+                </div>
+              </dl>
+              {booking.ongoing.kind === "recurring" ? (
+                <p className="mt-4 text-sm text-muted">
+                  <strong className="text-ink">
+                    {booking.cancellationPolicy.label} cancellation
+                  </strong>{" "}
+                  applies to each visit. {booking.cancellationPolicy.description}
+                </p>
+              ) : null}
+            </Card>
+          </div>
         </div>
-        <Card as="aside" aria-label="Payment">
-          <h2 className="font-display text-[20px] font-bold">Payment</h2>
-          <dl className="mt-3 grid gap-1.5 text-[15px]">
-            <div className="flex justify-between">
-              <dt>Job price</dt>
-              <dd>{formatCad(amounts.priceCents)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt>Service fee</dt>
-              <dd>{formatCad(amounts.serviceFeeCents)}</dd>
-            </div>
-            {amounts.taxCents > 0 ? (
+      ) : (
+        <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+          <div className="grid gap-5">
+            <Card>
+              <h2 className="font-display text-[20px] font-bold">When and where</h2>
+              <p className="mt-2 text-[16px] font-semibold">{booking.window.label}</p>
+              <p className="text-sm text-muted">The crew arrives during this window.</p>
+              <address className="mt-3 text-[15px] not-italic">
+                {booking.address.map((line) => (
+                  <span key={line} className="block">
+                    {line}
+                  </span>
+                ))}
+              </address>
+              {booking.notes ? (
+                <p className="mt-3 text-[15px] whitespace-pre-line text-muted">“{booking.notes}”</p>
+              ) : null}
+              {booking.approvalExpiresAt ? (
+                <p className="mt-3 text-sm text-muted">
+                  Waiting for {booking.business.name} until{" "}
+                  {dateTime.format(booking.approvalExpiresAt)}.
+                </p>
+              ) : null}
+              {booking.cancellationReason ? (
+                <p className="mt-3 text-[15px]">
+                  {booking.business.name} cancelled: “{booking.cancellationReason}”
+                </p>
+              ) : null}
+              {booking.autoConfirmAt ? (
+                <p className="mt-3 text-sm text-muted">
+                  Confirm or report a problem by {dateTime.format(booking.autoConfirmAt)}; after
+                  that it confirms automatically.
+                </p>
+              ) : null}
+            </Card>
+            <BookingActions booking={booking} />
+          </div>
+          <Card as="aside" aria-label="Payment">
+            <h2 className="font-display text-[20px] font-bold">Payment</h2>
+            <dl className="mt-3 grid gap-1.5 text-[15px]">
               <div className="flex justify-between">
-                <dt>HST</dt>
-                <dd>{formatCad(amounts.taxCents)}</dd>
+                <dt>Job price</dt>
+                <dd>{formatCad(amounts.priceCents)}</dd>
               </div>
-            ) : null}
-            <div className="mt-1 flex justify-between border-t border-border pt-2 font-semibold">
-              <dt>{amounts.held ? "Held on your card" : "Total"}</dt>
-              <dd>{formatCad(amounts.totalCents)}</dd>
-            </div>
-            {amounts.refundedCents > 0 ? (
-              <div className="flex justify-between text-primary">
-                <dt>Refunded</dt>
-                <dd>{formatCad(amounts.refundedCents)}</dd>
+              <div className="flex justify-between">
+                <dt>Service fee</dt>
+                <dd>{formatCad(amounts.serviceFeeCents)}</dd>
               </div>
-            ) : null}
-          </dl>
-          <p className="mt-4 text-sm text-muted">
-            <strong className="text-ink">{booking.cancellationPolicy.label} cancellation.</strong>{" "}
-            {booking.cancellationPolicy.description}
-          </p>
-        </Card>
-      </div>
+              {amounts.taxCents > 0 ? (
+                <div className="flex justify-between">
+                  <dt>HST</dt>
+                  <dd>{formatCad(amounts.taxCents)}</dd>
+                </div>
+              ) : null}
+              <div className="mt-1 flex justify-between border-t border-border pt-2 font-semibold">
+                <dt>{amounts.held ? "Held on your card" : "Total"}</dt>
+                <dd>{formatCad(amounts.totalCents)}</dd>
+              </div>
+              {amounts.refundedCents > 0 ? (
+                <div className="flex justify-between text-primary">
+                  <dt>Refunded</dt>
+                  <dd>{formatCad(amounts.refundedCents)}</dd>
+                </div>
+              ) : null}
+            </dl>
+            <p className="mt-4 text-sm text-muted">
+              <strong className="text-ink">{booking.cancellationPolicy.label} cancellation.</strong>{" "}
+              {booking.cancellationPolicy.description}
+            </p>
+          </Card>
+        </div>
+      )}
     </Container>
   );
 }

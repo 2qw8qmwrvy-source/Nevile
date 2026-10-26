@@ -24,7 +24,16 @@ function BookingRow({ booking }: { booking: View }) {
         <span className="min-w-0 flex-1">
           <span className="block text-[17px] font-semibold">{booking.service.title}</span>
           <span className="block text-sm text-muted">
-            {booking.business.name} · {booking.window.label}
+            {booking.business.name} ·{" "}
+            {booking.ongoing?.kind === "recurring"
+              ? `${booking.ongoing.frequencyLabel}${
+                  booking.ongoing.nextVisit
+                    ? ` · next ${booking.ongoing.nextVisit.window.label}`
+                    : ""
+                }`
+              : booking.ongoing?.kind === "snow_contract"
+                ? `Snow contract · ${booking.ongoing.terms.season}`
+                : booking.window.label}
           </span>
         </span>
         <StatusPill status={booking.status} label={booking.statusLabel} />

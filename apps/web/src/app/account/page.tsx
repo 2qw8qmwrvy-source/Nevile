@@ -44,7 +44,10 @@ type AccountPageProps = { searchParams: Promise<Record<string, string | string[]
 export default async function AccountPage({ searchParams }: AccountPageProps) {
   if (!(await getSession())) redirect("/sign-in?next=/account");
   const [{ intent }, caller] = await Promise.all([searchParams, getServerCaller()]);
-  const { user, businesses, verified, onboarding, marketingConsent } = await caller.me.get();
+  const [{ user, businesses, verified, onboarding, marketingConsent }, card] = await Promise.all([
+    caller.me.get(),
+    caller.cards.get(),
+  ]);
   const greetingName = user.name.trim();
   const email = contactEmail(user.email);
   const interestNames = DEFAULT_CATEGORIES.filter((category) =>
@@ -143,6 +146,34 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
               <EmailUpdatesToggle consented={marketingConsent.consented} />
             </div>
           </div>
+        </Card>
+
+        <Card as="section" aria-labelledby="payment-title">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2
+              id="payment-title"
+              className="font-display text-[22px] leading-tight font-bold tracking-[-0.02em]"
+            >
+              Payment method
+            </h2>
+            <Link
+              href="/account/card"
+              className="inline-flex min-h-11 items-center font-semibold text-primary"
+            >
+              {card ? "Change" : "Add"}
+            </Link>
+          </div>
+          <p className="mt-2 text-[16px]">
+            {card ? (
+              <>
+                <span className="font-semibold">{card.label}</span>
+                <span className="text-muted"> · expires {card.expires}</span>
+              </>
+            ) : (
+              <span className="text-muted">No card saved</span>
+            )}
+          </p>
+          <p className="mt-2 text-sm text-muted">Used for recurring visits and snow contracts.</p>
         </Card>
 
         <Card as="section" aria-labelledby="business-title">
