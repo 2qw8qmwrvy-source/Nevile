@@ -3,7 +3,10 @@ import { TRPCError } from "@trpc/server";
 import type { Metadata, Route } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { FormAlert } from "@/app/(auth)/_components/form-alert.tsx";
 import { BookingFlow } from "@/app/pros/[slug]/book/booking-flow.tsx";
+import { ContractFlow } from "@/components/booking/contract-flow.tsx";
+import { RecurringFlow } from "@/components/booking/recurring-flow.tsx";
 import { Container } from "@/components/ui/container.tsx";
 import { VerificationRequired } from "@/components/verification/verification-required.tsx";
 import { getSession } from "@/lib/auth.ts";
@@ -16,10 +19,13 @@ type Props = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-/** Booking an accepted quote: pick a window, enter the address, pay (SPEC §20). */
+/**
+ * Booking a quote (SPEC §20, §21): a one-off price is booked and paid like a job; a
+ * recurring offer on one of its schedules; snow contract terms are signed up for.
+ */
 export default async function BookQuotePage({ params, searchParams }: Props) {
   const { groupId } = await params;
-  const { quote } = await searchParams;
+  const { quote, card } = await searchParams;
   const quoteId = typeof quote === "string" ? quote : "";
   const here = `/quotes/${groupId}/book?quote=${quoteId}`;
   if (!(await getSession())) redirect(`/sign-in?next=${encodeURIComponent(here)}`);
@@ -36,7 +42,15 @@ export default async function BookQuotePage({ params, searchParams }: Props) {
 
   return (
     <Container className="pt-1 pb-16 sm:pb-24">
-      <p className="text-sm font-semibold tracking-[0.06em] text-primary uppercase">Book a quote</p>
+      <p className="text-sm font-semibold tracking-[0.06em] text-primary uppercase">
+        {"problem" in options
+          ? "Book a quote"
+          : options.quote?.kind === "recurring"
+            ? "Recurring visits"
+            : options.quote?.kind === "snow_contract"
+              ? "Snow contract"
+              : "Book a quote"}
+      </p>
       <h1 className="mt-1 font-display text-[30px] leading-[1.1] font-extrabold tracking-[-0.03em] sm:text-[38px]">
         {"problem" in options ? "This quote can't be booked" : options.business.name}
       </h1>
@@ -59,13 +73,32 @@ export default async function BookQuotePage({ params, searchParams }: Props) {
         </p>
       ) : (
         <>
+          {card === "saved" ? (
+            <FormAlert tone="success" className="mt-4 max-w-xl">
+              Card saved. You can finish booking now.
+            </FormAlert>
+          ) : null}
           <p className="mt-2 text-[16px] text-muted">
             The job address must be in {options.postalArea}, the area you asked about.
           </p>
-          <BookingFlow
-            source={{ kind: "quote", quoteId }}
-            defaultPostal={me.onboarding.postalCode ?? ""}
-          />
+          {options.quote?.kind === "recurring" ? (
+            <RecurringFlow
+              source={{ kind: "quote", quoteId }}
+              defaultPostal={me.onboarding.postalCode ?? ""}
+              returnPath={here}
+            />
+          ) : options.quote?.kind === "snow_contract" ? (
+            <ContractFlow
+              source={{ kind: "quote", quoteId }}
+              defaultPostal={me.onboarding.postalCode ?? ""}
+              returnPath={here}
+            />
+          ) : (
+            <BookingFlow
+              source={{ kind: "quote", quoteId }}
+              defaultPostal={me.onboarding.postalCode ?? ""}
+            />
+          )}
         </>
       )}
     </Container>

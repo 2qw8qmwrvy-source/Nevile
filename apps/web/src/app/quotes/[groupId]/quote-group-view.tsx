@@ -106,12 +106,42 @@ export function QuoteGroupView({ initial, isNew }: { initial: Group; isNew: bool
                 <div className="grid gap-2">
                   <p className="font-display text-[28px] leading-none font-bold">
                     {formatCad(pro.quote.priceCents)}
+                    {pro.quote.kind === "recurring" ||
+                    pro.quote.contract?.pricing === "per_visit" ? (
+                      <span className="text-[16px] font-semibold text-muted"> per visit</span>
+                    ) : pro.quote.kind === "snow_contract" ? (
+                      <span className="text-[16px] font-semibold text-muted"> for the season</span>
+                    ) : null}
                   </p>
-                  <p className="text-sm text-muted">
-                    About {pro.quote.duration} · {formatCad(pro.quote.total.totalCents)} with the
-                    service fee
-                    {pro.quote.total.taxCents > 0 ? " and HST" : ""}
-                  </p>
+                  {pro.quote.kind === "one_off" ? (
+                    <p className="text-sm text-muted">
+                      About {pro.quote.duration} · {formatCad(pro.quote.total.totalCents)} with the
+                      service fee
+                      {pro.quote.total.taxCents > 0 ? " and HST" : ""}
+                    </p>
+                  ) : pro.quote.kind === "recurring" ? (
+                    <p className="text-sm text-muted">
+                      Recurring visits:{" "}
+                      {pro.quote.frequencies
+                        .map((option) => option.label.toLowerCase())
+                        .join(" or ")}{" "}
+                      · about {pro.quote.duration} each · {formatCad(pro.quote.total.totalCents)}{" "}
+                      per visit with the service fee
+                      {pro.quote.total.taxCents > 0 ? " and HST" : ""}
+                    </p>
+                  ) : pro.quote.contract ? (
+                    <p className="text-sm text-muted">
+                      Snow contract: {pro.quote.contract.season} · cleared from{" "}
+                      {pro.quote.contract.triggerCm} cm
+                      {pro.quote.contract.seasonBilling
+                        ? ` · ${
+                            pro.quote.contract.seasonBilling === "either"
+                              ? "pay upfront or monthly"
+                              : `paid ${pro.quote.contract.seasonBilling}`
+                          }`
+                        : ""}
+                    </p>
+                  ) : null}
                   {pro.quote.note ? (
                     <p className="text-[15px] whitespace-pre-line">“{pro.quote.note}”</p>
                   ) : null}
@@ -129,7 +159,11 @@ export function QuoteGroupView({ initial, isNew }: { initial: Group; isNew: bool
               <div className="flex flex-wrap gap-2">
                 {pro.canBook && pro.quote ? (
                   <Button href={`/quotes/${group.id}/book?quote=${pro.quote.id}` as Route}>
-                    Book this quote
+                    {pro.quote.kind === "recurring"
+                      ? "Pick a schedule"
+                      : pro.quote.kind === "snow_contract"
+                        ? "Sign up"
+                        : "Book this quote"}
                   </Button>
                 ) : null}
                 {pro.bookingId ? (

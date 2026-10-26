@@ -10,11 +10,12 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { FormAlert } from "@/app/(auth)/_components/form-alert.tsx";
+import { AddressCard, type JobAddress } from "@/components/booking/address-card.tsx";
 import { asDate, DayWindowPicker, longDay } from "@/components/booking/day-window-picker.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
-import { Field, Input, Select, Textarea } from "@/components/ui/field.tsx";
+import { Select } from "@/components/ui/field.tsx";
 import { ArrowRightIcon, LockIcon } from "@/components/ui/icons.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { useTRPC } from "@/lib/trpc.ts";
@@ -63,7 +64,7 @@ export function BookingFlow({ source, defaultPostal }: BookingFlowProps) {
   const [from, setFrom] = useState<string | undefined>(undefined);
   const [date, setDate] = useState<string | null>(null);
   const [windowStart, setWindowStart] = useState<number | null>(null);
-  const [address, setAddress] = useState({
+  const [address, setAddress] = useState<JobAddress>({
     line1: "",
     line2: "",
     city: "",
@@ -181,74 +182,14 @@ export function BookingFlow({ source, defaultPostal }: BookingFlowProps) {
           onPage={page}
         />
 
-        <Card as="section" aria-labelledby="where-title">
-          <h2 id="where-title" className="font-display text-[20px] font-bold">
-            Where
-          </h2>
-          <p className="mt-1 text-[15px] text-muted">
-            The pro sees the address once the booking is paid.
-          </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <Field
-              label="Street address"
-              error={fieldErrors?.address?.[0]}
-              className="sm:col-span-2"
-            >
-              <Input
-                autoComplete="address-line1"
-                value={address.line1}
-                maxLength={120}
-                onChange={(event) =>
-                  setAddress((current) => ({ ...current, line1: event.target.value }))
-                }
-              />
-            </Field>
-            <Field label="Apartment or unit (optional)">
-              <Input
-                autoComplete="address-line2"
-                value={address.line2}
-                maxLength={120}
-                onChange={(event) =>
-                  setAddress((current) => ({ ...current, line2: event.target.value }))
-                }
-              />
-            </Field>
-            <Field label="Town or city">
-              <Input
-                autoComplete="address-level2"
-                value={address.city}
-                maxLength={80}
-                onChange={(event) =>
-                  setAddress((current) => ({ ...current, city: event.target.value }))
-                }
-              />
-            </Field>
-            <Field label="Postal code" hint="Nova Scotia only (starts with B).">
-              <Input
-                autoComplete="postal-code"
-                autoCapitalize="characters"
-                className="uppercase"
-                maxLength={7}
-                value={address.postalCode}
-                onChange={(event) =>
-                  setAddress((current) => ({ ...current, postalCode: event.target.value }))
-                }
-              />
-            </Field>
-            <Field
-              label="Notes for the pro (optional)"
-              hint="Gate codes, pets, where to park."
-              className="sm:col-span-2"
-            >
-              <Textarea
-                rows={3}
-                maxLength={500}
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-              />
-            </Field>
-          </div>
-        </Card>
+        <AddressCard
+          hint="The pro sees the address once the booking is paid."
+          address={address}
+          onAddress={setAddress}
+          notes={notes}
+          onNotes={setNotes}
+          error={fieldErrors?.address?.[0]}
+        />
       </div>
 
       <aside className="lg:sticky lg:top-24" aria-label="Summary">
