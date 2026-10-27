@@ -21,6 +21,7 @@ const toolIcons = {
   team: { ios: "person.2", android: "group" },
   payouts: { ios: "banknote", android: "payments" },
   page: { ios: "safari", android: "open_in_new" },
+  snow: { ios: "snowflake", android: "ac_unit" },
 } as const satisfies Record<string, IconName>;
 
 function Hub({ membership }: { membership: Membership }) {
@@ -143,6 +144,13 @@ function Hub({ membership }: { membership: Membership }) {
             description="Jobs by day, requests and crew"
             icon={icons.bookings}
             onPress={() => router.push(to("/business/calendar"))}
+          />
+          <ListRow
+            label="Snow route"
+            description="Snow contracts in order; mark each one Cleared"
+            icon={toolIcons.snow}
+            divider
+            onPress={() => router.push(to("/business/snow-route"))}
           />
           {manager ? (
             <ListRow

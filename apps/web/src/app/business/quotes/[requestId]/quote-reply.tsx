@@ -3,6 +3,7 @@
 import type { AppRouter, inferRouterOutputs } from "@nevile/api";
 import {
   centsToDollarInput,
+  endSentence,
   FREQUENCY_LABELS,
   formatCad,
   formatDurationMinutes,
@@ -143,7 +144,7 @@ export function QuoteReply({ businessId, initial }: { businessId: string; initia
           <PrivatePhotoGrid photos={request.photos} />
           {request.replyBy ? (
             <p className="text-sm font-semibold text-season-ink">
-              Reply by {replyByFormat.format(request.replyBy)}.
+              Reply by {endSentence(replyByFormat.format(request.replyBy))}
             </p>
           ) : null}
           {request.declineReason ? (

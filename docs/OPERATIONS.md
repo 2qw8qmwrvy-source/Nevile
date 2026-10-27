@@ -61,6 +61,8 @@ the logs names the variable.
 Until real email and SMS providers are connected in `@nevile/auth`, sign-in does not work
 with `NODE_ENV=production`: the auth module refuses to run rather than silently drop
 sign-up codes and verification emails. That is expected until those providers are chosen.
+The email provider must also deliver **attachments**: snow contract agreements (SPEC §21)
+are emailed to both sides as a PDF (`EmailMessage.attachments`).
 
 ## Health check
 
@@ -138,7 +140,10 @@ unused file behind (it is logged as "Could not delete stored media").
 Private photos (quote requests and chat, SPEC §20) live in the same bucket under
 `private/quotes/<uuid>.webp` and `private/chat/<uuid>.webp`. The site never hands out
 their storage keys: it streams them through `/api/private-media/<id>` only to the people
-in that request or conversation. If the bucket is publicly readable through
+in that request or conversation. Photos of cleared snow visits (`private/visits/…`) and
+signed snow contract agreements (`private/agreements/<uuid>.pdf`, SPEC §21) are private in
+the same way, streamed through `/api/visit-photos/<id>` and `/api/agreements/<booking>`
+to the customer and the business only. If the bucket is publicly readable through
 `MEDIA_PUBLIC_BASE_URL`, **allow public reads of `businesses/*` only**:
 
 - Cloudflare R2 with a custom domain: add a WAF custom rule on the media domain,
@@ -192,8 +197,10 @@ Set up once per environment (staging uses Stripe **test mode**, production live 
 1. In the Stripe dashboard, turn on **Connect** with Express accounts, country Canada,
    currency CAD. Set the platform name, icon and support email shown during payout setup.
 2. Create a **webhook endpoint** at `https://<your-domain>/api/webhooks/stripe` listening
-   to `checkout.session.completed`, `checkout.session.expired` and `account.updated`, and
-   tick "Listen to events on Connected accounts" for `account.updated`. Put its signing
+   to `checkout.session.completed`, `checkout.session.expired`,
+   `payment_intent.succeeded`, `payment_intent.amount_capturable_updated` (app payments),
+   `setup_intent.succeeded` (cards saved in the app) and `account.updated`, and tick
+   "Listen to events on Connected accounts" for `account.updated`. Put its signing
    secret in `STRIPE_WEBHOOK_SECRET`. (If you prefer a separate Connect endpoint, use the
    same URL and put its secret in `STRIPE_CONNECT_WEBHOOK_SECRET`.)
 3. Set `STRIPE_SECRET_KEY` and `PAYMENTS_PROVIDER=stripe`, deploy, then make a test
@@ -210,6 +217,14 @@ How money moves:
   confirmed the week before, minus Nevile's 3% fee and any refunds. A failed transfer is
   retried on the next scheduled run. Stripe then pays the business's bank on its own
   schedule (usually 1 to 2 business days).
+- **Saved cards** (SPEC §21): recurring visits and snow contracts are charged to the
+  customer's one saved card (Account → Payment method), off-session, with no checkout.
+  A recurring visit is charged 3 days before it; a per-visit snow contract once the visit
+  is confirmed; a season price upfront when the business accepts, or monthly on the 1st.
+  A declined card is retried once a day for 3 days, then the series or contract pauses
+  until the customer updates the card (which retries what's owed at once).
+- **Season money** is paid out month by month: each month's share joins the weekly payout
+  after that month ends.
 - **Payout setup deadline**: a business can take bookings before setting up payouts, but
   its first paid booking starts a 7-day clock. If setup isn't finished in time, its
   upcoming bookings are cancelled with full refunds and new bookings pause until setup is
@@ -239,12 +254,19 @@ Each run, in order, and each step is safe to repeat:
 2. expires requests a business didn't answer (24 hours, or when the window starts) and
    releases the card hold;
 3. confirms finished jobs the customer didn't answer within 48 hours;
-4. escalates problems not resolved within 3 days to `NEVILE_OPS_EMAIL`;
-5. reminds businesses 2 days before their payout setup deadline, then enforces it;
-6. on Mondays, creates and sends the week's payouts (and retries failed ones);
-7. closes quote requests nobody answered in 3 days, and quotes not booked in 7 (SPEC §20);
-8. sends one email per conversation when chat messages have sat unread for 10 minutes;
-9. deletes photos that were uploaded for a request or message but never sent (after a day).
+4. charges recurring visits and snow contracts that are due to the saved card, retries
+   declined ones daily and pauses after 3 tries, and cancels recurring requests whose
+   first charge couldn't go through (SPEC §21);
+5. releases each ended month of a season price to the business's next payout;
+6. reminds customers the day before a recurring visit;
+7. finishes series whose last visit is done and contracts whose season is over;
+8. escalates problems not resolved within 3 days to `NEVILE_OPS_EMAIL`;
+9. reminds businesses 2 days before their payout setup deadline, then enforces it;
+10. on Mondays, creates and sends the week's payouts (and retries failed ones);
+11. closes quote requests nobody answered in 3 days, and quotes not booked in 7 (SPEC §20);
+12. sends one email per conversation when chat messages have sat unread for 10 minutes;
+13. deletes photos that were uploaded for a request or message but never sent (after a day);
+14. delivers any push notifications a crashed request didn't send.
 
 The JSON answer lists how many items each step handled. Alert if the endpoint fails
 several runs in a row: holds then stay open longer and payouts wait.

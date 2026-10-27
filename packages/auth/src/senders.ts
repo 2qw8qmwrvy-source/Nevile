@@ -119,7 +119,8 @@ export function createConsoleEmailSender(
           `To:      ${message.to}`,
           `Subject: ${message.subject}`,
           ...(message.attachments ?? []).map(
-            (file) => `Attached: ${file.filename} (${Math.ceil(file.content.byteLength / 1024)} KB)`,
+            (file) =>
+              `Attached: ${file.filename} (${Math.ceil(file.content.byteLength / 1024)} KB)`,
           ),
           "",
           message.text,

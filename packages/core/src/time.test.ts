@@ -6,6 +6,7 @@ import {
   assertValidDate,
   DEFAULT_TIME_ZONE,
   daysInMonth,
+  endSentence,
   formatIsoDate,
   fromLocal,
   isIsoDate,
@@ -241,6 +242,13 @@ describe("misc", () => {
     expect(() => assertValidDate(new Date("nope"))).toThrow(RangeError);
     expect(() => assertValidDate("2026-01-01" as unknown as Date)).toThrow(RangeError);
     expect(() => assertValidDate(new Date())).not.toThrow();
+  });
+
+  it("ends a sentence once after a time", () => {
+    expect(endSentence("Waiting until Tuesday at 8:00 a.m.")).toBe(
+      "Waiting until Tuesday at 8:00 a.m.",
+    );
+    expect(endSentence("Waiting until Tuesday")).toBe("Waiting until Tuesday.");
   });
 
   it("adds milliseconds without mutating", () => {

@@ -18,8 +18,8 @@ export function CardOnFile({
   charged,
   missing,
 }: {
-  /** e.g. "Each visit is charged 3 days before it to" (the card label follows). */
-  charged: string;
+  /** Around the card label: "Each visit is charged to" … ", 3 days before it." */
+  charged: { before: string; after?: string };
   /** Why a card is needed, shown when there's none yet. */
   missing: string;
 }) {
@@ -34,7 +34,8 @@ export function CardOnFile({
       ) : card.data ? (
         <>
           <Text>
-            {charged} <Text variant="bodyStrong">{card.data.label}</Text>.
+            {charged.before} <Text variant="bodyStrong">{card.data.label}</Text>
+            {charged.after ?? "."}
           </Text>
           <View style={styles.start}>
             <Button

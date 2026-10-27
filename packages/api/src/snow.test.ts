@@ -265,6 +265,22 @@ describe.skipIf(!TEST_DATABASE_URL)("snow contracts (SPEC §21)", () => {
       .where(eq(agreements.bookingId, bookingId));
     expect(agreement?.contentSha256).toBe(createHash("sha256").update(pdf).digest("hex"));
     expect(lastEmail("bea@example.com", /^Snow contract sign-up/)?.attachments).toHaveLength(1);
+    // The sign-up waits in "Needs you" with its season; it has no time on the calendar.
+    const inbox = await call(owner).businessBookings.inbox({ businessId });
+    expect(inbox.requests.find((job) => job.id === bookingId)).toMatchObject({
+      series: "Snow contract sign-up",
+      window: { label: "Season: November 15, 2026 to March 31, 2027" },
+    });
+    const calendar = await call(owner).businessBookings.calendar({
+      businessId,
+      from: "2026-11-15",
+      days: 7,
+    });
+    const listed = [
+      ...calendar.other,
+      ...calendar.days.flatMap((day) => day.windows.flatMap((window) => window.jobs)),
+    ];
+    expect(listed.some((job) => job.id === bookingId)).toBe(false);
     expect(await agreementFileFor(harness.db, people.Amy?.userId ?? "", bookingId)).toBe(
       agreement?.pdfStorageKey,
     );
@@ -347,6 +363,14 @@ describe.skipIf(!TEST_DATABASE_URL)("snow contracts (SPEC §21)", () => {
       call(owner).businessBookings.markCleared({ businessId, bookingId: amy }),
     );
     expect(again.message).toBe("This address was marked cleared a few minutes ago.");
+    const justCleared = async () =>
+      (await call(owner).businessBookings.snowRoute({ businessId })).stops
+        .filter((stop) => stop.bookingId === amy)
+        .map((stop) => [stop.justCleared, stop.canMark]);
+    expect(await justCleared()).toEqual([[true, false]]);
+    harness.clock.set(at(2026, 11, 20, 7, 31));
+    expect(await justCleared()).toEqual([[false, true]]);
+    harness.clock.set(at(2026, 11, 20, 7));
     expect(await noticesFor(people.Amy?.userId ?? "", "visit.logged")).toHaveLength(1);
     const view = await call(people.Amy?.ctx as Context).bookings.get({ bookingId: amy });
     expect(view.needsAttention).toBe(true);

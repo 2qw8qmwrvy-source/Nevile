@@ -24,6 +24,7 @@ const ROUTES: ReadonlyArray<[RegExp, (match: Match) => Href]> = [
   [/^\/inbox$/, () => "/inbox"],
   [new RegExp(`^/bookings/${ID}$`), ({ id }) => ({ pathname: "/bookings/[id]", params: { id } })],
   [/^\/bookings$/, () => "/bookings"],
+  [/^\/account\/card$/, () => "/card"],
   [
     new RegExp(`^/business/quotes/${ID}$`),
     ({ id, businessId }) => ({
@@ -35,6 +36,21 @@ const ROUTES: ReadonlyArray<[RegExp, (match: Match) => Href]> = [
     /^\/business\/quotes$/,
     ({ businessId }) => ({
       pathname: "/business/quotes",
+      params: businessId ? { businessId } : {},
+    }),
+  ],
+  [
+    // The website's business booking page is the series or snow contract page.
+    new RegExp(`^/business/bookings/${ID}$`),
+    ({ id, businessId }) => ({
+      pathname: "/business/series/[id]",
+      params: { id, ...(businessId ? { businessId } : {}) },
+    }),
+  ],
+  [
+    /^\/business\/snow-route$/,
+    ({ businessId }) => ({
+      pathname: "/business/snow-route",
       params: businessId ? { businessId } : {},
     }),
   ],

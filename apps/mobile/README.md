@@ -25,8 +25,10 @@ npx expo export --platform ios          # bundle smoke test (run inside apps/mob
 | `src/lib/trpc-client.ts` / `trpc.tsx` | tRPC client with the session cookie; `ApiProvider` (TanStack Query) and `useTRPC`. |
 | `src/lib/auth-ui.tsx` | Form pieces used by the auth and account screens (`TextField`, `FormAlert`, tabs). |
 | `src/app/book.tsx`, `src/app/pay-test.tsx` | Booking a service or an accepted quote, paid in the app (Stripe's payment sheet; the test payment screen in development). |
+| `src/app/recurring.tsx`, `src/app/contract.tsx` | Recurring visits and snow contract sign-up (SPEC §21), from a service or a pro's quote; both charge the saved card. |
+| `src/app/card.tsx`, `src/app/card-test.tsx` | Account → Payment method: the one saved card (Stripe's sheet; the test card screen in development). |
 | `src/app/quotes/`, `src/app/inbox/` | Quote requests (camera/library photos), quote comparison, and chat. |
-| `src/app/business/` | Business tools, opened from Account: hub, calendar and jobs, quote requests, listing (profile, services, photos, service area), team (hours, time off, invites, booking windows) and payouts. Every screen takes `businessId`. |
+| `src/app/business/` | Business tools, opened from Account: hub, calendar and jobs, series and contracts (`series/[id]`), snow route, quote requests, listing (profile, services with recurring options and contract terms, photos, service area), team (hours, time off, invites, booking windows) and payouts. Every screen takes `businessId`. |
 | `src/components/business-screen.tsx` | Frame for business tools: Back, business switcher, and the signed-out / no business / wrong role states. |
 | `src/lib/payments.ts`, `photos.ts`, `push.ts`, `app-links.ts` | Payment sheet, private photo uploads, push registration, and opening website paths (from notifications) on app screens. |
 | `src/theme/` | Seasons palette and type scale built on `@nevile/tokens`; `fonts.ts` lists the bundled font files. |
@@ -59,7 +61,7 @@ error and falls back to localhost.
   in in the app with their email and password. Phone codes create the account on first
   use.
 
-## Payments, photos and push (SPEC §20)
+## Payments, photos and push (SPEC §20, §21)
 
 - **Paying:** the booking screen asks the API for a payment (`bookings.appCheckout` or
   `quotes.appCheckout`). With Stripe it opens Stripe's payment sheet (cards, Apple Pay,
@@ -69,6 +71,10 @@ error and falls back to localhost.
   sheet is native code, so testing it needs a development build (`npx expo run:ios`), not
   Expo Go. Apple Pay also needs the merchant id (`merchant.ca.nevile.app`, or
   `EXPO_PUBLIC_APPLE_MERCHANT_ID`) registered in the Apple developer account.
+- **Saved card (SPEC §21):** recurring visits and snow contracts are charged later to the
+  customer's one saved card. `cards.startSetup` (`kind: "intent"`) returns a setup intent
+  that Stripe's sheet confirms (`lib/cards.ts`); with the test provider the test card
+  screen saves a card that works or one that declines.
 - **Photos:** picked with `expo-image-picker` and uploaded to `/api/private-uploads` with
   the session cookie. They're shown from `/api/private-media/<id>` with the same cookie and
   kept in memory only, never in the disk cache.

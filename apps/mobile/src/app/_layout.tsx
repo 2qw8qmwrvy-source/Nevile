@@ -80,6 +80,7 @@ export default function RootLayout() {
           <Stack.Screen name="business/calendar" />
           <Stack.Screen name="business/snow-route" />
           <Stack.Screen name="business/bookings/[id]" />
+          <Stack.Screen name="business/series/[id]" />
           <Stack.Screen name="business/quotes/index" />
           <Stack.Screen name="business/quotes/[requestId]" />
           <Stack.Screen name="business/listing" />

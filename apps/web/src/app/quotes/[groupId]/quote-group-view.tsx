@@ -1,7 +1,7 @@
 "use client";
 
 import type { AppRouter, inferRouterOutputs } from "@nevile/api";
-import { formatCad } from "@nevile/core";
+import { endSentence, formatCad } from "@nevile/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Route } from "next";
 import Link from "next/link";
@@ -152,7 +152,9 @@ export function QuoteGroupView({ initial, isNew }: { initial: Group; isNew: bool
                   ) : null}
                 </div>
               ) : pro.status === "open" && pro.replyBy ? (
-                <p className="text-[15px] text-muted">Replies by {when.format(pro.replyBy)}.</p>
+                <p className="text-[15px] text-muted">
+                  Replies by {endSentence(when.format(pro.replyBy))}
+                </p>
               ) : pro.declineReason ? (
                 <p className="text-[15px]">Their reason: “{pro.declineReason}”</p>
               ) : null}

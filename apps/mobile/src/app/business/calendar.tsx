@@ -76,7 +76,7 @@ function Calendar({ membership }: { membership: Membership }) {
             Requests to answer, problems to fix and jobs nobody is assigned to yet.
           </Text>
           {needsYou.map((job) => (
-            <JobRow key={`${job.id}-${job.status}`} job={job} businessId={businessId} showWindow />
+            <JobRow key={`${job.key}-${job.status}`} job={job} businessId={businessId} showWindow />
           ))}
         </Card>
       ) : null}
@@ -160,7 +160,7 @@ function Calendar({ membership }: { membership: Membership }) {
                           />
                         </View>
                         {window.jobs.map((job) => (
-                          <JobRow key={job.id} job={job} businessId={businessId} />
+                          <JobRow key={job.key} job={job} businessId={businessId} />
                         ))}
                       </Card>
                     );
@@ -176,7 +176,7 @@ function Calendar({ membership }: { membership: Membership }) {
                   Booked before you changed your arrival windows.
                 </Text>
                 {calendar.data.other.map((job) => (
-                  <JobRow key={job.id} job={job} businessId={businessId} showWindow />
+                  <JobRow key={job.key} job={job} businessId={businessId} showWindow />
                 ))}
               </Card>
             ) : null}

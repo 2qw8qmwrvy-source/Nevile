@@ -288,7 +288,7 @@ export default function RecurringRoute() {
           )}
 
           <CardOnFile
-            charged="Each visit is charged 3 days before it to"
+            charged={{ before: "Each visit is charged to", after: ", 3 days before it." }}
             missing="Recurring visits are charged to a saved card, 3 days before each visit. Add one to continue."
           />
 

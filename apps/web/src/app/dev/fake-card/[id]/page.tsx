@@ -19,7 +19,7 @@ export default async function FakeCardPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const setupId = decodeURIComponent(id);
   const setup = fake.describeCardSetup(setupId);
-  if (!setup || setup.kind !== "page") notFound();
+  if (setup?.kind !== "page") notFound();
   return (
     <Container className="pt-1 pb-16">
       <section

@@ -111,13 +111,13 @@ describe("quotes", () => {
 
   it("can be a recurring offer with the schedules on offer (SPEC §21)", () => {
     const offer = { kind: "recurring", priceCents: 6000, durationMinutes: 60, note: "" } as const;
-    expect(quoteReplySchema.safeParse({ ...offer, frequencies: ["weekly", "biweekly"] }).success).toBe(
-      true,
-    );
+    expect(
+      quoteReplySchema.safeParse({ ...offer, frequencies: ["weekly", "biweekly"] }).success,
+    ).toBe(true);
     expect(quoteReplySchema.safeParse({ ...offer, frequencies: [] }).success).toBe(false);
-    expect(quoteReplySchema.safeParse({ ...offer, frequencies: ["weekly", "weekly"] }).success).toBe(
-      false,
-    );
+    expect(
+      quoteReplySchema.safeParse({ ...offer, frequencies: ["weekly", "weekly"] }).success,
+    ).toBe(false);
     // Only recurring offers have schedules.
     expect(
       quoteReplySchema.safeParse({ ...offer, kind: "one_off", frequencies: ["weekly"] }).success,

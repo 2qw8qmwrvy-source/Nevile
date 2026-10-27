@@ -130,6 +130,22 @@ Quotes and chat work the same way: as a customer, search with a service chosen, 
 Each request has its own conversation in the **Inbox**; phone numbers and emails typed in
 chat stay hidden from the other side until a booking between them is paid.
 
+Recurring jobs and snow contracts (SPEC §21) build on the same pieces:
+
+1. As the business, edit a fixed-price service and tick **Every week** (or every 2 weeks,
+   every month) under recurring visits; for a Snow & Ice Removal service, press **Set up a
+   seasonal contract** (trigger, season, price per visit or for the season, spots).
+2. As the customer, press **Book recurring visits** or **Sign up** on the pro's page. Both
+   need a saved card first (**Add a card** saves a test card; **Account → Payment method**
+   on the site). Every date of a series is checked against the pro's calendar; a contract
+   shows the agreement to accept.
+3. The business accepts within 24 hours on its **Calendar** (or the series page), then
+   moves, cancels or assigns single visits there, and marks snow addresses **Cleared** on
+   the **Snow route**. Quotes can also offer recurring visits or snow contract terms.
+
+The test card can also be saved as one that declines (on its test page), to try the
+retry-and-pause rules.
+
 ### Trying it in the app
 
 Everything above also works in the phone app (`pnpm --filter @nevile/mobile start`, see
@@ -139,14 +155,18 @@ Everything above also works in the phone app (`pnpm --filter @nevile/mobile star
   development build with real Stripe keys shows Stripe's payment sheet instead), ask for
   quotes from a pro's page or by ticking up to 3 pros in search (photos from the camera or
   library), and chat from the **Inbox** tab.
+  Recurring visits and snow contracts are booked from a pro's page or a quote too, with
+  the card saved under **Account → Payment method**.
 - **Businesses** tap their business under **Account** to open the business tools: calendar
-  and jobs, quote requests, listing (profile, services, photos, service area by postal
-  code), team and payouts. The tabs stay the same.
+  and jobs, series and contracts, snow route, quote requests, listing (profile, services,
+  recurring options and contract terms, photos, service area by postal code), team and
+  payouts. The tabs stay the same.
 - Push notifications need a real phone and the Expo project id
   (`EXPO_PUBLIC_EAS_PROJECT_ID`); in development the server prints them under
   `[dev push]` unless `NEVILE_DEV_PUSH=expo`.
 
-Scheduled upkeep (expiring holds, auto-confirming jobs, Monday payouts) runs when something
+Scheduled upkeep (expiring holds, auto-confirming jobs, charging recurring visits and
+snow contracts, Monday payouts) runs when something
 calls `/api/cron`; locally, set `CRON_SECRET` in `.env` and run
 `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron`.
 

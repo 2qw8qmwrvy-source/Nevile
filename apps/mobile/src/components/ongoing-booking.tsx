@@ -192,17 +192,15 @@ function VisitRow({
   );
 }
 
-/**
- * A recurring series or snow contract (SPEC §21): schedule or terms, season payments,
- * visits (skip, confirm, report a problem), and ending it.
- */
-export function OngoingBooking({
+type Updated = (next: CustomerBooking | null, announcement: string) => void;
+
+/** Cancelling a series or contract request, or ending it early (SPEC §21). */
+export function EndOngoing({
   booking,
   onUpdated,
 }: {
   booking: CustomerBooking;
-  /** The booking after a change, to put in the cache (or refetch when null). */
-  onUpdated: (next: CustomerBooking | null, announcement: string) => void;
+  onUpdated: Updated;
 }) {
   const trpc = useTRPC();
   const ongoing = booking.ongoing;
@@ -215,7 +213,7 @@ export function OngoingBooking({
         onUpdated(next, requested ? "Request cancelled." : `The ${thing} has ended.`),
     }),
   );
-  if (!ongoing) return null;
+  if (!ongoing || !booking.actions.cancel) return null;
 
   const askToEnd = () =>
     Alert.alert(
@@ -236,6 +234,37 @@ export function OngoingBooking({
         },
       ],
     );
+
+  return (
+    <View style={styles.section}>
+      {end.error ? <FormAlert tone="error" message={apiErrorMessage(end.error)} /> : null}
+      <Button
+        label={requested ? "Cancel request" : `End the ${thing}`}
+        variant="secondary"
+        fullWidth
+        loading={end.isPending}
+        onPress={askToEnd}
+      />
+    </View>
+  );
+}
+
+/**
+ * A recurring series or snow contract (SPEC §21): schedule or terms, season payments, and
+ * visits (skip, confirm, report a problem).
+ */
+export function OngoingBooking({
+  booking,
+  onUpdated,
+}: {
+  booking: CustomerBooking;
+  /** The booking after a change, to put in the cache (or refetch when null). */
+  onUpdated: Updated;
+}) {
+  const ongoing = booking.ongoing;
+  if (!ongoing) return null;
+  const snow = ongoing.kind === "snow_contract";
+  const requested = booking.status === "requested";
 
   return (
     <>
@@ -295,10 +324,10 @@ export function OngoingBooking({
           <Text variant="heading">Season payments</Text>
           {ongoing.season.months.map((month) => (
             <View key={month.sequence} style={styles.line}>
-              <Text variant="bodyStrong" style={styles.grow}>
+              <Text variant="bodyStrong" style={styles.fixed}>
                 {month.label}
               </Text>
-              <Text tone="muted">
+              <Text tone="muted" style={styles.detail}>
                 {formatCad(month.totalCents)} ·{" "}
                 {month.state === "scheduled" && month.chargeDueAt
                   ? `Charged ${shortDay.format(month.chargeDueAt)}`
@@ -334,19 +363,6 @@ export function OngoingBooking({
           ))
         )}
       </Card>
-
-      {booking.actions.cancel ? (
-        <View style={styles.section}>
-          {end.error ? <FormAlert tone="error" message={apiErrorMessage(end.error)} /> : null}
-          <Button
-            label={requested ? "Cancel request" : `End the ${thing}`}
-            variant="secondary"
-            fullWidth
-            loading={end.isPending}
-            onPress={askToEnd}
-          />
-        </View>
-      ) : null}
     </>
   );
 }
@@ -355,6 +371,8 @@ const styles = StyleSheet.create({
   section: { gap: 10 },
   grow: { flex: 1, minWidth: 0 },
   start: { alignItems: "flex-start" },
+  fixed: { flexShrink: 0 },
+  detail: { flex: 1, minWidth: 0, textAlign: "right" },
   line: { flexDirection: "row", justifyContent: "space-between", gap: space.sm },
   visit: { gap: 8, paddingTop: 4 },
   divider: {

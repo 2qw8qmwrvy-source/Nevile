@@ -1,9 +1,14 @@
 import {
   centsToDollarInput,
+  endSentence,
+  FREQUENCY_LABELS,
   formatCad,
   formatDurationMinutes,
   parseDollarsToCents,
   QUOTE_LIMITS,
+  type QuoteKind,
+  RECURRENCE_FREQUENCIES,
+  type RecurrenceFrequency,
   SERVICE_DURATION_CHOICES,
 } from "@nevile/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,10 +19,15 @@ import { BusinessScreen } from "@/components/business-screen.tsx";
 import { Button } from "@/components/button.tsx";
 import { Card } from "@/components/card.tsx";
 import { Chip } from "@/components/chip.tsx";
+import {
+  type ContractDraft,
+  ContractFields,
+  defaultContractDraft,
+} from "@/components/contract-fields.tsx";
 import { icons } from "@/components/icon.tsx";
 import { PrivatePhotoGrid } from "@/components/private-photos.tsx";
 import { Text } from "@/components/text.tsx";
-import { FormAlert, TextField } from "@/lib/auth-ui.tsx";
+import { Checkbox, FormAlert, TextField } from "@/lib/auth-ui.tsx";
 import type { Membership } from "@/lib/business.ts";
 import { replyByFormat } from "@/lib/quotes.ts";
 import { useTRPC } from "@/lib/trpc.tsx";
@@ -33,6 +43,9 @@ function Reply({ membership, requestId }: { membership: Membership; requestId: s
   const [price, setPrice] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [kind, setKind] = useState<QuoteKind | null>(null);
+  const [frequencies, setFrequencies] = useState<RecurrenceFrequency[] | null>(null);
+  const [contract, setContract] = useState<ContractDraft | null>(null);
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -73,7 +86,42 @@ function Reply({ membership, requestId }: { membership: Membership; requestId: s
   const priceValue = price ?? (request.quote ? centsToDollarInput(request.quote.priceCents) : "");
   const durationValue = duration ?? request.quote?.durationMinutes ?? 60;
   const noteValue = note ?? request.quote?.note ?? "";
+  // What the quote offers (SPEC §21): one job, recurring visits, or snow contract terms.
+  const snowRequest = request.category.slug === "snow-ice-removal";
+  const sentKind = request.quote?.kind;
+  const kindValue: QuoteKind =
+    kind ?? (sentKind === "recurring" || sentKind === "snow_contract" ? sentKind : "one_off");
+  const frequenciesValue = frequencies ??
+    request.quote?.frequencies.map((option) => option.value) ?? ["weekly"];
+  const sentContract = request.quote?.contract;
+  const contractValue: ContractDraft =
+    contract ??
+    (sentContract
+      ? {
+          triggerCm: sentContract.triggerCm,
+          seasonStart: sentContract.seasonStart,
+          seasonEnd: sentContract.seasonEnd,
+          pricing: sentContract.pricing,
+          seasonBilling: sentContract.seasonBilling ?? "either",
+        }
+      : defaultContractDraft());
+  const kinds: Array<{ value: QuoteKind; label: string }> = [
+    { value: "one_off", label: "One job" },
+    { value: "recurring", label: "Recurring visits" },
+    ...(snowRequest ? [{ value: "snow_contract" as const, label: "Snow contract" }] : []),
+  ];
   const fieldErrors = apiFieldErrors(reply.error);
+  const ongoingBooking = request.quote !== null && request.quote.kind !== "one_off";
+
+  function toggleFrequency(frequency: RecurrenceFrequency, on: boolean) {
+    setFrequencies(
+      on
+        ? RECURRENCE_FREQUENCIES.filter(
+            (option) => option === frequency || frequenciesValue.includes(option),
+          )
+        : frequenciesValue.filter((option) => option !== frequency),
+    );
+  }
 
   function send() {
     setProblem(null);
@@ -83,7 +131,29 @@ function Reply({ membership, requestId }: { membership: Membership; requestId: s
       setProblem("Enter the price, like 120 or 120.50.");
       return;
     }
-    reply.mutate({ ...input, priceCents: cents, durationMinutes: durationValue, note: noteValue });
+    if (kindValue === "recurring" && frequenciesValue.length === 0) {
+      setProblem("Pick at least one schedule.");
+      return;
+    }
+    reply.mutate({
+      ...input,
+      kind: kindValue,
+      priceCents: cents,
+      durationMinutes: kindValue === "snow_contract" ? undefined : durationValue,
+      frequencies: kindValue === "recurring" ? frequenciesValue : [],
+      contract:
+        kindValue === "snow_contract"
+          ? {
+              triggerCm: contractValue.triggerCm,
+              seasonStart: contractValue.seasonStart,
+              seasonEnd: contractValue.seasonEnd,
+              pricing: contractValue.pricing,
+              seasonBilling:
+                contractValue.pricing === "season" ? contractValue.seasonBilling : null,
+            }
+          : null,
+      note: noteValue,
+    });
   }
 
   return (
@@ -105,7 +175,7 @@ function Reply({ membership, requestId }: { membership: Membership; requestId: s
         <PrivatePhotoGrid photos={request.photos} size={88} />
         {request.replyBy ? (
           <Text variant="bodyStrong" tone="primary">
-            Reply by {replyByFormat.format(request.replyBy)}.
+            Reply by {endSentence(replyByFormat.format(request.replyBy))}
           </Text>
         ) : null}
         {request.declineReason ? <Text>You declined: “{request.declineReason}”</Text> : null}
@@ -130,7 +200,7 @@ function Reply({ membership, requestId }: { membership: Membership; requestId: s
               size="sm"
               onPress={() =>
                 router.push({
-                  pathname: "/business/bookings/[id]",
+                  pathname: ongoingBooking ? "/business/series/[id]" : "/business/bookings/[id]",
                   params: { id: request.bookingId ?? "", businessId },
                 })
               }
@@ -143,32 +213,75 @@ function Reply({ membership, requestId }: { membership: Membership; requestId: s
         <Card style={styles.section}>
           <Text variant="heading">{request.quote ? "Your quote" : "Send a quote"}</Text>
           {request.quote ? (
-            <Text>
-              Sent: {formatCad(request.quote.priceCents)}, about {request.quote.duration}. Sending a
-              new one replaces it.
-            </Text>
+            <Text>Sent: {request.quote.summary}. Sending a new one replaces it.</Text>
           ) : null}
+          <Text variant="bodyStrong">What you offer</Text>
+          <View style={styles.chips} accessibilityRole="radiogroup">
+            {kinds.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                selected={kindValue === option.value}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: kindValue === option.value }}
+                onPress={() => setKind(option.value)}
+              />
+            ))}
+          </View>
           <TextField
-            label="Price for the job ($)"
+            label={
+              kindValue === "one_off"
+                ? "Price for the job ($)"
+                : kindValue === "recurring" || contractValue.pricing === "per_visit"
+                  ? "Price per visit ($)"
+                  : "Price for the season ($)"
+            }
             hint="Before Nevile's service fee, which the customer pays."
             value={priceValue}
             onChangeText={setPrice}
             keyboardType="decimal-pad"
             error={fieldErrors.priceCents}
           />
-          <Text variant="bodyStrong">How long the job takes</Text>
-          <View style={styles.chips} accessibilityRole="radiogroup">
-            {SERVICE_DURATION_CHOICES.map((minutes) => (
-              <Chip
-                key={minutes}
-                label={formatDurationMinutes(minutes)}
-                selected={durationValue === minutes}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: durationValue === minutes }}
-                onPress={() => setDuration(minutes)}
-              />
-            ))}
-          </View>
+          {kindValue !== "snow_contract" ? (
+            <>
+              <Text variant="bodyStrong">
+                {kindValue === "recurring" ? "How long each visit takes" : "How long the job takes"}
+              </Text>
+              <View style={styles.chips} accessibilityRole="radiogroup">
+                {SERVICE_DURATION_CHOICES.map((minutes) => (
+                  <Chip
+                    key={minutes}
+                    label={formatDurationMinutes(minutes)}
+                    selected={durationValue === minutes}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: durationValue === minutes }}
+                    onPress={() => setDuration(minutes)}
+                  />
+                ))}
+              </View>
+            </>
+          ) : null}
+          {kindValue === "recurring" ? (
+            <View>
+              <Text variant="bodyStrong">Schedules the customer can pick</Text>
+              {RECURRENCE_FREQUENCIES.map((frequency) => (
+                <Checkbox
+                  key={frequency}
+                  label={FREQUENCY_LABELS[frequency]}
+                  checked={frequenciesValue.includes(frequency)}
+                  onChange={(on) => toggleFrequency(frequency, on)}
+                />
+              ))}
+            </View>
+          ) : null}
+          {kindValue === "snow_contract" ? (
+            <>
+              <ContractFields value={contractValue} onChange={setContract} />
+              {fieldErrors.contract ? (
+                <FormAlert tone="error" message={fieldErrors.contract} />
+              ) : null}
+            </>
+          ) : null}
           <TextField
             label="What's included (optional)"
             hint={`${noteValue.length}/${QUOTE_LIMITS.noteMaxLength}`}
@@ -227,7 +340,7 @@ function Reply({ membership, requestId }: { membership: Membership; requestId: s
         <Card style={styles.section}>
           <Text variant="heading">Your quote</Text>
           <Text variant="display">{formatCad(request.quote.priceCents)}</Text>
-          <Text tone="muted">About {request.quote.duration}</Text>
+          <Text tone="muted">{request.quote.summary}</Text>
         </Card>
       ) : null}
     </>

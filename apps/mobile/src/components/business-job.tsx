@@ -18,6 +18,18 @@ export function hours(minutes: number): string {
   return `${Math.round((minutes / 60) * 10) / 10} h`;
 }
 
+/** Opens a one-off job, or the series or contract a visit belongs to (SPEC §21). */
+export function openJob(job: BusinessJob, businessId: string) {
+  if (job.kind === "one_off") {
+    router.push({ pathname: "/business/bookings/[id]", params: { id: job.id, businessId } });
+    return;
+  }
+  router.push({
+    pathname: "/business/series/[id]",
+    params: { id: job.id, businessId, visitId: job.visitId ?? "" },
+  });
+}
+
 /** One job or request in a list; opens the job. */
 export function JobRow({
   job,
@@ -32,11 +44,9 @@ export function JobRow({
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={`${job.service.title} for ${job.customer.firstName}, ${job.window.label}, ${job.statusLabel}`}
+      accessibilityLabel={`${job.service.title} for ${job.customer.firstName}, ${job.window.label}${job.series ? `, ${job.series}` : ""}, ${job.statusLabel}`}
       pressedScale={0.98}
-      onPress={() =>
-        router.push({ pathname: "/business/bookings/[id]", params: { id: job.id, businessId } })
-      }
+      onPress={() => openJob(job, businessId)}
       style={styles.row}
     >
       <View style={styles.body}>
@@ -47,7 +57,13 @@ export function JobRow({
           {showWindow ? `${job.window.label} · ` : ""}
           {job.customer.firstName} · {hours(job.workMinutes)} · you get{" "}
           {formatCad(job.payout.cents)}
+          {job.kind === "one_off" ? "" : " per visit"}
         </Text>
+        {job.series ? (
+          <Text variant="small" tone="primary" numberOfLines={1}>
+            {job.series}
+          </Text>
+        ) : null}
         <View style={styles.meta}>
           <Badge
             label={job.statusLabel}

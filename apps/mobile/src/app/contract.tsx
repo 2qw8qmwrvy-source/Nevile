@@ -255,7 +255,7 @@ export default function ContractRoute() {
           ) : null}
 
           <CardOnFile
-            charged="Charged to"
+            charged={{ before: "Charged to" }}
             missing="Contracts are charged to a saved card. Add one to continue."
           />
 

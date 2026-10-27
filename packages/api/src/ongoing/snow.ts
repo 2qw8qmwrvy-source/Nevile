@@ -1036,6 +1036,10 @@ export async function snowRoute(db: DbExecutor, business: Business, now: Date) {
     stops: rows.map(({ booking, contract, address, customerName }, index) => {
       const visitsSoFar = logged.find((row) => row.bookingId === booking.id);
       const inSeason = contract.seasonStart <= today && today <= contract.seasonEnd;
+      // Logging the same address again this soon is refused as a double tap.
+      const last = visitsSoFar?.last ?? null;
+      const justCleared =
+        last !== null && now.getTime() - last.getTime() < DOUBLE_TAP_MINUTES * MS_PER_MINUTE;
       return {
         bookingId: booking.id,
         stop: index + 1,
@@ -1052,7 +1056,8 @@ export async function snowRoute(db: DbExecutor, business: Business, now: Date) {
         lastClearedLabel: visitsSoFar?.last
           ? whenLabel(visitsSoFar.last, visitsSoFar.last, business.timezone).split(" · ")[0]
           : null,
-        canMark: inSeason && booking.pausedAt === null,
+        justCleared,
+        canMark: inSeason && booking.pausedAt === null && !justCleared,
       };
     }),
   };

@@ -1,3 +1,4 @@
+import { FREQUENCY_LABELS } from "@nevile/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
@@ -171,8 +172,21 @@ function ListingOverview({ membership }: { membership: Membership }) {
                 <Text variant="bodyStrong">{service.title}</Text>
                 <Text variant="small" tone="muted">
                   {service.categoryName} · {service.priceText}
+                  {service.recurrenceFrequencies.length > 0
+                    ? ` · also ${service.recurrenceFrequencies
+                        .map((frequency) => FREQUENCY_LABELS[frequency].toLowerCase())
+                        .join(" or ")}`
+                    : ""}
                 </Text>
                 <View style={styles.badges}>
+                  {service.contract ? (
+                    <Badge
+                      label="Seasonal contract"
+                      size="sm"
+                      background={seasons.winter.tint}
+                      textColor={colors.ink}
+                    />
+                  ) : null}
                   {service.instantBook && business.instantBook ? (
                     <Badge label="Instant Book" size="sm" />
                   ) : null}

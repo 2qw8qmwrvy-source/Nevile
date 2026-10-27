@@ -1,4 +1,4 @@
-import { formatCad } from "@nevile/core";
+import { endSentence, formatCad } from "@nevile/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Alert, StyleSheet, View } from "react-native";
@@ -166,7 +166,9 @@ export default function QuoteGroupRoute() {
                       ) : null}
                     </>
                   ) : pro.status === "open" && pro.replyBy ? (
-                    <Text tone="muted">Replies by {quoteWhen.format(pro.replyBy)}.</Text>
+                    <Text tone="muted">
+                      Replies by {endSentence(quoteWhen.format(pro.replyBy))}
+                    </Text>
                   ) : pro.declineReason ? (
                     <Text>Their reason: “{pro.declineReason}”</Text>
                   ) : null}

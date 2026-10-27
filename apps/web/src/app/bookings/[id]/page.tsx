@@ -1,4 +1,4 @@
-import { formatCad } from "@nevile/core";
+import { endSentence, formatCad } from "@nevile/core";
 import { TRPCError } from "@trpc/server";
 import type { Metadata, Route } from "next";
 import Link from "next/link";
@@ -110,7 +110,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
               {booking.approvalExpiresAt ? (
                 <p className="mt-3 text-sm text-muted">
                   Waiting for {booking.business.name} until{" "}
-                  {dateTime.format(booking.approvalExpiresAt)}.
+                  {endSentence(dateTime.format(booking.approvalExpiresAt))}
                 </p>
               ) : null}
               {booking.cancellationReason ? (
@@ -176,7 +176,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
               {booking.approvalExpiresAt ? (
                 <p className="mt-3 text-sm text-muted">
                   Waiting for {booking.business.name} until{" "}
-                  {dateTime.format(booking.approvalExpiresAt)}.
+                  {endSentence(dateTime.format(booking.approvalExpiresAt))}
                 </p>
               ) : null}
               {booking.cancellationReason ? (

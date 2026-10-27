@@ -1,4 +1,4 @@
-import { formatCad } from "@nevile/core";
+import { endSentence, formatCad } from "@nevile/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
@@ -10,7 +10,7 @@ import { Button } from "@/components/button.tsx";
 import { Card } from "@/components/card.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { icons } from "@/components/icon.tsx";
-import { OngoingBooking } from "@/components/ongoing-booking.tsx";
+import { EndOngoing, OngoingBooking } from "@/components/ongoing-booking.tsx";
 import { Screen } from "@/components/screen.tsx";
 import { Text } from "@/components/text.tsx";
 import { IconButton, TopBar, topBarIcons } from "@/components/top-bar.tsx";
@@ -149,7 +149,7 @@ export default function BookingRoute() {
                 {booking.data.approvalExpiresAt ? (
                   <Text variant="small" tone="muted">
                     Waiting for {booking.data.business.name} until{" "}
-                    {deadlineFormat.format(booking.data.approvalExpiresAt)}.
+                    {endSentence(deadlineFormat.format(booking.data.approvalExpiresAt))}
                   </Text>
                 ) : null}
                 {booking.data.cancellationReason ? (
@@ -181,6 +181,8 @@ export default function BookingRoute() {
                   </Text>
                 ) : null}
               </Card>
+
+              <EndOngoing booking={booking.data} onUpdated={updated} />
             </>
           ) : (
             <>
@@ -195,7 +197,7 @@ export default function BookingRoute() {
                 {booking.data.approvalExpiresAt ? (
                   <Text variant="small" tone="muted">
                     Waiting for {booking.data.business.name} until{" "}
-                    {deadlineFormat.format(booking.data.approvalExpiresAt)}.
+                    {endSentence(deadlineFormat.format(booking.data.approvalExpiresAt))}
                   </Text>
                 ) : null}
                 {booking.data.cancellationReason ? (

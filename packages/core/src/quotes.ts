@@ -148,7 +148,11 @@ export const quoteReplySchema = z
     }
     if (reply.kind === "recurring") {
       if (reply.frequencies.length === 0) {
-        ctx.addIssue({ code: "custom", path: ["frequencies"], message: "Pick at least one schedule" });
+        ctx.addIssue({
+          code: "custom",
+          path: ["frequencies"],
+          message: "Pick at least one schedule",
+        });
       } else if (new Set(reply.frequencies).size !== reply.frequencies.length) {
         ctx.addIssue({ code: "custom", path: ["frequencies"], message: "Pick each schedule once" });
       }

@@ -20,6 +20,7 @@ import {
   isNull,
   lt,
   or,
+  snowContracts,
   user,
   visits,
 } from "@nevile/db";
@@ -57,6 +58,7 @@ import {
   endContract,
   markCleared,
   reorderRoute,
+  seasonLabel,
   snowRoute,
 } from "../ongoing/snow.ts";
 import { ongoingDetails, seriesBadge } from "../ongoing/views.ts";
@@ -93,7 +95,11 @@ async function jobsInRange(ctx: MemberCtx, from: Date, to: Date): Promise<JobRef
         eq(bookings.businessId, ctx.business.id),
         gte(bookings.requestedStartsAt, from),
         lt(bookings.requestedStartsAt, to),
-        or(eq(bookings.kind, "one_off"), eq(bookings.status, "requested")),
+        // A snow contract sign-up has no time of its own: it waits in "Needs you".
+        or(
+          eq(bookings.kind, "one_off"),
+          and(eq(bookings.kind, "recurring"), eq(bookings.status, "requested")),
+        ),
       ),
     );
   const ongoing = await ctx.db
@@ -160,6 +166,14 @@ async function viewsFor(ctx: MemberCtx, refs: JobRef[]) {
       .from(user)
       .where(eq(user.id, parts.booking.customerId));
     if (!address || !customer) continue;
+    // A snow contract sign-up is for the season, not a time window.
+    const [contract] =
+      parts.booking.kind === "snow_contract" && !parts.visit
+        ? await ctx.db
+            .select({ start: snowContracts.seasonStart, end: snowContracts.seasonEnd })
+            .from(snowContracts)
+            .where(eq(snowContracts.bookingId, parts.booking.id))
+        : [];
     result.push(
       businessBookingView(
         parts,
@@ -173,6 +187,7 @@ async function viewsFor(ctx: MemberCtx, refs: JobRef[]) {
             parts.visit?.workMinutes ?? minutes.get(ref.bookingId) ?? parts.service.durationMinutes,
           conversationId: chats.get(ref.bookingId) ?? null,
           series: await seriesBadge(ctx.db, parts.booking, parts.visit),
+          windowLabel: contract ? `Season: ${seasonLabel(contract.start, contract.end)}` : null,
         },
         now,
       ),

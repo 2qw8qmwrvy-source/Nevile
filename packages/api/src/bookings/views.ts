@@ -181,6 +181,8 @@ export function businessBookingView(
     conversationId?: string | null;
     /** Recurring visits: "Every week · visit 3 of 12" (SPEC §21). */
     series?: string | null;
+    /** Replaces the time window's label, e.g. a snow contract sign-up's season. */
+    windowLabel?: string | null;
   },
   now: Date,
 ) {
@@ -200,7 +202,7 @@ export function businessBookingView(
     status,
     statusLabel: BUSINESS_STATUS_LABELS[status],
     service: { id: parts.service.id, title: booking.title },
-    window: windowOf(parts),
+    window: { ...windowOf(parts), ...(extra.windowLabel ? { label: extra.windowLabel } : {}) },
     workMinutes: extra.workMinutes,
     customer: {
       firstName: firstName(extra.customer.name),

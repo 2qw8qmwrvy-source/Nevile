@@ -162,3 +162,11 @@ export function addMilliseconds(at: Date, ms: number): Date {
   assertValidDate(at);
   return new Date(at.getTime() + ms);
 }
+
+/**
+ * Ends a sentence that finishes with a formatted time, without doubling the period of
+ * "a.m." or "p.m." ("…until 8:00 a.m." rather than "…until 8:00 a.m..").
+ */
+export function endSentence(text: string): string {
+  return text.endsWith(".") ? text : `${text}.`;
+}

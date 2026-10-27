@@ -104,6 +104,10 @@ function StopCard({
           <p className="mt-3 text-sm text-muted">
             Outside the contract&apos;s season ({stop.season}).
           </p>
+        ) : stop.justCleared && !cleared.isSuccess ? (
+          <p className="mt-3 text-sm text-muted">
+            Cleared a moment ago. You can log it again after 30 minutes.
+          </p>
         ) : null}
         {cleared.error ? (
           <FormAlert tone="error" className="mt-3">
