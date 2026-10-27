@@ -3,6 +3,7 @@ import { type Dispatch, type SetStateAction, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { API_URL } from "@/lib/auth.ts";
 import {
   PhotoError,
   type PhotoPurpose,
@@ -22,18 +23,27 @@ import { IconButton, topBarIcons } from "./top-bar.tsx";
 const cameraIcon = { ios: "camera", android: "photo_camera" } as const satisfies IconName;
 const removeIcon = { ios: "xmark", android: "close" } as const satisfies IconName;
 
-/** Private photos (quote request or chat), loaded with the session; tap one to enlarge. */
+/**
+ * Private photos (quote request, chat or a snow visit), loaded with the session; tap one to
+ * enlarge. A photo with a `url` (an API path) loads from there instead of private media.
+ */
 export function PrivatePhotoGrid({
   photos,
   size = 96,
+  label = "Attachment",
 }: {
-  photos: ReadonlyArray<{ id: string }>;
+  photos: ReadonlyArray<{ id: string; url?: string }>;
   size?: number;
+  /** What each photo is, for screen readers: "Attachment 1 of 3". */
+  label?: string;
 }) {
   const cookie = useAuthCookie();
   const [open, setOpen] = useState<number | null>(null);
   if (photos.length === 0 || cookie === null) return null;
-  const source = (id: string) => ({ uri: privatePhotoUrl(id), headers: { cookie } });
+  const source = (photo: { id: string; url?: string }) => ({
+    uri: photo.url ? `${API_URL}${photo.url}` : privatePhotoUrl(photo.id),
+    headers: { cookie },
+  });
   const current = open === null ? undefined : photos[open];
   return (
     <>
@@ -42,12 +52,12 @@ export function PrivatePhotoGrid({
           <Pressable
             key={photo.id}
             accessibilityRole="imagebutton"
-            accessibilityLabel={`Attachment ${index + 1} of ${photos.length}`}
+            accessibilityLabel={`${label} ${index + 1} of ${photos.length}`}
             accessibilityHint="Shows it full screen"
             onPress={() => setOpen(index)}
           >
             <Image
-              source={source(photo.id)}
+              source={source(photo)}
               // Personal photos stay in memory only, never in the disk cache.
               cachePolicy="memory"
               contentFit="cover"
@@ -69,11 +79,11 @@ export function PrivatePhotoGrid({
           </View>
           {current ? (
             <Image
-              source={source(current.id)}
+              source={source(current)}
               cachePolicy="memory"
               contentFit="contain"
               style={styles.full}
-              accessibilityLabel={`Attachment ${(open ?? 0) + 1} of ${photos.length}`}
+              accessibilityLabel={`${label} ${(open ?? 0) + 1} of ${photos.length}`}
             />
           ) : null}
         </SafeAreaView>

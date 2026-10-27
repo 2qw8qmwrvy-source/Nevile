@@ -22,6 +22,21 @@ export function statusColors(status: string): { background: string; text: string
   return STATUS_COLORS[status] ?? { background: colors.ground, text: colors.muted };
 }
 
+/**
+ * When a booking happens, for lists: the arrival window, or for a series its schedule and
+ * next visit, or for a snow contract its season (SPEC §21).
+ */
+export function whenLabel(booking: CustomerBooking): string {
+  const { ongoing } = booking;
+  if (ongoing?.kind === "recurring") {
+    return ongoing.nextVisit
+      ? `${ongoing.frequencyLabel} · next ${ongoing.nextVisit.window.label}`
+      : ongoing.frequencyLabel;
+  }
+  if (ongoing?.kind === "snow_contract") return `Snow contract · ${ongoing.terms.season}`;
+  return booking.window.label;
+}
+
 /** "Monday, November 2 at 3:00 p.m." in Nova Scotia time. */
 export const deadlineFormat = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/Halifax",

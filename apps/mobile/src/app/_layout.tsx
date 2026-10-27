@@ -68,12 +68,17 @@ export default function RootLayout() {
           <Stack.Screen name="bookings/[id]" />
           <Stack.Screen name="book" />
           <Stack.Screen name="pay-test" options={{ presentation: "modal" }} />
+          <Stack.Screen name="recurring" />
+          <Stack.Screen name="contract" />
+          <Stack.Screen name="card" />
+          <Stack.Screen name="card-test" options={{ presentation: "modal" }} />
           <Stack.Screen name="quotes/index" />
           <Stack.Screen name="quotes/new" options={{ presentation: "modal" }} />
           <Stack.Screen name="quotes/[groupId]" />
           <Stack.Screen name="inbox/[conversationId]" />
           <Stack.Screen name="business/index" />
           <Stack.Screen name="business/calendar" />
+          <Stack.Screen name="business/snow-route" />
           <Stack.Screen name="business/bookings/[id]" />
           <Stack.Screen name="business/quotes/index" />
           <Stack.Screen name="business/quotes/[requestId]" />

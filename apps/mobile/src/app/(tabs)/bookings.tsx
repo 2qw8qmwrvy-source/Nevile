@@ -14,7 +14,7 @@ import { Screen } from "@/components/screen.tsx";
 import { Text } from "@/components/text.tsx";
 import { useSession } from "@/lib/auth.ts";
 import { FormAlert } from "@/lib/auth-ui.tsx";
-import { type CustomerBooking, statusColors } from "@/lib/bookings.ts";
+import { type CustomerBooking, statusColors, whenLabel } from "@/lib/bookings.ts";
 import { useTRPC } from "@/lib/trpc.tsx";
 import { colors, space } from "@/theme";
 
@@ -23,7 +23,7 @@ function BookingRow({ booking }: { booking: CustomerBooking }) {
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={`${booking.service.title} with ${booking.business.name}, ${booking.window.label}, ${booking.statusLabel}`}
+      accessibilityLabel={`${booking.service.title} with ${booking.business.name}, ${whenLabel(booking)}, ${booking.statusLabel}`}
       onPress={() => router.push(`/bookings/${booking.id}`)}
     >
       <Card style={styles.row}>
@@ -41,7 +41,7 @@ function BookingRow({ booking }: { booking: CustomerBooking }) {
             textColor={tone.text}
           />
         </View>
-        <Text variant="small">{booking.window.label}</Text>
+        <Text variant="small">{whenLabel(booking)}</Text>
       </Card>
     </PressableScale>
   );

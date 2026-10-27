@@ -165,7 +165,7 @@ export default function AccountRoute() {
       onCreateAccount={() => router.push("/sign-up")}
       onSignOut={confirmSignOut}
       onOpenProfile={() => comingSoon("Profile")}
-      onOpenPaymentMethods={() => comingSoon("Payment methods")}
+      onOpenPaymentMethods={() => router.push("/card")}
       verification={
         verification.needed
           ? {

@@ -20,20 +20,41 @@ export type SheetResult =
 
 let initialisedKey: string | null = null;
 
+/** Loads the Stripe module and points it at the API's publishable key (once per key). */
+async function stripeFor(publishableKey: string) {
+  const stripe = await import("@stripe/stripe-react-native");
+  if (initialisedKey !== publishableKey) {
+    await stripe.initStripe({
+      publishableKey,
+      merchantIdentifier: MERCHANT_ID,
+      urlScheme: APP_SCHEME,
+    });
+    initialisedKey = publishableKey;
+  }
+  return stripe;
+}
+
+type Stripe = Awaited<ReturnType<typeof stripeFor>>;
+
+/** Presents the initialised sheet and says how it ended. */
+async function presentSheet(
+  stripe: Stripe,
+  init: Awaited<ReturnType<Stripe["initPaymentSheet"]>>,
+): Promise<SheetResult> {
+  if (init.error)
+    return { kind: "failed", message: init.error.localizedMessage ?? init.error.message };
+  const result = await stripe.presentPaymentSheet();
+  if (!result.error) return { kind: "paid" };
+  if (result.error.code === "Canceled") return { kind: "canceled" };
+  return { kind: "failed", message: result.error.localizedMessage ?? result.error.message };
+}
+
 /** Shows Stripe's payment sheet for an in-app checkout. */
 export async function presentStripeSheet(checkout: AppCheckout): Promise<SheetResult> {
   if (!checkout.publishableKey) {
     return { kind: "failed", message: "Payments aren't set up in the app yet." };
   }
-  const stripe = await import("@stripe/stripe-react-native");
-  if (initialisedKey !== checkout.publishableKey) {
-    await stripe.initStripe({
-      publishableKey: checkout.publishableKey,
-      merchantIdentifier: MERCHANT_ID,
-      urlScheme: APP_SCHEME,
-    });
-    initialisedKey = checkout.publishableKey;
-  }
+  const stripe = await stripeFor(checkout.publishableKey);
   const testMode = checkout.publishableKey.startsWith("pk_test_");
   const init = await stripe.initPaymentSheet({
     merchantDisplayName: "Nevile",
@@ -43,12 +64,31 @@ export async function presentStripeSheet(checkout: AppCheckout): Promise<SheetRe
     defaultBillingDetails: { address: { country: "CA" } },
     returnURL: `${APP_SCHEME}://stripe-redirect`,
   });
-  if (init.error)
-    return { kind: "failed", message: init.error.localizedMessage ?? init.error.message };
-  const result = await stripe.presentPaymentSheet();
-  if (!result.error) return { kind: "paid" };
-  if (result.error.code === "Canceled") return { kind: "canceled" };
-  return { kind: "failed", message: result.error.localizedMessage ?? result.error.message };
+  return presentSheet(stripe, init);
+}
+
+export type CardSetup = Extract<
+  inferRouterOutputs<AppRouter>["cards"]["startSetup"],
+  { kind: "intent" }
+>;
+
+/**
+ * Shows Stripe's sheet for saving a card (SPEC §21): it confirms the setup intent the API
+ * created, so the card is stored with Stripe and charged later for recurring visits and
+ * snow contracts. "paid" here means the card was saved.
+ */
+export async function presentCardSetupSheet(setup: CardSetup): Promise<SheetResult> {
+  if (!setup.publishableKey) {
+    return { kind: "failed", message: "Payments aren't set up in the app yet." };
+  }
+  const stripe = await stripeFor(setup.publishableKey);
+  const init = await stripe.initPaymentSheet({
+    merchantDisplayName: "Nevile",
+    setupIntentClientSecret: setup.clientSecret,
+    defaultBillingDetails: { address: { country: "CA" } },
+    returnURL: `${APP_SCHEME}://stripe-redirect`,
+  });
+  return presentSheet(stripe, init);
 }
 
 export type CheckoutOutcome = inferRouterOutputs<AppRouter>["bookings"]["finishAppCheckout"];

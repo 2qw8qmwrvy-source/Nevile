@@ -1,7 +1,8 @@
 /**
- * Private photos for quote requests and chat (SPEC §20): taken with the camera or picked
- * from the library, uploaded to the API (which strips location data and re-encodes them),
- * and shown only with the signed-in person's session cookie.
+ * Private photos for quote requests and chat (SPEC §20) and cleared snow visits (§21):
+ * taken with the camera or picked from the library, uploaded to the API (which strips
+ * location data and re-encodes them), and shown only with the signed-in person's session
+ * cookie.
  */
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
@@ -9,7 +10,7 @@ import { Platform } from "react-native";
 
 import { API_URL, getAuthCookie, useSession } from "./auth.ts";
 
-export type PhotoPurpose = "quotes" | "chat";
+export type PhotoPurpose = "quotes" | "chat" | "visits";
 
 /** A photo in a form: uploading, uploaded (with its id) or failed. */
 export type PickedPhoto = {

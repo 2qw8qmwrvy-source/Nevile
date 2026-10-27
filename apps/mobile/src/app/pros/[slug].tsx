@@ -1,4 +1,4 @@
-import { formatDurationMinutes } from "@nevile/core";
+import { FREQUENCY_LABELS, formatCad, formatDurationMinutes } from "@nevile/core";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -23,6 +23,13 @@ import { enterUp } from "@/theme/motion.ts";
 
 const monthYear = new Intl.DateTimeFormat("en-CA", { month: "long", year: "numeric" });
 const reviewDate = new Intl.DateTimeFormat("en-CA", { month: "short", year: "numeric" });
+const seasonDay = new Intl.DateTimeFormat("en-CA", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+/** "Nov 15" for a contract's season date. */
+const seasonDate = (iso: string) => seasonDay.format(new Date(`${iso}T12:00:00Z`));
 
 /** A business's public page (SPEC §18). Contact details stay hidden until booking (§7). */
 export default function ProRoute() {
@@ -37,6 +44,10 @@ export default function ProRoute() {
   const firstBookable = profile.data?.services.find((service) => service.bookable);
   const openBooking = (serviceId: string) =>
     router.push({ pathname: "/book", params: { serviceId } });
+  const openRecurring = (serviceId: string) =>
+    router.push({ pathname: "/recurring", params: { serviceId } });
+  const openContract = (serviceId: string) =>
+    router.push({ pathname: "/contract", params: { serviceId } });
   const canAskForQuote = Boolean(
     profile.data?.takesQuotes && !profile.data.preview && profile.data.categories.length > 0,
   );
@@ -184,18 +195,69 @@ export default function ProRoute() {
                       {formatDurationMinutes(service.durationMinutes)}
                     </Text>
                   </View>
-                  <Text variant="bodyStrong">{service.priceText}</Text>
+                  <Text variant="bodyStrong">
+                    {service.contract
+                      ? `${formatCad(service.contract.priceCents)} ${
+                          service.contract.pricing === "season" ? "for the season" : "per visit"
+                        }`
+                      : service.priceText}
+                  </Text>
                 </View>
                 {service.description ? <Text>{service.description}</Text> : null}
-                {service.instantBook ? <Badge label="Instant Book" size="sm" /> : null}
-                {canBook && service.bookable ? (
-                  <Button
-                    label="Book"
-                    size="sm"
-                    variant="secondary"
-                    accessibilityLabel={`Book ${service.title}`}
-                    onPress={() => openBooking(service.id)}
-                  />
+                {service.instantBook && !service.contract ? (
+                  <Badge label="Instant Book" size="sm" />
+                ) : null}
+                {service.recurrenceFrequencies.length > 0 ? (
+                  <Text variant="small" tone="muted">
+                    Also{" "}
+                    {service.recurrenceFrequencies
+                      .map((frequency) => FREQUENCY_LABELS[frequency].toLowerCase())
+                      .join(" or ")}
+                  </Text>
+                ) : null}
+                {service.contract ? (
+                  <View style={styles.contract}>
+                    <Text variant="bodyStrong">Seasonal snow contract</Text>
+                    <Text variant="small" tone="muted">
+                      Cleared from {service.contract.triggerCm} cm ·{" "}
+                      {seasonDate(service.contract.seasonStart)} to{" "}
+                      {seasonDate(service.contract.seasonEnd)} ·{" "}
+                      {service.contract.spotsLeft > 0
+                        ? `${service.contract.spotsLeft} ${
+                            service.contract.spotsLeft === 1 ? "spot" : "spots"
+                          } left`
+                        : "No spots left"}
+                    </Text>
+                  </View>
+                ) : null}
+                {service.contract ? (
+                  canBook && service.contract.spotsLeft > 0 ? (
+                    <Button
+                      label="Sign up"
+                      size="sm"
+                      accessibilityLabel={`Sign up for ${service.title}`}
+                      onPress={() => openContract(service.id)}
+                    />
+                  ) : null
+                ) : canBook && service.bookable ? (
+                  <View style={styles.buttons}>
+                    <Button
+                      label="Book"
+                      size="sm"
+                      variant="secondary"
+                      accessibilityLabel={`Book ${service.title}`}
+                      onPress={() => openBooking(service.id)}
+                    />
+                    {service.recurrenceFrequencies.length > 0 ? (
+                      <Button
+                        label="Book recurring visits"
+                        size="sm"
+                        variant="secondary"
+                        accessibilityLabel={`Book recurring visits of ${service.title}`}
+                        onPress={() => openRecurring(service.id)}
+                      />
+                    ) : null}
+                  </View>
                 ) : null}
               </Card>
             ))}
@@ -261,5 +323,7 @@ const styles = StyleSheet.create({
   serviceTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   shrink: { flex: 1, minWidth: 0 },
   reply: { backgroundColor: colors.ground, borderRadius: radius.input, padding: 12 },
+  contract: { gap: 2, backgroundColor: colors.ground, borderRadius: radius.input, padding: 12 },
+  buttons: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   replyLabel: { fontFamily: "Figtree_600SemiBold" },
 });

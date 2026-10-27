@@ -442,8 +442,8 @@ export function AccountScreen({
         />
         <ListRow
           divider
-          label="Payment methods"
-          description="Cards are stored securely by Stripe"
+          label="Payment method"
+          description="Your saved card for recurring visits and snow contracts"
           icon={icons.card}
           onPress={onOpenPaymentMethods}
           disabled={!onOpenPaymentMethods}

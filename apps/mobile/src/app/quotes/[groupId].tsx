@@ -14,11 +14,35 @@ import { Screen } from "@/components/screen.tsx";
 import { Text } from "@/components/text.tsx";
 import { IconButton, TopBar, topBarIcons } from "@/components/top-bar.tsx";
 import { FormAlert } from "@/lib/auth-ui.tsx";
-import { quoteStatusColors, quoteWhen } from "@/lib/quotes.ts";
+import { type QuoteGroup, quoteStatusColors, quoteWhen } from "@/lib/quotes.ts";
 import { useTRPC } from "@/lib/trpc.tsx";
 import { apiErrorMessage } from "@/lib/trpc-client.ts";
 import { colors, space } from "@/theme";
 import { enterUp } from "@/theme/motion.ts";
+
+type Quote = NonNullable<QuoteGroup["pros"][number]["quote"]>;
+
+/** The line under a quote's price: one-off, recurring offer or snow contract (SPEC §21). */
+function offerDetails(quote: Quote): string {
+  const withFees = `${formatCad(quote.total.totalCents)}${
+    quote.kind === "one_off" ? "" : " per visit"
+  } with the service fee${quote.total.taxCents > 0 ? " and HST" : ""}`;
+  if (quote.kind === "recurring") {
+    const often = quote.frequencies.map((option) => option.label.toLowerCase()).join(" or ");
+    return `Recurring visits: ${often} · about ${quote.duration} each · ${withFees}`;
+  }
+  if (quote.contract) {
+    const billing = quote.contract.seasonBilling
+      ? ` · ${
+          quote.contract.seasonBilling === "either"
+            ? "pay upfront or monthly"
+            : `paid ${quote.contract.seasonBilling}`
+        }`
+      : "";
+    return `Snow contract: ${quote.contract.season} · cleared from ${quote.contract.triggerCm} cm${billing}`;
+  }
+  return `About ${quote.duration} · ${withFees}`;
+}
 
 /** One request: what was asked, each pro's answer, and booking a quote (SPEC §20). */
 export default function QuoteGroupRoute() {
@@ -116,10 +140,23 @@ export default function QuoteGroupRoute() {
                   </View>
                   {pro.quote ? (
                     <>
-                      <Text variant="display">{formatCad(pro.quote.priceCents)}</Text>
+                      <Text variant="display">
+                        {formatCad(pro.quote.priceCents)}
+                        {pro.quote.kind === "recurring" ||
+                        pro.quote.contract?.pricing === "per_visit" ? (
+                          <Text variant="bodyStrong" tone="muted">
+                            {" "}
+                            per visit
+                          </Text>
+                        ) : pro.quote.kind === "snow_contract" ? (
+                          <Text variant="bodyStrong" tone="muted">
+                            {" "}
+                            for the season
+                          </Text>
+                        ) : null}
+                      </Text>
                       <Text variant="small" tone="muted">
-                        About {pro.quote.duration} · {formatCad(pro.quote.total.totalCents)} with
-                        the service fee{pro.quote.total.taxCents > 0 ? " and HST" : ""}
+                        {offerDetails(pro.quote)}
                       </Text>
                       {pro.quote.note ? <Text>“{pro.quote.note}”</Text> : null}
                       {pro.canBook ? (
@@ -136,11 +173,22 @@ export default function QuoteGroupRoute() {
                   <View style={styles.actions}>
                     {pro.canBook && pro.quote ? (
                       <Button
-                        label="Book this quote"
+                        label={
+                          pro.quote.kind === "recurring"
+                            ? "Pick a schedule"
+                            : pro.quote.kind === "snow_contract"
+                              ? "Sign up"
+                              : "Book this quote"
+                        }
                         size="sm"
                         onPress={() =>
                           router.push({
-                            pathname: "/book",
+                            pathname:
+                              pro.quote?.kind === "recurring"
+                                ? "/recurring"
+                                : pro.quote?.kind === "snow_contract"
+                                  ? "/contract"
+                                  : "/book",
                             params: { quoteId: pro.quote?.id ?? "" },
                           })
                         }
