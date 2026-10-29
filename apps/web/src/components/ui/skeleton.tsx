@@ -1,12 +1,21 @@
 import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/cn.ts";
 
-/** Grey placeholder block shown while a page streams in. Pulses unless motion is reduced. */
-export function Skeleton({ className, style }: { className?: string; style?: CSSProperties }) {
+/**
+ * Grey placeholder block shown while a page streams in. Pulses unless motion is reduced.
+ * A `rounded-*` or `bg-*` class replaces the default corner or colour (class names are
+ * joined, not merged, so both would otherwise apply and the stylesheet order would win).
+ */
+export function Skeleton({ className = "", style }: { className?: string; style?: CSSProperties }) {
   return (
     <div
       aria-hidden="true"
-      className={cn("rounded-input bg-subtle motion-safe:animate-pulse", className)}
+      className={cn(
+        !/(^|\s)rounded-/.test(className) && "rounded-input",
+        !/(^|\s)bg-/.test(className) && "bg-subtle",
+        "motion-safe:animate-pulse",
+        className,
+      )}
       style={style}
     />
   );
