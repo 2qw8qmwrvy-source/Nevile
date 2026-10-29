@@ -162,7 +162,7 @@ export function SearchPageSkeleton() {
       </div>
       <Skeleton className="mt-6 h-8 w-64" />
       <div className="mt-4 flex gap-2 overflow-hidden">
-        {[28, 24, 20, 24].map((width) => (
+        {[28, 24, 20, 26].map((width) => (
           <Skeleton
             key={width}
             className="h-9 flex-none rounded-full"

@@ -79,7 +79,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     >
       <body className="flex min-h-dvh flex-col bg-ground font-sans text-ink">
         <SiteHeader />
-        <main id="main" className="flex-1">
+        {/* At least a screen tall (less the 72px header), so the footer starts below the
+            fold while a page streams in and doesn't jump away when the content arrives. */}
+        <main id="main" className="min-h-[calc(100dvh-72px)] flex-1">
           <Providers>
             {/* Navigations are React transitions, so pages crossfade briefly (globals.css). */}
             <ViewTransition default="nv-page">{children}</ViewTransition>

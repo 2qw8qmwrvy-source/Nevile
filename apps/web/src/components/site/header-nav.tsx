@@ -78,19 +78,12 @@ function InboxButton() {
   );
 }
 
-/** Sign in / Sign up, or Account, once the browser knows the session. */
+/** Sign in / Sign up, or Bookings, Inbox and Account for a signed-in visitor. */
 export function HeaderAccount({ hasSessionCookie }: { hasSessionCookie: boolean }) {
   const { status } = useAuthState(hasSessionCookie);
-  if (status === "unknown") {
-    // Same footprint as the Account button, so nothing moves when the session arrives.
-    return (
-      <span
-        aria-hidden="true"
-        className="inline-block h-11 w-11 rounded-full bg-subtle motion-safe:animate-pulse sm:w-[104px]"
-      />
-    );
-  }
-  if (status === "signed-in") {
+  // With a session cookie the person is almost always signed in: show their links straight
+  // away rather than a placeholder that resizes when the session is confirmed.
+  if (status === "signed-in" || status === "unknown") {
     return (
       <>
         {/* Display classes go on a wrapper: Button's own inline-flex would override "hidden". */}
