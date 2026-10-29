@@ -163,7 +163,7 @@ export function ContractTerms({
       method="post"
       noValidate
       onSubmit={submit}
-      className="mt-2 grid gap-3 rounded-input border border-border bg-ground p-3.5"
+      className="nv-pop-in mt-2 grid gap-3 rounded-input border border-border bg-ground p-3.5"
     >
       <p className="text-[15px] font-semibold">Seasonal contract</p>
       <div className="grid gap-3 sm:grid-cols-3">

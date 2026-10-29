@@ -14,7 +14,11 @@ import {
 } from "./cancellation.ts";
 import { BUSINESS_FEE_BPS } from "./fees.ts";
 import { assertCents, bigintToCents, type Cents, divideRoundHalfUp, percentOf } from "./money.ts";
-import { RECURRENCE_FREQUENCIES, type RecurrenceFrequency } from "./recurrence.ts";
+import {
+  FREQUENCY_LABELS,
+  RECURRENCE_FREQUENCIES,
+  type RecurrenceFrequency,
+} from "./recurrence.ts";
 import { jobAddressSchema } from "./scheduling.ts";
 import {
   addCalendarDays,
@@ -473,13 +477,6 @@ export function seasonEndActions(input: {
     };
   });
 }
-
-/** Plain-language label for a frequency ("Every week"). */
-export const FREQUENCY_LABELS: Record<RecurrenceFrequency, string> = {
-  weekly: "Every week",
-  biweekly: "Every 2 weeks",
-  monthly: "Every month",
-};
 
 /** "Every week" style summary plus the visit count, for previews. */
 export function seriesSummary(frequency: RecurrenceFrequency, visits: number): string {

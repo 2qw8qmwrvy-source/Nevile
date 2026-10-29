@@ -5,10 +5,10 @@ import {
   priceSummary,
   type RankInput,
   rankResults,
-  searchInputSchema,
   serviceAreaDescription,
   weightedRating,
 } from "./search.ts";
+import { searchInputSchema } from "./search-input.ts";
 
 const base: RankInput = {
   id: "a",

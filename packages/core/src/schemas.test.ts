@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   CANADIAN_AREA_CODES,
+  normalizeCanadianPhone,
+  normalizePostalCode,
+} from "./contact-formats.ts";
+import {
   canadianPhoneSchema,
   cancellationPolicySchema,
   emailSchema,
   MAX_MONEY_INPUT_CENTS,
   moneyInputSchema,
-  normalizeCanadianPhone,
-  normalizePostalCode,
   PRICING_TYPES,
   passwordSchema,
   postalCodeSchema,

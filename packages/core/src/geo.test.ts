@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { postalAreaOf } from "./contact-formats.ts";
 import {
   approximateLocation,
   boundingBox,
@@ -6,7 +7,6 @@ import {
   haversineKm,
   isWithinBounds,
   launchPointSchema,
-  postalAreaOf,
 } from "./geo.ts";
 
 const halifax = { lat: 44.6488, lng: -63.5752 };

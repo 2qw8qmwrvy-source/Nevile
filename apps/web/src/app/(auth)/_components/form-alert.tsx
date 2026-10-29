@@ -14,14 +14,17 @@ const tones = {
   info: { box: "border-border bg-ground text-ink", icon: "clock" },
 } as const;
 
-/** Inline form message. Errors are announced assertively, other messages politely. */
+/**
+ * Inline form message, easing in when it appears. Errors are announced assertively, other
+ * messages politely.
+ */
 export function FormAlert({ tone, children, className }: FormAlertProps) {
   const style = tones[tone];
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2.5 rounded-input border px-3.5 py-3 text-[15px] leading-snug font-medium",
+        "nv-pop-in flex items-start gap-2.5 rounded-input border px-3.5 py-3 text-[15px] leading-snug font-medium",
         style.box,
         className,
       )}

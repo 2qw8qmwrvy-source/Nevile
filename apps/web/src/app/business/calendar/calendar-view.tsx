@@ -214,7 +214,7 @@ function JobCard({
       {cancelling ? (
         <form
           method="post"
-          className="mt-3 grid gap-2 rounded-input bg-ground p-3"
+          className="nv-pop-in mt-3 grid gap-2 rounded-input bg-ground p-3"
           onSubmit={(event) => {
             event.preventDefault();
             cancel.mutate({ ...visitInput, reason });

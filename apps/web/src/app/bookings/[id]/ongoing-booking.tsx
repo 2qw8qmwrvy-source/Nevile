@@ -134,7 +134,7 @@ function VisitRow({ booking, visit }: { booking: Booking; visit: Visit }) {
       ) : null}
       {actions?.skip ? (
         confirmingSkip ? (
-          <div className="grid gap-3 rounded-input border border-border bg-ground p-3.5">
+          <div className="nv-pop-in grid gap-3 rounded-input border border-border bg-ground p-3.5">
             <p className="text-[15px]">{visit.skip?.text}</p>
             <div className="flex flex-wrap gap-3">
               <Button size="sm" onClick={() => skip.mutate(ids)} disabled={skip.isPending}>
@@ -286,7 +286,7 @@ export function OngoingBooking({ booking }: { booking: Booking }) {
             </FormAlert>
           ) : null}
           {confirmingEnd ? (
-            <div className="mt-3 grid gap-3 rounded-input border border-border bg-ground p-4">
+            <div className="nv-pop-in mt-3 grid gap-3 rounded-input border border-border bg-ground p-4">
               <p className="text-[15px]">
                 {requested
                   ? "Cancel this request? Nothing has been charged."

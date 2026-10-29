@@ -85,7 +85,7 @@ export function BookingActions({ booking }: { booking: Booking }) {
       {actions.cancel ? (
         <div className="mt-3">
           {confirmingCancel ? (
-            <div className="grid gap-3 rounded-input border border-border bg-ground p-4">
+            <div className="nv-pop-in grid gap-3 rounded-input border border-border bg-ground p-4">
               <p className="text-[15px]">
                 {booking.cancelQuote?.text ??
                   "Cancel this request? The hold on your card is released and you won't be charged."}

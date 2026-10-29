@@ -368,7 +368,7 @@ function MemberCard({
       )}
       {canRemove ? (
         confirming ? (
-          <div className="grid gap-2 rounded-input bg-ground p-3">
+          <div className="nv-pop-in grid gap-2 rounded-input bg-ground p-3">
             <p className="text-sm">
               Remove {member.name} from the team? Their upcoming jobs go back to unassigned.
             </p>

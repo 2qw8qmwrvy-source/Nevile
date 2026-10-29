@@ -88,7 +88,7 @@ function MoveVisit({
   return (
     <form
       method="post"
-      className="grid gap-3 rounded-input bg-ground p-3"
+      className="nv-pop-in grid gap-3 rounded-input bg-ground p-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (!date || windowStart === "") return;
@@ -278,7 +278,7 @@ function VisitRow({
       {panel === "cancel" ? (
         <form
           method="post"
-          className="grid gap-2 rounded-input bg-ground p-3"
+          className="nv-pop-in grid gap-2 rounded-input bg-ground p-3"
           onSubmit={(event) => {
             event.preventDefault();
             cancel.mutate({ ...input, reason });

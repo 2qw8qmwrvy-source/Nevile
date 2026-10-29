@@ -5,39 +5,13 @@
 import { z } from "zod";
 import { QUOTE_EXPIRY_DAYS } from "./booking-lifecycle.ts";
 import { CATEGORY_SLUGS } from "./categories.ts";
-import { postalAreaOf } from "./geo.ts";
+import { postalAreaOf } from "./contact-formats.ts";
 import { hasDisallowedControlCharacters, SERVICE_DURATION_CHOICES } from "./listing.ts";
 import { CONTRACT_PRICINGS, SEASON_BILLINGS, snowContractTermsSchema } from "./ongoing.ts";
+import { MESSAGE_LIMITS, QUOTE_LIMITS, QUOTE_REQUEST_LIMITS } from "./quote-limits.ts";
 import { RECURRENCE_FREQUENCIES } from "./recurrence.ts";
 import { launchPostalCodeSchema } from "./region.ts";
 import { MS_PER_DAY, MS_PER_MINUTE } from "./time.ts";
-
-export const QUOTE_REQUEST_LIMITS = {
-  /** Pros one request can go to. */
-  maxPros: 3,
-  maxPhotos: 6,
-  /** Open requests a customer may have at once. */
-  maxOpenRequests: 5,
-  detailsMinLength: 20,
-  detailsMaxLength: 2000,
-  /** A pro that hasn't replied after this many days is closed as unanswered. */
-  replyDays: 3,
-} as const;
-
-export const QUOTE_LIMITS = {
-  minPriceCents: 500,
-  maxPriceCents: 2_000_000,
-  noteMaxLength: 1000,
-  declineReasonMinLength: 3,
-  declineReasonMaxLength: 500,
-} as const;
-
-export const MESSAGE_LIMITS = {
-  maxLength: 2000,
-  maxPhotos: 6,
-  /** Messages one person may send per minute. */
-  perMinute: 30,
-} as const;
 
 /** A chat message unread this long gets one email (per conversation, per burst). */
 export const UNREAD_EMAIL_DELAY_MINUTES = 10;

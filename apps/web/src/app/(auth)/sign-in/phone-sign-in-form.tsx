@@ -7,12 +7,8 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { Field, Input } from "@/components/ui/field.tsx";
-import {
-  authClient,
-  authErrorMessage,
-  POSTAL_CODE_ERROR_CODES,
-  postalCodeError,
-} from "@/lib/auth-client.ts";
+import { authClient, authErrorMessage, POSTAL_CODE_ERROR_CODES } from "@/lib/auth-client.ts";
+import { postalCodeError } from "@/lib/postal-code.ts";
 import { FormAlert } from "../_components/form-alert.tsx";
 import { MarketingConsent } from "../_components/marketing-consent.tsx";
 

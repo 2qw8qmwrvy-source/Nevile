@@ -85,6 +85,20 @@
     outline-offset: 2px;
   }
 
+  /* Hover and focus colours ease in instead of snapping. Components that set their own
+     transition (Tailwind's transition-* utilities) override this. */
+  a,
+  button,
+  summary,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    transition-property: color, background-color, border-color, text-decoration-color, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+  }
+
   .on-dark :focus-visible,
   .on-dark:focus-visible {
     outline-color: #ffffff;
@@ -136,6 +150,36 @@
 
   .nv-fade-in {
     animation: nv-fade-in 200ms ease-out both;
+  }
+
+  /*
+   * Cards that are links (bookings, quotes, search results): the border darkens and the
+   * card lifts a little on hover, and settles back while pressed. Reduced motion keeps the
+   * colour change only.
+   */
+  .nv-card-link {
+    transition:
+      border-color 150ms ease-out,
+      box-shadow 180ms ease-out,
+      transform 180ms ease-out;
+  }
+
+  .nv-card-link:hover {
+    border-color: var(--color-field);
+    box-shadow: var(--shadow-pop);
+    transform: translateY(-1px);
+  }
+
+  .nv-card-link:active {
+    box-shadow: var(--shadow-card);
+    transform: translateY(0) scale(0.995);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nv-card-link:hover,
+    .nv-card-link:active {
+      transform: none;
+    }
   }
 
   /* Map pins (src/components/map/map-view.tsx); approximate business locations. */

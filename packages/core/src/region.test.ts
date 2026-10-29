@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { POSTAL_CODE_INVALID_MESSAGE } from "./contact-formats.ts";
 import {
   isLaunchPostalCode,
   isLaunchProvince,
   LAUNCH_PROVINCES,
-  launchPostalCodeSchema,
   OUTSIDE_LAUNCH_REGION_MESSAGE,
   postalCodeProvince,
-} from "./region.ts";
-import { POSTAL_CODE_INVALID_MESSAGE } from "./schemas.ts";
+} from "./launch-region.ts";
+import { launchPostalCodeSchema } from "./region.ts";
 import { PROVINCE_CODES, type ProvinceCode } from "./tax.ts";
 
 describe("LAUNCH_PROVINCES", () => {

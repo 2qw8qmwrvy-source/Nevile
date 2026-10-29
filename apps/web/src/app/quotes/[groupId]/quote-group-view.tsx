@@ -198,7 +198,7 @@ export function QuoteGroupView({ initial, isNew }: { initial: Group; isNew: bool
           {close.error ? <FormAlert tone="error">{close.error.message}</FormAlert> : null}
           {group.canClose ? (
             confirmingClose ? (
-              <div className="grid gap-2 rounded-input bg-ground p-3">
+              <div className="nv-pop-in grid gap-2 rounded-input bg-ground p-3">
                 <p className="text-sm">
                   Close this request? Pros who haven't replied are told, and quotes close.
                 </p>

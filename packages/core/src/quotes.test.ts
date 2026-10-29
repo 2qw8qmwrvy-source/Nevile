@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { QUOTE_REQUEST_LIMITS } from "./quote-limits.ts";
 import {
   medianResponseMinutes,
   messageInputSchema,
-  QUOTE_REQUEST_LIMITS,
   quoteDeclineSchema,
   quoteExpiresAt,
   quoteReplyDeadline,

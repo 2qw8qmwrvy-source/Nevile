@@ -19,7 +19,7 @@ function BookingRow({ booking }: { booking: View }) {
     <li>
       <Link
         href={`/bookings/${booking.id}` as Route}
-        className="flex items-center gap-4 rounded-card border border-border bg-surface p-4 text-ink no-underline shadow-card hover:border-field hover:text-ink"
+        className="nv-card-link flex items-center gap-4 rounded-card border border-border bg-surface p-4 text-ink no-underline shadow-card hover:text-ink"
       >
         <span className="min-w-0 flex-1">
           <span className="block text-[17px] font-semibold">{booking.service.title}</span>

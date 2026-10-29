@@ -43,7 +43,7 @@ export default async function QuotesPage() {
             <li key={group.id}>
               <Link
                 href={`/quotes/${group.id}` as Route}
-                className="block rounded-card border border-border bg-surface p-4 text-ink no-underline shadow-card hover:border-field sm:p-5"
+                className="nv-card-link block rounded-card border border-border bg-surface p-4 text-ink no-underline shadow-card sm:p-5"
               >
                 <span className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="text-[17px] font-semibold">{group.category.name}</span>

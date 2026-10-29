@@ -116,3 +116,10 @@ export function occurrenceDates(
   }
   return dates;
 }
+
+/** Plain-language label for a frequency ("Every week"). */
+export const FREQUENCY_LABELS: Record<RecurrenceFrequency, string> = {
+  weekly: "Every week",
+  biweekly: "Every 2 weeks",
+  monthly: "Every month",
+};

@@ -268,7 +268,7 @@ export function QuoteReply({ businessId, initial }: { businessId: string; initia
                 </fieldset>
               ) : null}
               {kind === "snow_contract" ? (
-                <div className="grid gap-3 rounded-input bg-ground p-3">
+                <div className="nv-pop-in grid gap-3 rounded-input bg-ground p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Pricing">
                       <Select
@@ -360,7 +360,7 @@ export function QuoteReply({ businessId, initial }: { businessId: string; initia
             {declining ? (
               <form
                 method="post"
-                className="grid gap-2 rounded-input bg-ground p-3"
+                className="nv-pop-in grid gap-2 rounded-input bg-ground p-3"
                 onSubmit={(event) => {
                   event.preventDefault();
                   decline.mutate({ businessId, requestId: request.id, reason });

@@ -4,7 +4,6 @@
  * Nova Scotia's scale.
  */
 import { z } from "zod";
-import { normalizePostalCode } from "./schemas.ts";
 
 export type LatLng = { lat: number; lng: number };
 
@@ -94,15 +93,6 @@ export const launchPointSchema = z
   .refine((point) => isWithinBounds(point), {
     message: "Choose a location in Nova Scotia.",
   });
-
-/** "b3h 1a1" → "B3H"; null for anything that isn't a Canadian postal code or area. */
-export function postalAreaOf(value: string): string | null {
-  const compact = value.trim().toUpperCase().replace(/\s+/g, "");
-  // Forward sortation area: Canada Post never uses D, F, I, O, Q or U, nor W/Z first.
-  if (/^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]$/.test(compact)) return compact;
-  const normalized = normalizePostalCode(value);
-  return normalized ? normalized.slice(0, 3) : null;
-}
 
 /** "Under 1 km", "4 km", "23 km": rounded, because area centres are approximate. */
 export function formatDistanceKm(km: number): string {

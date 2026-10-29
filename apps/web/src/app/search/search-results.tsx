@@ -92,7 +92,7 @@ export function SearchResults({
               onMouseEnter={() => setSelectedId(result.id)}
               onFocus={() => setSelectedId(result.id)}
               className={cn(
-                "group grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-card border bg-surface p-4 text-ink no-underline shadow-card transition-colors hover:text-ink sm:p-5",
+                "nv-card-link group grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-card border bg-surface p-4 text-ink no-underline shadow-card hover:text-ink sm:p-5",
                 selectedId === result.id ? "border-primary" : "border-border hover:border-field",
               )}
             >

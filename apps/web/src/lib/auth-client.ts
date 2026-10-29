@@ -1,5 +1,5 @@
 import { createNevileAuthClient } from "@nevile/auth/client";
-import { launchPostalCodeSchema, OUTSIDE_LAUNCH_REGION_MESSAGE } from "@nevile/core";
+import { OUTSIDE_LAUNCH_REGION_MESSAGE } from "@nevile/core";
 
 /** Browser auth client; talks to `/api/auth` on the current origin. */
 export const authClient = createNevileAuthClient();
@@ -57,13 +57,3 @@ export const POSTAL_CODE_ERROR_CODES: ReadonlySet<string> = new Set([
   "INVALID_POSTAL_CODE",
   "NOT_IN_SERVICE_AREA",
 ]);
-
-/**
- * Client-side check of a sign-up postal code: a hint only, the server decides. Returns an
- * error message, or null when the code is a valid Nova Scotia postal code.
- */
-export function postalCodeError(value: string): string | null {
-  if (!value.trim()) return "Enter your postal code.";
-  const result = launchPostalCodeSchema.safeParse(value);
-  return result.success ? null : (result.error.issues[0]?.message ?? "Enter a valid postal code.");
-}

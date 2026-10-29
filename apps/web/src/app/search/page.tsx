@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button.tsx";
 import { Container } from "@/components/ui/container.tsx";
 import { ArrowRightIcon, categoryIconName, Icon, InfoIcon } from "@/components/ui/icons.tsx";
 import { getSessionOrNull, hasSessionCookie } from "@/lib/auth.ts";
-import { parseSearchParams, type SearchParams, searchHref } from "@/lib/search-options.ts";
+import { type SearchParams, searchHref } from "@/lib/search-options.ts";
+import { parseSearchParams } from "@/lib/search-params.ts";
 import { getServerCaller } from "@/lib/trpc-server.ts";
 import { SearchBar } from "./search-bar.tsx";
 import { SearchFilters } from "./search-filters.tsx";
@@ -181,7 +182,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               <Link
                 href={searchHref(params, { service: item.slug })}
                 aria-current={item.slug === params.service ? "true" : undefined}
-                className="group flex h-full min-h-[64px] items-center gap-3 rounded-card border border-border bg-surface px-3.5 py-3 text-ink no-underline shadow-card transition-colors hover:border-field hover:text-ink aria-[current=true]:border-primary aria-[current=true]:ring-1 aria-[current=true]:ring-primary"
+                className="nv-card-link group flex h-full min-h-[64px] items-center gap-3 rounded-card border border-border bg-surface px-3.5 py-3 text-ink no-underline shadow-card hover:text-ink aria-[current=true]:border-primary aria-[current=true]:ring-1 aria-[current=true]:ring-primary"
               >
                 <span className="inline-flex size-10 flex-none items-center justify-center rounded-xl bg-primary-soft text-primary">
                   <Icon name={categoryIconName(item.slug)} size={20} strokeWidth={1.85} />

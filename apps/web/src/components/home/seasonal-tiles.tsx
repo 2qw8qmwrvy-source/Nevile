@@ -39,7 +39,7 @@ export function SeasonalTiles({ season, tiles: list, totalServices }: SeasonalTi
           <li key={tile.slug}>
             <Link
               href={`/search?service=${encodeURIComponent(tile.slug)}` as Route}
-              className="group flex h-full min-h-[76px] items-center gap-3.5 rounded-card border border-border bg-surface px-3.5 py-3 text-ink no-underline shadow-card transition-colors hover:border-field hover:text-ink"
+              className="nv-card-link group flex h-full min-h-[76px] items-center gap-3.5 rounded-card border border-border bg-surface px-3.5 py-3 text-ink no-underline shadow-card hover:text-ink"
             >
               <span className="inline-flex size-12 flex-none items-center justify-center rounded-[14px] bg-season-tint text-season-ink">
                 <Icon name={categoryIconName(tile.slug)} size={24} strokeWidth={1.85} />

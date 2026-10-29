@@ -25,7 +25,7 @@ function RequestRow({ request, businessId }: { request: Request; businessId: str
     <li>
       <Link
         href={`/business/quotes/${request.id}?b=${businessId}` as Route}
-        className="block rounded-card border border-border bg-surface p-4 text-ink no-underline shadow-card hover:border-field"
+        className="nv-card-link block rounded-card border border-border bg-surface p-4 text-ink no-underline shadow-card"
       >
         <span className="flex flex-wrap items-baseline justify-between gap-2">
           <span className="text-[17px] font-semibold">

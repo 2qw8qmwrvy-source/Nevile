@@ -8,8 +8,8 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { Field, Input } from "@/components/ui/field.tsx";
 import { CheckIcon, categoryIconName, Icon, type IconName } from "@/components/ui/icons.tsx";
-import { postalCodeError } from "@/lib/auth-client.ts";
 import { cn } from "@/lib/cn.ts";
+import { postalCodeError } from "@/lib/postal-code.ts";
 import { useTRPC } from "@/lib/trpc.ts";
 
 type Category = { slug: string; name: string };
