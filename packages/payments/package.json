@@ -11,6 +11,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "stripe": "22.6.2"
+    "stripe": "23.0.1"
   }
 }
