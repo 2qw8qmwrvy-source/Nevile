@@ -1,0 +1,294 @@
+@import "tailwindcss";
+
+/*
+ * Seasons theme. Token values come from @nevile/tokens and are set as --nv-* custom
+ * properties on <html> (see src/lib/theme.ts); `inline` makes utilities reference them.
+ * --season-* are set by the nearest season scope and default to winter.
+ */
+@theme inline {
+  --color-ground: var(--nv-ground);
+  --color-surface: var(--nv-surface);
+  --color-border: var(--nv-border);
+  --color-ink: var(--nv-ink);
+  --color-muted: var(--nv-muted);
+  --color-primary: var(--nv-primary);
+  --color-primary-hover: var(--nv-primary-hover);
+  --color-on-primary: var(--nv-on-primary);
+  --color-danger: var(--nv-danger);
+  --color-star: var(--nv-star);
+
+  --color-winter: var(--nv-winter);
+  --color-winter-tint: var(--nv-winter-tint);
+  --color-winter-ink: var(--nv-winter-ink);
+  --color-spring: var(--nv-spring);
+  --color-spring-tint: var(--nv-spring-tint);
+  --color-spring-ink: var(--nv-spring-ink);
+  --color-summer: var(--nv-summer);
+  --color-summer-tint: var(--nv-summer-tint);
+  --color-summer-ink: var(--nv-summer-ink);
+  --color-fall: var(--nv-fall);
+  --color-fall-tint: var(--nv-fall-tint);
+  --color-fall-ink: var(--nv-fall-ink);
+
+  --color-season: var(--season-accent, var(--nv-winter));
+  --color-season-tint: var(--season-tint, var(--nv-winter-tint));
+  --color-season-ink: var(--season-ink, var(--nv-winter-ink));
+
+  --radius-card: var(--nv-radius-card);
+  --radius-input: var(--nv-radius-input);
+
+  --font-sans: var(--font-figtree), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-bricolage), var(--font-figtree), system-ui, sans-serif;
+}
+
+/* Web-only shades from the approved mockups (not shared with mobile). */
+@theme {
+  --color-field: #8a948d;
+  --color-placeholder: #5e6963;
+  --color-hover: #e9ece4;
+  --color-primary-soft: #e6f0ea;
+  --color-on-primary-muted: #d7e6de;
+  --color-subtle: #ebeee6;
+  --radius-panel: 22px;
+  --radius-hero: 28px;
+  --shadow-card: 0 1px 2px rgb(24 33 29 / 0.06);
+  --shadow-pop: 0 8px 24px rgb(24 33 29 / 0.12);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  strong,
+  b {
+    font-weight: 600;
+  }
+
+  ::placeholder {
+    color: var(--color-placeholder);
+    opacity: 1;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* Hover and focus colours ease in instead of snapping. Components that set their own
+     transition (Tailwind's transition-* utilities) override this. */
+  a,
+  button,
+  summary,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    transition-property: color, background-color, border-color, text-decoration-color, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+  }
+
+  .on-dark :focus-visible,
+  .on-dark:focus-visible {
+    outline-color: #ffffff;
+  }
+
+  [id] {
+    scroll-margin-top: 24px;
+  }
+
+  /* SPEC §16: motion is switched off whenever the device asks for reduced motion. */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      /* biome-ignore lint/complexity/noImportantStyles: must beat component transitions. */
+      transition-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: must beat component animations. */
+      animation-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: stops looping animations (e.g. pulses). */
+      animation-iteration-count: 1 !important;
+    }
+  }
+}
+
+@layer components {
+  /* Re-colour the seasonal illustration gently if the season changes while it is shown. */
+  .season-art * {
+    transition:
+      fill 0.25s ease,
+      opacity 0.25s ease;
+  }
+
+  /* Subtle entrances (SPEC §16: 150–250 ms). Reduced motion turns them off (above). */
+  .nv-pop-in {
+    animation: nv-pop-in 180ms ease-out both;
+  }
+
+  .nv-rise {
+    animation: nv-rise 220ms ease-out both;
+  }
+
+  .nv-slide-up {
+    animation: nv-slide-up 220ms ease-out both;
+  }
+
+  .nv-fade-in {
+    animation: nv-fade-in 200ms ease-out both;
+  }
+
+  /*
+   * Cards that are links (bookings, quotes, search results): the border darkens and the
+   * card lifts a little on hover, and settles back while pressed. Reduced motion keeps the
+   * colour change only.
+   */
+  .nv-card-link {
+    transition:
+      border-color 150ms ease-out,
+      box-shadow 180ms ease-out,
+      transform 180ms ease-out;
+  }
+
+  .nv-card-link:hover {
+    border-color: var(--color-field);
+    box-shadow: var(--shadow-pop);
+    transform: translateY(-1px);
+  }
+
+  .nv-card-link:active {
+    box-shadow: var(--shadow-card);
+    transform: translateY(0) scale(0.995);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nv-card-link:hover,
+    .nv-card-link:active {
+      transform: none;
+    }
+  }
+
+  /* Map pins (src/components/map/map-view.tsx); approximate business locations. */
+  .nv-map-pin {
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    border: 3px solid var(--nv-surface);
+    background: var(--nv-primary);
+    box-shadow: 0 1px 4px rgb(24 33 29 / 0.35);
+    cursor: pointer;
+    transition: transform 150ms ease-out;
+  }
+
+  .nv-map-pin[data-selected="true"] {
+    transform: scale(1.45);
+    background: var(--nv-ink);
+  }
+
+  .nv-map-pin-base {
+    width: 26px;
+    height: 26px;
+    cursor: grab;
+  }
+
+  /* The header stays put while page content crossfades during navigation. */
+  .nv-site-header {
+    view-transition-name: site-header;
+  }
+}
+
+@keyframes nv-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes nv-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes nv-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+@keyframes nv-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes nv-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * Page navigations (React <ViewTransition default="nv-page"> in the root layout): a quick
+ * crossfade of the main content. Browsers without view transitions just swap instantly.
+ */
+::view-transition {
+  /* Clicks during the short animation reach the new page instead of the overlay. */
+  pointer-events: none;
+}
+
+::view-transition-group(site-header) {
+  animation: none;
+  z-index: 100;
+}
+
+::view-transition-old(site-header) {
+  display: none;
+}
+
+::view-transition-new(site-header) {
+  animation: none;
+}
+
+::view-transition-group(.nv-page) {
+  animation-duration: 200ms;
+  animation-timing-function: ease-out;
+}
+
+::view-transition-old(.nv-page) {
+  animation: nv-fade-out 120ms ease-out both;
+}
+
+::view-transition-new(.nv-page) {
+  animation: nv-fade-in 200ms ease-out 40ms both;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    /* biome-ignore lint/complexity/noImportantStyles: no navigation motion at all. */
+    animation: none !important;
+  }
+}

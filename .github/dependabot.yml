@@ -1,0 +1,57 @@
+version: 2
+
+updates:
+  # One pnpm workspace (pnpm-workspace.yaml): the root directory covers every app and package.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Halifax
+    # Wait a week after a release before proposing it: most compromised or broken npm
+    # releases are pulled within days. Security updates are not delayed.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      # All minor and patch bumps in one weekly pull request; each major bump gets its own.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # The Expo SDK decides these versions (React has to match the renderer bundled with
+      # react-native, and 0.x minors are breaking). They move together during an Expo SDK
+      # upgrade (`npx expo install --fix` in apps/mobile), so only patch bumps come through.
+      - dependency-name: expo
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "expo-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: react
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: react-native
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-native-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  # Actions used by .github/workflows and the shared setup action in .github/actions.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Halifax
+    groups:
+      github-actions:
+        patterns:
+          - "*"

@@ -1,6 +1,7 @@
 {
   "name": "nevile",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {
     "node": ">=22.18"
@@ -9,15 +10,19 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "turbo run test --continue",
     "lint": "biome check .",
     "format": "biome check --write .",
     "db:generate": "pnpm --filter @nevile/db run generate",
     "db:migrate": "pnpm --filter @nevile/db run migrate",
-    "db:seed": "pnpm --filter @nevile/db run seed"
+    "db:seed": "pnpm --filter @nevile/db run seed",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "db:import-postal-areas": "pnpm --filter @nevile/db run import-postal-areas"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@biomejs/biome": "2.5.15",
+    "@playwright/test": "1.64.1",
     "@types/node": "^22.20.5",
     "turbo": "2.11.10",
     "typescript": "6.0.3",

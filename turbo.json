@@ -1,9 +1,25 @@
 {
   "$schema": "https://turborepo.com/schema.json",
+  "globalDependencies": [".env"],
+  "globalPassThroughEnv": ["CI", "E2E_DATABASE_URL", "PLAYWRIGHT_CHROMIUM_EXECUTABLE"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "env": ["NEXT_PUBLIC_*"],
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "BETTER_AUTH_*",
+        "NEVILE_*",
+        "MEDIA_*",
+        "S3_*",
+        "PAYMENTS_PROVIDER",
+        "STRIPE_*",
+        "CRON_SECRET",
+        "EXPO_ACCESS_TOKEN",
+        "SENTRY_DSN",
+        "APP_VERSION"
+      ]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]
@@ -13,7 +29,22 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "BETTER_AUTH_*",
+        "NEXT_PUBLIC_*",
+        "NEVILE_*",
+        "MEDIA_*",
+        "S3_*",
+        "PAYMENTS_PROVIDER",
+        "STRIPE_*",
+        "CRON_SECRET",
+        "EXPO_ACCESS_TOKEN",
+        "SENTRY_DSN",
+        "APP_VERSION",
+        "PORT"
+      ]
     }
   }
 }

@@ -5,14 +5,19 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts"
+    "./schema": "./src/schema/index.ts",
+    "./migrate": "./src/migrate.ts",
+    "./seed": "./src/seed.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "generate": "drizzle-kit generate",
-    "migrate": "node src/migrate.ts",
-    "seed": "node src/seed.ts"
+    "migrate": "node --env-file-if-exists=../../.env src/migrate.ts",
+    "seed": "node --env-file-if-exists=../../.env src/seed.ts",
+    "reset:e2e": "node src/reset-e2e.ts",
+    "import-postal-areas": "node --env-file-if-exists=../../.env src/import-postal-areas.ts"
   },
   "dependencies": {
     "@nevile/core": "workspace:*",

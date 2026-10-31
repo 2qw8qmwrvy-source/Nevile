@@ -1,0 +1,496 @@
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  date,
+  foreignKey,
+  index,
+  integer,
+  pgTable,
+  text,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { user } from "./auth.ts";
+import { businesses, businessMembers } from "./businesses.ts";
+import { services } from "./catalog.ts";
+import {
+  cents,
+  createdAt,
+  DEFAULT_TIMEZONE,
+  id,
+  nonNegative,
+  positive,
+  timestamps,
+  tstz,
+} from "./columns.ts";
+import { addresses } from "./customers.ts";
+import {
+  bookingKind,
+  bookingStatus,
+  cancellationPolicy,
+  checkoutStatus,
+  contractPeriodStatus,
+  paymentProvider,
+  province,
+  recurrenceFrequency,
+  seasonPayment,
+  visitPhotoKind,
+  visitStatus,
+} from "./enums.ts";
+import { quotes } from "./quotes.ts";
+
+/**
+ * A customer's booking with a business. Amounts are per charge: per visit for
+ * recurring jobs and per-visit snow contracts, the whole job for one-offs and
+ * season-priced contracts. Pricing and cancellation terms are snapshots taken at
+ * booking time so later business edits never change an agreed price.
+ */
+export const bookings = pgTable(
+  "bookings",
+  {
+    id: id(),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict" }),
+    serviceId: uuid("service_id")
+      .notNull()
+      .references(() => services.id, { onDelete: "restrict" }),
+    addressId: uuid("address_id")
+      .notNull()
+      .references(() => addresses.id, { onDelete: "restrict" }),
+    // Set when the booking came from an accepted quote.
+    quoteId: uuid("quote_id")
+      .unique()
+      .references(() => quotes.id, { onDelete: "restrict" }),
+    // What the job is called, as booked (the service's title, or "Lawn Mowing (quoted)").
+    title: text("title").notNull(),
+    // Default crew member for generated visits (owner/manager assigns, SPEC §1). Must be
+    // a member of this booking's business: composite FK (business_id, assigned_member_id)
+    // with ON DELETE SET NULL (assigned_member_id), added in custom SQL because Drizzle
+    // cannot express a column-list SET NULL.
+    assignedMemberId: uuid("assigned_member_id"),
+    kind: bookingKind("kind").notNull(),
+    status: bookingStatus("status").notNull(),
+    priceCents: cents("price_cents").notNull(),
+    serviceFeeCents: cents("service_fee_cents").notNull(),
+    // Sales tax on the business's price (zero unless the business is registered).
+    priceTaxCents: cents("price_tax_cents").notNull().default(0),
+    // Sales tax on Nevile's service fee (always applied).
+    feeTaxCents: cents("fee_tax_cents").notNull().default(0),
+    totalCents: cents("total_cents").notNull(),
+    taxProvince: province("tax_province").notNull(),
+    cancellationPolicy: cancellationPolicy("cancellation_policy").notNull(),
+    timezone: text("timezone").notNull().default(DEFAULT_TIMEZONE),
+    // Requested slot for one-off / on-demand jobs; visits hold the confirmed times.
+    requestedStartsAt: tstz("requested_starts_at"),
+    requestedEndsAt: tstz("requested_ends_at"),
+    customerNotes: text("customer_notes"),
+    // Saved card for recurring jobs and snow contracts (SPEC §7).
+    stripePaymentMethodId: text("stripe_payment_method_id"),
+    // Approval-required requests lapse after 24h with no charge (SPEC §4).
+    approvalExpiresAt: tstz("approval_expires_at"),
+    confirmedAt: tstz("confirmed_at"),
+    cancelledAt: tstz("cancelled_at"),
+    cancellationReason: text("cancellation_reason"),
+    // Recurring jobs and snow contracts pause after a charge keeps failing (SPEC §21).
+    pausedAt: tstz("paused_at"),
+    pauseReason: text("pause_reason"),
+    ...timestamps(),
+  },
+  (t) => [
+    // Targets of composite FKs that tie visits, payments, tips, reviews and donations to
+    // the booking's own business and customer.
+    unique("bookings_id_business_unique").on(t.id, t.businessId),
+    unique("bookings_id_business_customer_unique").on(t.id, t.businessId, t.customerId),
+    unique("bookings_id_customer_unique").on(t.id, t.customerId),
+    index("bookings_customer_created_idx").on(t.customerId, t.createdAt),
+    index("bookings_business_status_created_idx").on(t.businessId, t.status, t.createdAt),
+    index("bookings_service_id_idx").on(t.serviceId),
+    index("bookings_address_id_idx").on(t.addressId),
+    index("bookings_assigned_member_id_idx").on(t.assignedMemberId),
+    index("bookings_requested_expires_idx")
+      .on(t.approvalExpiresAt)
+      .where(sql`${t.status} = 'requested'`),
+    // Reliability stats: business-initiated cancellations (SPEC §5).
+    index("bookings_business_cancellations_idx")
+      .on(t.businessId, t.cancelledAt)
+      .where(sql`${t.status} = 'cancelled_by_business'`),
+    nonNegative("bookings", t.priceCents),
+    nonNegative("bookings", t.serviceFeeCents),
+    nonNegative("bookings", t.priceTaxCents),
+    nonNegative("bookings", t.feeTaxCents),
+    check(
+      "bookings_total_is_sum",
+      sql`${t.totalCents} = ${t.priceCents} + ${t.serviceFeeCents} + ${t.priceTaxCents} + ${t.feeTaxCents}`,
+    ),
+    check(
+      "bookings_requested_range",
+      sql`${t.requestedEndsAt} IS NULL OR ${t.requestedStartsAt} IS NULL OR ${t.requestedEndsAt} > ${t.requestedStartsAt}`,
+    ),
+    check("bookings_no_quote_phase_status", sql`${t.status} NOT IN ('quote_requested', 'quoted')`),
+    check(
+      "bookings_requested_expiry",
+      sql`${t.status} <> 'requested' OR ${t.approvalExpiresAt} IS NOT NULL`,
+    ),
+    check(
+      "bookings_cancelled_fields",
+      sql`${t.status} NOT IN ('cancelled_by_customer', 'cancelled_by_business') OR ${t.cancelledAt} IS NOT NULL`,
+    ),
+    check(
+      "bookings_pause_ongoing_only",
+      sql`${t.pausedAt} IS NULL OR ${t.kind} IN ('recurring', 'snow_contract')`,
+    ),
+  ],
+);
+
+/** Weekly / every-2-weeks / monthly schedule with an end date (SPEC §4). */
+export const recurringSeries = pgTable(
+  "recurring_series",
+  {
+    id: id(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .unique()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    frequency: recurrenceFrequency("frequency").notNull(),
+    // First occurrence; its local wall-clock time (booking timezone) repeats.
+    startsAt: tstz("starts_at").notNull(),
+    endsAt: tstz("ends_at").notNull(),
+    durationMinutes: integer("duration_minutes").notNull(),
+    // Visits have been generated up to this instant.
+    generatedThrough: tstz("generated_through"),
+    // The customer's choices, in the booking's zone: first and last day, arrival window.
+    firstDate: date("first_date", { mode: "string" }).notNull(),
+    endDate: date("end_date", { mode: "string" }).notNull(),
+    windowStartMinute: integer("window_start_minute").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    check("recurring_series_range", sql`${t.endsAt} > ${t.startsAt}`),
+    check("recurring_series_duration_positive", sql`${t.durationMinutes} > 0`),
+    check("recurring_series_dates", sql`${t.endDate} > ${t.firstDate}`),
+    check("recurring_series_window_start", sql`${t.windowStartMinute} BETWEEN 0 AND 1439`),
+  ],
+);
+
+/** Dates of a series the customer skips (null window) or moves to another window. */
+export const recurringOverrides = pgTable(
+  "recurring_overrides",
+  {
+    id: id(),
+    seriesId: uuid("series_id")
+      .notNull()
+      .references(() => recurringSeries.id, { onDelete: "cascade" }),
+    date: date("date", { mode: "string" }).notNull(),
+    windowStartMinute: integer("window_start_minute"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("recurring_overrides_series_date_unique").on(t.seriesId, t.date),
+    check(
+      "recurring_overrides_window_start",
+      sql`${t.windowStartMinute} IS NULL OR ${t.windowStartMinute} BETWEEN 0 AND 1439`,
+    ),
+  ],
+);
+
+/**
+ * Seasonal snow & ice contract, e.g. "clear whenever snowfall > 5 cm, Nov–Mar".
+ * Priced either per visit or as one season price.
+ */
+export const snowContracts = pgTable(
+  "snow_contracts",
+  {
+    id: id(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .unique()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    triggerCm: integer("trigger_cm").notNull(),
+    seasonStart: date("season_start", { mode: "string" }).notNull(),
+    seasonEnd: date("season_end", { mode: "string" }).notNull(),
+    perVisitCents: cents("per_visit_cents"),
+    seasonPriceCents: cents("season_price_cents"),
+    // How the customer pays a season price; null for per-visit contracts.
+    seasonPayment: seasonPayment("season_payment"),
+    // Place on the business's snow route (lower first); new sign-ups go last.
+    routePosition: integer("route_position").notNull().default(0),
+    ...timestamps(),
+  },
+  (t) => [
+    positive("snow_contracts", t.triggerCm),
+    check(
+      "snow_contracts_season_payment",
+      sql`(${t.seasonPriceCents} IS NOT NULL) = (${t.seasonPayment} IS NOT NULL)`,
+    ),
+    nonNegative("snow_contracts", t.perVisitCents),
+    nonNegative("snow_contracts", t.seasonPriceCents),
+    check("snow_contracts_season_range", sql`${t.seasonEnd} > ${t.seasonStart}`),
+    check(
+      "snow_contracts_one_price",
+      sql`num_nonnulls(${t.perVisitCents}, ${t.seasonPriceCents}) = 1`,
+    ),
+  ],
+);
+
+/**
+ * One unit of work on the business calendar. A slot is only taken once a visit exists,
+ * i.e. after the booking is confirmed (SPEC §4). `starts_at`/`ends_at` are the customer's
+ * **arrival window** and `work_minutes` the job's typical duration, which is what uses up
+ * the window's capacity (SPEC §19); one crew member can hold several jobs in a window.
+ * Visits arrive unassigned and the owner/manager assigns a crew member.
+ * Cancelled and refunded visits never hold capacity.
+ */
+export const visits = pgTable(
+  "visits",
+  {
+    id: id(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    // Always the booking's business (composite FK below).
+    businessId: uuid("business_id").notNull(),
+    // A crew member of `business_id`. Removing a member who still holds visits is refused:
+    // reassign the visits (or deactivate the member) first, so no slot is freed silently.
+    assignedMemberId: uuid("assigned_member_id"),
+    // 1 for one-offs; occurrence number for recurring series and contract visits.
+    sequence: integer("sequence").notNull().default(1),
+    startsAt: tstz("starts_at").notNull(),
+    endsAt: tstz("ends_at").notNull(),
+    // Typical duration of the service when booked (snapshot).
+    workMinutes: integer("work_minutes").notNull(),
+    status: visitStatus("status").notNull().default("confirmed"),
+    completedAt: tstz("completed_at"),
+    completedByUserId: text("completed_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    // Customer confirmation time (or the auto-confirm / admin decision time).
+    confirmedAt: tstz("confirmed_at"),
+    // True when the 48h window lapsed without a customer response.
+    autoConfirmed: boolean("auto_confirmed").notNull().default(false),
+    autoConfirmAt: tstz("auto_confirm_at"),
+    // When this visit should be charged (recurring: 3 days before; snow: after confirm).
+    chargeDueAt: tstz("charge_due_at"),
+    // The customer was reminded the day before (recurring visits).
+    remindedAt: tstz("reminded_at"),
+    cancelledAt: tstz("cancelled_at"),
+    // Business-only notes (customers never see them).
+    businessNotes: text("business_notes"),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("visits_booking_sequence_unique").on(t.bookingId, t.sequence),
+    // Target of composite FKs that tie payments, tips and reviews to the visit's booking.
+    unique("visits_id_booking_unique").on(t.id, t.bookingId),
+    foreignKey({
+      name: "visits_booking_business_fk",
+      columns: [t.bookingId, t.businessId],
+      foreignColumns: [bookings.id, bookings.businessId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "visits_member_business_fk",
+      columns: [t.businessId, t.assignedMemberId],
+      foreignColumns: [businessMembers.businessId, businessMembers.id],
+    }).onDelete("restrict"),
+    index("visits_booking_starts_idx").on(t.bookingId, t.startsAt),
+    index("visits_member_starts_idx").on(t.assignedMemberId, t.startsAt),
+    // Capacity queries: a business's live visits on a day.
+    index("visits_business_starts_idx").on(t.businessId, t.startsAt),
+    index("visits_auto_confirm_idx")
+      .on(t.autoConfirmAt)
+      .where(sql`${t.status} = 'completed_pending_confirmation'`),
+    index("visits_charge_due_idx").on(t.chargeDueAt).where(sql`${t.chargeDueAt} IS NOT NULL`),
+    positive("visits", t.sequence),
+    check("visits_range", sql`${t.endsAt} > ${t.startsAt}`),
+    check("visits_work_minutes_range", sql`${t.workMinutes} BETWEEN 1 AND 1440`),
+    check(
+      "visits_marked_complete_fields",
+      sql`${t.status} NOT IN ('completed_pending_confirmation', 'disputed', 'fix_scheduled', 'completed') OR ${t.completedAt} IS NOT NULL`,
+    ),
+    check(
+      "visits_pending_confirmation_fields",
+      sql`${t.status} <> 'completed_pending_confirmation' OR ${t.autoConfirmAt} IS NOT NULL`,
+    ),
+    check(
+      "visits_completed_fields",
+      sql`${t.status} <> 'completed' OR ${t.confirmedAt} IS NOT NULL`,
+    ),
+    check(
+      "visits_cancelled_fields",
+      sql`${t.status} NOT IN ('cancelled_by_customer', 'cancelled_by_business') OR ${t.cancelledAt} IS NOT NULL`,
+    ),
+  ],
+);
+
+/**
+ * One month of a season-priced snow contract (SPEC §21): its share of the season price,
+ * fee and taxes, when it's charged (monthly plans) and when the business is paid it.
+ * Payments for a month point here (`payments.period_id`); an upfront plan's single
+ * charge is recorded as one payment row per month on the same payment intent.
+ */
+export const contractPeriods = pgTable(
+  "contract_periods",
+  {
+    id: id(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "restrict" }),
+    sequence: integer("sequence").notNull(),
+    periodStart: date("period_start", { mode: "string" }).notNull(),
+    periodEnd: date("period_end", { mode: "string" }).notNull(),
+    priceCents: cents("price_cents").notNull(),
+    serviceFeeCents: cents("service_fee_cents").notNull(),
+    priceTaxCents: cents("price_tax_cents").notNull().default(0),
+    feeTaxCents: cents("fee_tax_cents").notNull().default(0),
+    totalCents: cents("total_cents").notNull(),
+    chargeDueAt: tstz("charge_due_at").notNull(),
+    // When the business is paid this month's share: after the month ends.
+    releaseAt: tstz("release_at").notNull(),
+    status: contractPeriodStatus("status").notNull().default("scheduled"),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("contract_periods_booking_sequence_unique").on(t.bookingId, t.sequence),
+    // Target of the composite FK that ties a period's payments to its booking.
+    unique("contract_periods_id_booking_unique").on(t.id, t.bookingId),
+    index("contract_periods_due_idx").on(t.chargeDueAt).where(sql`${t.status} = 'scheduled'`),
+    positive("contract_periods", t.sequence),
+    nonNegative("contract_periods", t.priceCents),
+    nonNegative("contract_periods", t.serviceFeeCents),
+    nonNegative("contract_periods", t.priceTaxCents),
+    nonNegative("contract_periods", t.feeTaxCents),
+    check("contract_periods_range", sql`${t.periodEnd} >= ${t.periodStart}`),
+    check(
+      "contract_periods_total_is_sum",
+      sql`${t.totalCents} = ${t.priceCents} + ${t.serviceFeeCents} + ${t.priceTaxCents} + ${t.feeTaxCents}`,
+    ),
+  ],
+);
+
+export const visitPhotos = pgTable(
+  "visit_photos",
+  {
+    id: id(),
+    visitId: uuid("visit_id")
+      .notNull()
+      .references(() => visits.id, { onDelete: "cascade" }),
+    kind: visitPhotoKind("kind").notNull(),
+    storageKey: text("storage_key").notNull().unique(),
+    contentType: text("content_type").notNull(),
+    uploadedByUserId: text("uploaded_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("visit_photos_visit_kind_idx").on(t.visitId, t.kind)],
+);
+
+/**
+ * PDF agreement for seasonal / recurring contracts, accepted by both parties
+ * (SPEC §10). A changed agreement is a new version.
+ */
+export const agreements = pgTable(
+  "agreements",
+  {
+    id: id(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "restrict" }),
+    version: integer("version").notNull().default(1),
+    pdfStorageKey: text("pdf_storage_key").notNull().unique(),
+    // SHA-256 (hex) of the PDF, proving which document each party accepted.
+    contentSha256: text("content_sha256").notNull(),
+    acceptedByCustomerAt: tstz("accepted_by_customer_at"),
+    acceptedByBusinessAt: tstz("accepted_by_business_at"),
+    acceptedByBusinessUserId: text("accepted_by_business_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("agreements_booking_version_unique").on(t.bookingId, t.version),
+    positive("agreements", t.version),
+    check("agreements_content_sha256_hex", sql`${t.contentSha256} ~ '^[0-9a-f]{64}$'`),
+  ],
+);
+
+/**
+ * A customer's checkout for a one-off booking (SPEC §19). While `open` (30 minutes) it
+ * holds its time in the window like a confirmed job, so two people can't pay for the
+ * last space. Prices are computed on the server and snapshotted here; payment completion
+ * turns the checkout into a booking (`booking_id`), at most once.
+ */
+export const bookingCheckouts = pgTable(
+  "booking_checkouts",
+  {
+    id: id(),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    serviceId: uuid("service_id")
+      .notNull()
+      .references(() => services.id, { onDelete: "cascade" }),
+    addressId: uuid("address_id")
+      .notNull()
+      .references(() => addresses.id, { onDelete: "cascade" }),
+    // Booking an accepted quote (SPEC §20): its price and duration are used.
+    quoteId: uuid("quote_id").references(() => quotes.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    // The arrival window and the work it needs.
+    startsAt: tstz("starts_at").notNull(),
+    endsAt: tstz("ends_at").notNull(),
+    workMinutes: integer("work_minutes").notNull(),
+    timezone: text("timezone").notNull().default(DEFAULT_TIMEZONE),
+    // Instant Book (charged now) or an approval request (card authorised only).
+    instantBook: boolean("instant_book").notNull(),
+    priceCents: cents("price_cents").notNull(),
+    serviceFeeCents: cents("service_fee_cents").notNull(),
+    priceTaxCents: cents("price_tax_cents").notNull(),
+    feeTaxCents: cents("fee_tax_cents").notNull(),
+    totalCents: cents("total_cents").notNull(),
+    businessFeeCents: cents("business_fee_cents").notNull(),
+    taxProvince: province("tax_province").notNull(),
+    cancellationPolicy: cancellationPolicy("cancellation_policy").notNull(),
+    customerNotes: text("customer_notes"),
+    provider: paymentProvider("provider").notNull(),
+    // The provider's checkout session and payment intent, once created.
+    providerSessionId: text("provider_session_id").unique(),
+    providerPaymentIntentId: text("provider_payment_intent_id").unique(),
+    status: checkoutStatus("status").notNull().default("open"),
+    expiresAt: tstz("expires_at").notNull(),
+    bookingId: uuid("booking_id")
+      .unique()
+      .references(() => bookings.id, { onDelete: "set null" }),
+    completedAt: tstz("completed_at"),
+    ...timestamps(),
+  },
+  (t) => [
+    index("booking_checkouts_business_starts_idx")
+      .on(t.businessId, t.startsAt)
+      .where(sql`${t.status} = 'open'`),
+    index("booking_checkouts_open_expires_idx").on(t.expiresAt).where(sql`${t.status} = 'open'`),
+    index("booking_checkouts_customer_created_idx").on(t.customerId, t.createdAt),
+    check("booking_checkouts_range", sql`${t.endsAt} > ${t.startsAt}`),
+    check("booking_checkouts_work_minutes_range", sql`${t.workMinutes} BETWEEN 1 AND 1440`),
+    nonNegative("booking_checkouts", t.serviceFeeCents),
+    nonNegative("booking_checkouts", t.priceTaxCents),
+    nonNegative("booking_checkouts", t.feeTaxCents),
+    nonNegative("booking_checkouts", t.businessFeeCents),
+    positive("booking_checkouts", t.priceCents),
+    check(
+      "booking_checkouts_total_is_sum",
+      sql`${t.totalCents} = ${t.priceCents} + ${t.serviceFeeCents} + ${t.priceTaxCents} + ${t.feeTaxCents}`,
+    ),
+    check(
+      "booking_checkouts_completed_fields",
+      sql`${t.status} <> 'completed' OR ${t.completedAt} IS NOT NULL`,
+    ),
+  ],
+);

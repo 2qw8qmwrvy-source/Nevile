@@ -1,56 +1,103 @@
-# Welcome to your Expo app 👋
+# Nevile mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Expo (SDK 58) iOS and Android app for Nevile, using Expo Router and the "A · Seasons"
+design (SPEC.md §13). Read `AGENTS.md` before touching Expo APIs — they change every SDK.
 
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run
 
 ```bash
-npm run reset-project
+pnpm --filter @nevile/mobile start      # dev server (press i / a for a simulator)
+pnpm --filter @nevile/mobile typecheck
+npx expo export --platform ios          # bundle smoke test (run inside apps/mobile)
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+## Layout
 
-### Other setup steps
+| Path | Purpose |
+|---|---|
+| `src/app/_layout.tsx` | Root stack, navigation theme, font loading (splash held until ready). |
+| `src/app/(tabs)/` | Bottom tabs: Home, Search, Bookings, Inbox, Account. |
+| `src/app/(auth)/` | Sign-in (Email \| Phone code tabs) and sign-up, presented as one modal over the tabs. |
+| `src/screens/` | Route-independent screens that take props (e.g. `AccountScreen` receives the session). |
+| `src/components/` | Shared UI: `Text`, `Button`, `Card`, `Badge`, `Chip`, `Screen`, `EmptyState`, `ListRow`, `SearchField`, `TabBar`, seasonal hero. |
+| `src/lib/` | App helpers (category icons, season/greeting), plus the API layer below. |
+| `src/lib/auth.ts` | Better Auth client (`authClient`, `useSession`), API base URL, auth error copy. |
+| `src/lib/trpc-client.ts` / `trpc.tsx` | tRPC client with the session cookie; `ApiProvider` (TanStack Query) and `useTRPC`. |
+| `src/lib/auth-ui.tsx` | Form pieces used by the auth and account screens (`TextField`, `FormAlert`, tabs). |
+| `src/app/book.tsx`, `src/app/pay-test.tsx` | Booking a service or an accepted quote, paid in the app (Stripe's payment sheet; the test payment screen in development). |
+| `src/app/recurring.tsx`, `src/app/contract.tsx` | Recurring visits and snow contract sign-up (SPEC §21), from a service or a pro's quote; both charge the saved card. |
+| `src/app/card.tsx`, `src/app/card-test.tsx` | Account → Payment method: the one saved card (Stripe's sheet; the test card screen in development). |
+| `src/app/quotes/`, `src/app/inbox/` | Quote requests (camera/library photos), quote comparison, and chat. |
+| `src/app/business/` | Business tools, opened from Account: hub, calendar and jobs, series and contracts (`series/[id]`), snow route, quote requests, listing (profile, services with recurring options and contract terms, photos, service area), team (hours, time off, invites, booking windows) and payouts. Every screen takes `businessId`. |
+| `src/components/business-screen.tsx` | Frame for business tools: Back, business switcher, and the signed-out / no business / wrong role states. |
+| `src/lib/payments.ts`, `photos.ts`, `push.ts`, `app-links.ts` | Payment sheet, private photo uploads, push registration, and opening website paths (from notifications) on app screens. |
+| `src/theme/` | Seasons palette and type scale built on `@nevile/tokens`; `fonts.ts` lists the bundled font files. |
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## API and sign-in
 
-## Learn more
+The app talks to the web app's `/api/auth/*` (Better Auth) and `/api/trpc/*` (the shared
+API). Set its origin in `EXPO_PUBLIC_API_URL`; the default is `http://localhost:3000`.
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+# apps/mobile/.env.local (git-ignored). Expo inlines EXPO_PUBLIC_* at bundle time,
+# so restart `expo start` after changing it.
+EXPO_PUBLIC_API_URL=http://localhost:3000      # iOS simulator
+# EXPO_PUBLIC_API_URL=http://10.0.2.2:3000     # Android emulator
+# EXPO_PUBLIC_API_URL=http://192.168.1.20:3000 # phone on the same Wi-Fi (your computer's IP)
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Release builds must set it to the production `https://` origin; a missing value logs an
+error and falls back to localhost.
 
-## Join the community
+- Sessions are cookie-based, as on the web. The `@better-auth/expo` plugin keeps the
+  `nevile.*` cookies in the keychain/keystore (`expo-secure-store`) and restores the session
+  on launch; the tRPC client sends the same cookie (`authClient.getCookie()`) with
+  `credentials: "omit"` so the platform cookie jar never adds its own.
+- Auth requests carry an `expo-origin` header that the server checks against its trusted
+  origins. Development and release builds send `nevile://` (always trusted). Expo Go sends
+  `exp://…`, which the server trusts only when it runs with `NODE_ENV=development`
+  (`next dev`).
+- Sign-up emails link to the website's `/verify-email` page; after confirming, people sign
+  in in the app with their email and password. Phone codes create the account on first
+  use.
 
-Join our community of developers creating universal apps.
+## Payments, photos and push (SPEC §20, §21)
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- **Paying:** the booking screen asks the API for a payment (`bookings.appCheckout` or
+  `quotes.appCheckout`). With Stripe it opens Stripe's payment sheet (cards, Apple Pay,
+  Google Pay) and then confirms the booking (`bookings.finishAppCheckout`; the webhook does
+  the same if the app is closed). With the test provider (`PAYMENTS_PROVIDER=fake`, the
+  default in development) it opens the app's test payment screen instead. The payment
+  sheet is native code, so testing it needs a development build (`npx expo run:ios`), not
+  Expo Go. Apple Pay also needs the merchant id (`merchant.ca.nevile.app`, or
+  `EXPO_PUBLIC_APPLE_MERCHANT_ID`) registered in the Apple developer account.
+- **Saved card (SPEC §21):** recurring visits and snow contracts are charged later to the
+  customer's one saved card. `cards.startSetup` (`kind: "intent"`) returns a setup intent
+  that Stripe's sheet confirms (`lib/cards.ts`); with the test provider the test card
+  screen saves a card that works or one that declines.
+- **Photos:** picked with `expo-image-picker` and uploaded to `/api/private-uploads` with
+  the session cookie. They're shown from `/api/private-media/<id>` with the same cookie and
+  kept in memory only, never in the disk cache.
+- **Push:** the app asks for notification permission after a quote request, a booking or
+  a message, never at launch, then registers its Expo push token (`push.register`) and
+  removes it on sign-out. Tokens need the EAS project id (`eas init`, or
+  `EXPO_PUBLIC_EAS_PROJECT_ID`) and a real device. A tapped notification opens the matching
+  screen; anything the app doesn't have yet opens on the website.
+
+Auth constants (cookie prefix, OTP length, name limit) and the client factory come from
+`@nevile/auth/client`, the server-free entry point of the auth package, so the app and the
+server cannot drift apart.
+
+Workspace packages (`@nevile/core`, `@nevile/tokens`, `@nevile/auth/client`) are imported as TypeScript source;
+Expo's Metro config resolves them in the monorepo without a custom `metro.config.js`.
+
+## Design notes
+
+- Light-only for now (`userInterfaceStyle: "light"`); the Seasons palette has no dark variant yet.
+- Fonts: Bricolage Grotesque (display, 700) and Figtree (body, 400/500/600) from
+  `@expo-google-fonts/*`. Only those faces are bundled (`src/theme/fonts.ts`), and the root
+  layout keeps the splash screen up until they are registered. Each weight is its own
+  family name (`fontFamily.displayBold`, `fontFamily.bodySemiBold`, …): pick the family
+  instead of setting `fontWeight`, which Android ignores or fakes for custom fonts.
+- Icons use `expo-symbols`: SF Symbols on iOS, Material Symbols on Android/web.
+- Touch targets are at least 44pt; interactive elements carry accessibility roles and labels.

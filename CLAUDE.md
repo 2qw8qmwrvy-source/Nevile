@@ -15,6 +15,7 @@ pnpm + Turborepo monorepo, TypeScript 6, ESM everywhere.
 | `packages/db` | `@nevile/db` | Drizzle schema, migrations (`packages/db/drizzle`), client, seed. |
 | `packages/auth` | `@nevile/auth` | Better Auth server config (`.`) and client helpers (`./client`). |
 | `packages/api` | `@nevile/api` | tRPC router shared by web and mobile. |
+| `packages/storage` | `@nevile/storage` | Media storage (local / S3-compatible) and image re-encoding (sharp). |
 | `apps/web` | `@nevile/web` | Next.js 16 website; hosts `/api/auth/*` and `/api/trpc/*`. |
 | `apps/mobile` | `@nevile/mobile` | Expo (React Native) iOS/Android app. |
 
@@ -26,7 +27,7 @@ build step for them.
 - **Money is integer cents** (`number`, never floats for stored amounts). Currency is CAD.
   Round only at defined points, half-up to the cent (see `@nevile/core` money helpers).
 - **Time**: store `timestamptz` in UTC; business logic that depends on local days uses the
-  job's IANA zone (default `America/Toronto`).
+  job's IANA zone (default `America/Halifax`; Nova Scotia launch, see SPEC §2).
 - **Erasable TypeScript only** (`erasableSyntaxOnly`): no `enum`, no `namespace`, no
   constructor parameter properties. Use `as const` objects + union types. Node runs `.ts`
   files directly (type stripping), so scripts like `src/migrate.ts` need no build.
@@ -48,6 +49,7 @@ pnpm lint             # biome
 pnpm format           # biome autofix
 pnpm db:generate      # drizzle-kit generate migrations from schema
 pnpm db:migrate       # apply migrations to DATABASE_URL
+pnpm db:seed          # upsert service categories and starter postal areas into DATABASE_URL
 pnpm --filter @nevile/web dev
 pnpm --filter @nevile/mobile start
 ```

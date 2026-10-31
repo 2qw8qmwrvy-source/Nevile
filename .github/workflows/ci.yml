@@ -1,0 +1,157 @@
+name: CI
+
+# SPEC §17: every push and pull request runs lint, type checks, all tests against a real
+# Postgres, the web build, the mobile bundle and the browser tests. The job ids below
+# (checks, mobile-bundle, e2e) are the names required by the `main` branch protection
+# (docs/BRANCH_PROTECTION.md); rename them there too if they change here.
+
+on:
+  push:
+    # Dependabot branches are tested through their pull requests.
+    branches-ignore:
+      - "dependabot/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer push to the same branch or pull request cancels the run it supersedes. Each
+  # commit on main gets its own group, so every merge is tested to completion.
+  group: ci-${{ github.event_name }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  TURBO_TELEMETRY_DISABLED: "1"
+  EXPO_NO_TELEMETRY: "1"
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nevile
+          POSTGRES_PASSWORD: nevile
+          POSTGRES_DB: nevile_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nevile -d nevile_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # The service's superuser can create the sibling databases some suites use
+      # (e.g. nevile_auth_test next to nevile_test).
+      TEST_DATABASE_URL: postgresql://nevile:nevile@localhost:5432/nevile_test
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - id: setup
+        uses: ./.github/actions/setup
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v6
+        with:
+          path: apps/web/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**', 'packages/*/src/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
+      # Each check runs even if an earlier one failed, so one run reports every problem.
+      - name: Lint
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm lint
+
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm typecheck
+
+      - name: Test
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm test
+
+      - name: Build web app
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm --filter @nevile/web build
+        env:
+          # Placeholders only: the build must not need a database or real secrets. The
+          # database named here does not exist, so build-time queries fail loudly.
+          DATABASE_URL: postgresql://nevile:nevile@localhost:5432/nevile_ci_build_placeholder
+          BETTER_AUTH_SECRET: ci-build-placeholder-secret-never-used-at-runtime
+          BETTER_AUTH_URL: http://localhost:3000
+          NEXT_PUBLIC_SITE_URL: http://localhost:3000
+
+  mobile-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - name: Export iOS bundle
+        working-directory: apps/mobile
+        run: pnpm exec expo export --platform ios --output-dir dist-ios
+
+      - name: Export Android bundle
+        working-directory: apps/mobile
+        run: pnpm exec expo export --platform android --output-dir dist-android
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nevile
+          POSTGRES_PASSWORD: nevile
+          POSTGRES_DB: nevile_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nevile -d nevile_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://nevile:nevile@localhost:5432/nevile_e2e
+      BETTER_AUTH_SECRET: ci-e2e-placeholder-secret-never-used-in-production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - name: Migrate and seed the database
+        run: pnpm db:migrate && pnpm db:seed
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # e2e/playwright.config.ts builds and starts the web app itself (webServer).
+      - name: Browser tests
+        run: pnpm test:e2e
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: ${{ github.workspace }}/playwright-report
+          PLAYWRIGHT_HTML_OPEN: never
+
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+          if-no-files-found: warn

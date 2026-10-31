@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792542377638,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792542385316,
+      "tag": "0001_visit_overlap_and_audit_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792597885025,
+      "tag": "0002_integrity_and_terms",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792597921899,
+      "tag": "0003_drop_unused_admin_plugin_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792597948452,
+      "tag": "0004_money_and_slot_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792621003929,
+      "tag": "0005_community_and_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792621017118,
+      "tag": "0006_community_fund_ledger_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792772004721,
+      "tag": "0007_listings_and_postal_areas",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792780271509,
+      "tag": "0008_bookings_v1_3",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792799043676,
+      "tag": "0009_quotes_chat_v1_4",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792808630468,
+      "tag": "0010_push_v1_4",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792885642353,
+      "tag": "0011_ongoing_v1_5",
+      "breakpoints": true
+    }
+  ]
+}

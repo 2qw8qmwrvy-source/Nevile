@@ -1,0 +1,349 @@
+{
+  "description": "Starter postal-area centres for Nova Scotia. APPROXIMATE: town and neighbourhood centres, not official centroids. Replace with Statistics Canada FSA data before launch (pnpm db:import-postal-areas). See SPEC §18.",
+  "source": "Nevile starter list (approximate), 2026-10",
+  "province": "NS",
+  "areas": [
+    {
+      "code": "B3H",
+      "placeName": "Halifax (South End)",
+      "lat": 44.634,
+      "lng": -63.585
+    },
+    {
+      "code": "B3J",
+      "placeName": "Halifax (Downtown)",
+      "lat": 44.6475,
+      "lng": -63.576
+    },
+    {
+      "code": "B3K",
+      "placeName": "Halifax (North End)",
+      "lat": 44.659,
+      "lng": -63.596
+    },
+    {
+      "code": "B3L",
+      "placeName": "Halifax (West End)",
+      "lat": 44.646,
+      "lng": -63.611
+    },
+    {
+      "code": "B3M",
+      "placeName": "Halifax (Clayton Park)",
+      "lat": 44.665,
+      "lng": -63.645
+    },
+    {
+      "code": "B3N",
+      "placeName": "Halifax (Armdale)",
+      "lat": 44.633,
+      "lng": -63.626
+    },
+    {
+      "code": "B3P",
+      "placeName": "Halifax (Spryfield)",
+      "lat": 44.614,
+      "lng": -63.608
+    },
+    {
+      "code": "B3R",
+      "placeName": "Halifax (Spryfield South)",
+      "lat": 44.598,
+      "lng": -63.615
+    },
+    {
+      "code": "B3S",
+      "placeName": "Halifax (Bayers Lake)",
+      "lat": 44.645,
+      "lng": -63.662
+    },
+    {
+      "code": "B3T",
+      "placeName": "Lakeside / Timberlea",
+      "lat": 44.633,
+      "lng": -63.72
+    },
+    {
+      "code": "B3V",
+      "placeName": "Herring Cove",
+      "lat": 44.57,
+      "lng": -63.56
+    },
+    {
+      "code": "B3Z",
+      "placeName": "Tantallon",
+      "lat": 44.695,
+      "lng": -63.86
+    },
+    {
+      "code": "B3A",
+      "placeName": "Dartmouth (North)",
+      "lat": 44.68,
+      "lng": -63.565
+    },
+    {
+      "code": "B3B",
+      "placeName": "Dartmouth (Burnside)",
+      "lat": 44.705,
+      "lng": -63.58
+    },
+    {
+      "code": "B2W",
+      "placeName": "Dartmouth (Woodlawn)",
+      "lat": 44.671,
+      "lng": -63.509
+    },
+    {
+      "code": "B2X",
+      "placeName": "Dartmouth (Westphal)",
+      "lat": 44.687,
+      "lng": -63.517
+    },
+    {
+      "code": "B2Y",
+      "placeName": "Dartmouth (Downtown)",
+      "lat": 44.664,
+      "lng": -63.564
+    },
+    {
+      "code": "B2V",
+      "placeName": "Cole Harbour",
+      "lat": 44.672,
+      "lng": -63.481
+    },
+    {
+      "code": "B2Z",
+      "placeName": "Lawrencetown",
+      "lat": 44.652,
+      "lng": -63.38
+    },
+    {
+      "code": "B3G",
+      "placeName": "Eastern Passage",
+      "lat": 44.606,
+      "lng": -63.492
+    },
+    {
+      "code": "B3E",
+      "placeName": "Porters Lake",
+      "lat": 44.74,
+      "lng": -63.3
+    },
+    {
+      "code": "B4A",
+      "placeName": "Bedford",
+      "lat": 44.73,
+      "lng": -63.655
+    },
+    {
+      "code": "B4B",
+      "placeName": "Bedford West",
+      "lat": 44.715,
+      "lng": -63.695
+    },
+    {
+      "code": "B4C",
+      "placeName": "Lower Sackville",
+      "lat": 44.776,
+      "lng": -63.679
+    },
+    {
+      "code": "B4E",
+      "placeName": "Middle Sackville",
+      "lat": 44.79,
+      "lng": -63.7
+    },
+    {
+      "code": "B4G",
+      "placeName": "Upper Sackville",
+      "lat": 44.81,
+      "lng": -63.74
+    },
+    {
+      "code": "B2T",
+      "placeName": "Fall River",
+      "lat": 44.815,
+      "lng": -63.61
+    },
+    {
+      "code": "B2R",
+      "placeName": "Waverley",
+      "lat": 44.79,
+      "lng": -63.6
+    },
+    {
+      "code": "B2S",
+      "placeName": "Enfield / Elmsdale",
+      "lat": 44.93,
+      "lng": -63.53
+    },
+    {
+      "code": "B4N",
+      "placeName": "Kentville",
+      "lat": 45.077,
+      "lng": -64.496
+    },
+    {
+      "code": "B4P",
+      "placeName": "Wolfville",
+      "lat": 45.09,
+      "lng": -64.36
+    },
+    {
+      "code": "B4R",
+      "placeName": "Coldbrook",
+      "lat": 45.06,
+      "lng": -64.59
+    },
+    {
+      "code": "B4V",
+      "placeName": "Bridgewater",
+      "lat": 44.379,
+      "lng": -64.518
+    },
+    {
+      "code": "B4H",
+      "placeName": "Amherst",
+      "lat": 45.833,
+      "lng": -64.212
+    },
+    {
+      "code": "B2N",
+      "placeName": "Truro",
+      "lat": 45.365,
+      "lng": -63.28
+    },
+    {
+      "code": "B2H",
+      "placeName": "New Glasgow",
+      "lat": 45.586,
+      "lng": -62.646
+    },
+    {
+      "code": "B2G",
+      "placeName": "Antigonish",
+      "lat": 45.622,
+      "lng": -61.993
+    },
+    {
+      "code": "B1P",
+      "placeName": "Sydney",
+      "lat": 46.137,
+      "lng": -60.194
+    },
+    {
+      "code": "B1S",
+      "placeName": "Sydney (West)",
+      "lat": 46.13,
+      "lng": -60.22
+    },
+    {
+      "code": "B1N",
+      "placeName": "Sydney River",
+      "lat": 46.1,
+      "lng": -60.23
+    },
+    {
+      "code": "B1A",
+      "placeName": "Glace Bay",
+      "lat": 46.197,
+      "lng": -59.957
+    },
+    {
+      "code": "B1V",
+      "placeName": "North Sydney",
+      "lat": 46.206,
+      "lng": -60.252
+    },
+    {
+      "code": "B5A",
+      "placeName": "Yarmouth",
+      "lat": 43.837,
+      "lng": -66.117
+    },
+    {
+      "code": "B9A",
+      "placeName": "Port Hawkesbury",
+      "lat": 45.617,
+      "lng": -61.358
+    },
+    {
+      "code": "B0N",
+      "placeName": "Windsor and Hants County",
+      "lat": 44.99,
+      "lng": -64.13
+    },
+    {
+      "code": "B0P",
+      "placeName": "Berwick / Middleton",
+      "lat": 44.95,
+      "lng": -64.8
+    },
+    {
+      "code": "B0S",
+      "placeName": "Annapolis Royal area",
+      "lat": 44.74,
+      "lng": -65.52
+    },
+    {
+      "code": "B0V",
+      "placeName": "Digby area",
+      "lat": 44.622,
+      "lng": -65.76
+    },
+    {
+      "code": "B0J",
+      "placeName": "Lunenburg / Chester area",
+      "lat": 44.45,
+      "lng": -64.3
+    },
+    {
+      "code": "B0T",
+      "placeName": "Liverpool / Queens County",
+      "lat": 44.04,
+      "lng": -64.72
+    },
+    {
+      "code": "B0W",
+      "placeName": "Shelburne / Barrington",
+      "lat": 43.76,
+      "lng": -65.32
+    },
+    {
+      "code": "B0K",
+      "placeName": "Pictou County",
+      "lat": 45.678,
+      "lng": -62.709
+    },
+    {
+      "code": "B0M",
+      "placeName": "Springhill / Cumberland County",
+      "lat": 45.65,
+      "lng": -64.05
+    },
+    {
+      "code": "B0H",
+      "placeName": "Guysborough / Antigonish County",
+      "lat": 45.39,
+      "lng": -61.5
+    },
+    {
+      "code": "B0E",
+      "placeName": "Baddeck / Inverness County",
+      "lat": 46.1,
+      "lng": -60.75
+    },
+    {
+      "code": "B0C",
+      "placeName": "Ingonish / Victoria County",
+      "lat": 46.68,
+      "lng": -60.4
+    },
+    {
+      "code": "B0A",
+      "placeName": "Louisbourg area",
+      "lat": 45.92,
+      "lng": -59.97
+    }
+  ]
+}
