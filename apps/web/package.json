@@ -17,25 +17,25 @@
     "@nevile/payments": "workspace:*",
     "@nevile/storage": "workspace:*",
     "@nevile/tokens": "workspace:*",
-    "@sentry/nextjs": "11.8.0",
-    "@tanstack/react-query": "5.104.5",
-    "@trpc/client": "11.19.0",
-    "@trpc/server": "11.19.0",
-    "@trpc/tanstack-react-query": "11.19.0",
-    "better-auth": "1.7.12",
-    "maplibre-gl": "6.13.0",
-    "next": "16.4.2",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "@sentry/nextjs": "11.11.0",
+    "@tanstack/react-query": "5.107.1",
+    "@trpc/client": "11.25.2",
+    "@trpc/server": "11.25.2",
+    "@trpc/tanstack-react-query": "11.25.2",
+    "better-auth": "1.7.18",
+    "maplibre-gl": "6.17.0",
+    "next": "16.4.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "server-only": "0.0.1",
     "superjson": "2.2.6",
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "4.3.3",
+    "@tailwindcss/postcss": "4.3.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "postcss": "8.5.31",
-    "tailwindcss": "4.3.3"
+    "postcss": "8.5.32",
+    "tailwindcss": "4.3.5"
   }
 }
